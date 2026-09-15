@@ -116,6 +116,28 @@ class LogController(Controller):
         where = f"{source[0]}:{source[1]}" if source else "the log"
         self.window.navigation.analyze(command, where)
 
+    def reveal(self, record: LogRecord) -> None:
+        """Show, select and scroll to a record, loosening the filters if needed."""
+        window = self.window
+        self.flush()
+        boxes = {
+            LogSource.APP: window.check_app,
+            LogSource.EMULATOR: window.check_emulator,
+            LogSource.GAME: window.check_game,
+        }
+        boxes[record.source].setChecked(True)
+        if LEVELS.get(window.combo_level.currentText(), LogLevel.INFO) > record.level:
+            window.combo_level.setCurrentText("debug")
+        window.edit_filter.clear()
+        for row in range(self.model.rowCount()):
+            if self.model.record_at(row) is record:
+                window.log_table.selectRow(row)
+                window.log_table.scrollTo(self.model.index(row, 0))
+                window.dock_logs.show()
+                window.dock_logs.raise_()
+                return
+        self.status("that record is no longer in the log")
+
     def open_source(self, record: LogRecord) -> None:
         source = self.source_of(record)
         if source is None:
@@ -153,8 +175,14 @@ class LogController(Controller):
             label += f" ({function_id}:{line})" if line else f" ({function_id})"
         open_action = menu.addAction(label, lambda: self.open_source(record))
         open_action.setEnabled(source is not None)
+        command = self.command_of(record)
         analyze = menu.addAction("analyze the command", lambda: self.analyze(record))
-        analyze.setEnabled(self.command_of(record) is not None)
+        analyze.setEnabled(command is not None)
+        add = menu.addAction(
+            "add the command as a test",
+            lambda: self.window.environment.add_from_command(command or "", record.tick),
+        )
+        add.setEnabled(command is not None and not command.lstrip().startswith("$"))
         return menu
 
     def clear(self) -> None:

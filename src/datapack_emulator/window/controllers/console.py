@@ -35,6 +35,7 @@ class ConsoleController(Controller):
         # clicked(bool) would pass `checked` as the text to run
         window.edit_console.returnPressed.connect(lambda: self.run())
         window.console_run_button.clicked.connect(lambda: self.run())
+        window.console_add_test_button.clicked.connect(self.add_as_test)
         window.edit_console.installEventFilter(self._keys)
 
     def prefill(self, text: str) -> None:
@@ -78,6 +79,18 @@ class ConsoleController(Controller):
         outcome = "succeeded" if result.success else "failed"
         self.status(f"{line}: {outcome} (value {result.value}) at game time {emulator.world.tick}")
         return result
+
+    def add_as_test(self) -> None:
+        """The line being typed, or the last command run, as a test at the
+        current server tick."""
+        window = self.window
+        line = window.edit_console.text().strip() or (self.history[-1] if self.history else "")
+        if not line:
+            self.status("type a command first")
+            return
+        emulator = window.emulator
+        tick = emulator.world.tick - 1 if emulator is not None and emulator.started else 0
+        window.environment.add_from_command(line, tick)
 
     def _remember(self, line: str) -> None:
         if not self.history or self.history[-1] != line:

@@ -27,6 +27,7 @@ from datapack_emulator.emulator.common import (
     split_arguments,
 )
 from datapack_emulator.emulator.runtime.world import UNMODELLED_SELECTOR_ARGUMENTS
+from datapack_emulator.emulator.testing import describe_range
 from datapack_emulator.emulator.versions import Version
 
 Rows = list[tuple[str, str]]
@@ -145,17 +146,6 @@ SELECTOR_KINDS = {
     "@s": "the entity running the command (none on the console)",
     "@n": "the nearest entity",
 }
-
-
-def describe_range(expression: str) -> str:
-    """``1..5`` -> "between 1 and 5"."""
-    text = expression.strip()
-    if ".." not in text:
-        return f"exactly {text}"
-    low, _, high = text.partition("..")
-    if low and high:
-        return f"between {low} and {high}"
-    return f"{low} or more" if low else f"{high} or less"
 
 
 def describe_selector(selector: Selector) -> str:

@@ -363,6 +363,9 @@ QMenuBar::item:selected {
                </item>
                <item>
                 <widget class="QTableWidget" name="tableTests">
+                 <property name="contextMenuPolicy">
+                  <enum>Qt::CustomContextMenu</enum>
+                 </property>
                  <property name="minimumSize">
                   <size>
                    <width>0</width>
@@ -395,6 +398,11 @@ QMenuBar::item:selected {
                  </column>
                  <column>
                   <property name="text">
+                   <string>expect value</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
                    <string>result</string>
                   </property>
                  </column>
@@ -413,6 +421,46 @@ QMenuBar::item:selected {
                   <widget class="QPushButton" name="buttonRemoveTest">
                    <property name="text">
                     <string>remove</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="buttonDuplicateTest">
+                   <property name="text">
+                    <string>duplicate</string>
+                   </property>
+                   <property name="toolTip">
+                    <string>copy the selected tests below themselves</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="buttonMoveTestUp">
+                   <property name="text">
+                    <string>↑</string>
+                   </property>
+                   <property name="toolTip">
+                    <string>move the selected test up</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="buttonMoveTestDown">
+                   <property name="text">
+                    <string>↓</string>
+                   </property>
+                   <property name="toolTip">
+                    <string>move the selected test down</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="buttonRunSelectedTest">
+                   <property name="text">
+                    <string>run selected</string>
+                   </property>
+                   <property name="toolTip">
+                    <string>run only the selected tests, in a fresh world</string>
                    </property>
                   </widget>
                  </item>
@@ -961,6 +1009,19 @@ QMenuBar::item:selected {
         <widget class="QPushButton" name="buttonConsoleRun">
          <property name="text">
           <string>run</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonConsoleAddTest">
+         <property name="text">
+          <string>add as test</string>
+         </property>
+         <property name="toolTip">
+          <string>add the command in the line (or the last one run) to the environment tab's tests, at the current tick (Ctrl+T)</string>
+         </property>
+         <property name="shortcut">
+          <string>Ctrl+T</string>
          </property>
         </widget>
        </item>

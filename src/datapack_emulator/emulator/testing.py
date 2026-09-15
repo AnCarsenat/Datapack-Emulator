@@ -26,6 +26,7 @@ from typing import Any
 
 from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.commands.parser import Command
+from datapack_emulator.emulator.common import in_range
 from datapack_emulator.emulator.datapack import Datapack
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
@@ -49,6 +50,8 @@ class CommandTest:
     #: text the game output of the command must contain ("" = no check)
     expect: str = ""
     enabled: bool = True
+    #: range the command's result must be in, like a score check: 5, 1.., ..3, 1..4
+    expect_value: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,6 +63,7 @@ class CommandTest:
             at_tick=max(0, _as_int(data.get("at_tick"))),
             expect=str(data.get("expect", "")),
             enabled=bool(data.get("enabled", True)),
+            expect_value=str(data.get("expect_value", "")).strip(),
         )
 
 
@@ -182,9 +186,46 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
         return TestResult(test, False, visible[0].message, result.value, records)
     if not result.success:
         return TestResult(test, False, "the command did not succeed", result.value, records)
+    if test.expect_value:
+        if not _valid_range(test.expect_value):
+            return TestResult(
+                test, False, f"invalid expected value {test.expect_value!r}", result.value, records
+            )
+        if not in_range(result.value, test.expect_value):
+            return TestResult(
+                test,
+                False,
+                f"value {result.value} is not {describe_range(test.expect_value)}",
+                result.value,
+                records,
+            )
     if test.expect and test.expect not in game_text:
         return TestResult(
             test, False, f"expected output not found: {test.expect!r}", result.value, records
         )
     detail = f"passed (value {result.value})"
     return TestResult(test, True, detail, result.value, records)
+
+
+def _valid_range(expression: str) -> bool:
+    """``5``, ``1..``, ``..3`` or ``1..4``: numbers on at least one side."""
+    parts = expression.split("..") if ".." in expression else [expression]
+    if len(parts) > 2 or not any(parts):
+        return False
+    try:
+        for part in parts:
+            if part:
+                float(part)
+    except ValueError:
+        return False
+    return True
+
+
+def describe_range(expression: str) -> str:
+    """``1..5`` -> "between 1 and 5"."""
+    if ".." not in expression:
+        return f"exactly {expression}"
+    low, _, high = expression.partition("..")
+    if low and high:
+        return f"between {low} and {high}"
+    return f"{low} or more" if low else f"{high} or less"
