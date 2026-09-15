@@ -31,12 +31,14 @@ src/datapack_emulator/     the package (standard src layout)
     analysis/
       profiler.py          Profiler and its HTML report
       graph.py             CallGraph
+      explain.py           explain_line: what one command line does (analyze line)
     engine.py              TestEngine, VersionRun
     testing.py             CommandTest, TestSchedule, run_tests (the environment tab's tests)
     __main__.py            CLI: datapack-emulator-cli
   window/                  Qt only
     window.ui, engine.ui,  ALL layout
-    download.ui
+    download.ui, search.ui,
+    score_graph.ui
     main.py                MainWindow: loads window.ui, shared state, action wiring
     controllers/           one per concern of the main window
       projects.py          new / open / save project
@@ -46,10 +48,14 @@ src/datapack_emulator/     the package (standard src layout)
       environment.py       the environment tab's tests table
       world.py             world dock: scoreboard grid, entities, storage
       console.py           the logs dock's command line
+      notes.py             project and function notes
+      session.py           recent projects/datapacks, remembered window layout
       navigation.py        source view, external editor / file manager, right-click menus
       logs.py              logs dock: buffered model, filters, record menu
     engine_window.py       EngineWindow
     download_dialog.py     DownloadDialog + DownloadWorker (QThread)
+    search_dialog.py       SearchDialog: quick open and search in pack
+    score_graph.py         ScoreGraphDialog: a score over time
     panels/                models and widgets the controllers fill
       uiloader.py, explorer.py, inspector.py, logs.py, results.py, graph.py, highlight.py,
       world.py

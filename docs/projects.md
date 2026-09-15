@@ -33,9 +33,11 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
   "vanilla_jar": "",
   "speed": "fast",
   "tests": [
-    {"command": "execute as Player1 run trigger hat", "at_tick": 5, "expect": "", "enabled": true}
+    {"command": "scoreboard players get #global t", "at_tick": 5, "expect": "", "enabled": true, "expect_value": "1.."}
   ],
   "tests_during_runs": false,
+  "notes": "check the armor stand",
+  "function_notes": {"hat:tick": "swaps the hat"},
   "archive_format": 1
 }
 ```
@@ -47,7 +49,8 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 | `version` | the version selected in the environment tab |
 | `ticks`, `players`, `seed` | run settings |
 | `speed` | `fast` or `realtime` |
-| `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `enabled` — results are not saved |
+| `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `expect_value`, `enabled` — results are not saved |
+| `notes`, `function_notes` | your notes on the project, and per function id |
 | `tests_during_runs` | whether runs and steps also run the tests |
 | `engine_versions` | versions ticked in the engine window when the project was saved; ticked again when it is opened |
 | `vanilla_jar` | the client jar in use when the project was saved (picked by hand or found automatically); loaded again on open if the file still exists. Jars are never put in the archive |
@@ -85,8 +88,8 @@ beside it (`hat.json` → `hat.dpemu`) and leaves the `.json` alone.
 The shortcuts work while the main window has focus.
 
 The title bar shows the project name, `(unsaved)` until the first save, the
-file it lives in, and a `*` when settings, tests, the datapack or the client
-jar changed since the last save. Closing the window or opening another project with unsaved
+file it lives in, and a `*` when settings, tests, notes, the datapack or the
+client jar changed since the last save. Closing the window or opening another project with unsaved
 changes asks whether to save them first. A test cell still being typed in when
 you save is included.
 
