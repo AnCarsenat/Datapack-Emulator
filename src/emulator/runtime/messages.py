@@ -34,6 +34,7 @@ VANILLA: dict[str, str] = {
     "argument.entity.selector.unknown": "Unknown selector type '%s'",
     "argument.scoreHolder.empty": "No relevant score holders could be found",
     "arguments.objective.notFound": "Unknown scoreboard objective '%s'",
+    "arguments.operation.div0": "Cannot divide by zero",
     # registry ids (checked against the client jar, when one is loaded)
     "argument.id.unknown": "Unknown ID: %s",
     "argument.block.id.invalid": "Unknown block type '%s'",

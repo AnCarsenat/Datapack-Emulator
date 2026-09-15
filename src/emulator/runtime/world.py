@@ -13,7 +13,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from src.emulator.commands.parser import Selector
-from src.emulator.common import distance_squared, in_range, normalise_id, split_arguments
+from src.emulator.common import (
+    distance_squared,
+    in_range,
+    normalise_id,
+    parse_snbt,
+    split_arguments,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from src.emulator.runtime.context import ExecutionContext
@@ -68,7 +74,17 @@ class Scoreboard:
         return self.scores.get(holder, {}).get(objective)
 
     def set(self, holder: str, objective: str, value: int) -> None:
-        self.scores.setdefault(holder, {})[objective] = int(value)
+        # scores are Java ints: they wrap around at 32 bits
+        wrapped = (int(value) + 2**31) % 2**32 - 2**31
+        self.scores.setdefault(holder, {})[objective] = wrapped
+
+    def tracked(self, objective: str | None = None) -> list[str]:
+        """Every holder with a score (in ``objective``, if given) — what ``*`` means."""
+        return [
+            holder
+            for holder, values in self.scores.items()
+            if objective is None or objective in values
+        ]
 
     def add(self, holder: str, objective: str, delta: int) -> int:
         value = (self.get(holder, objective) or 0) + int(delta)
@@ -129,15 +145,16 @@ class World:
         pool = self.players if selector.is_player_only else list(self.entities)
         pool = [entity for entity in pool if self._matches(entity, selector, context)]
 
+        origin = _selector_origin(selector, context)
         sort = selector.first("sort") or {
             "@p": "nearest",
             "@n": "nearest",
             "@r": "random",
         }.get(selector.kind, "arbitrary")
         if sort == "nearest":
-            pool.sort(key=lambda entity: distance_squared(entity.position, context.position))
+            pool.sort(key=lambda entity: distance_squared(entity.position, origin))
         elif sort == "furthest":
-            pool.sort(key=lambda entity: -distance_squared(entity.position, context.position))
+            pool.sort(key=lambda entity: -distance_squared(entity.position, origin))
         elif sort == "random":
             self.random.shuffle(pool)
 
@@ -178,10 +195,24 @@ class World:
         for raw in arguments.get("scores", []):
             if not self._matches_scores(entity, raw):
                 return False
+        origin = _selector_origin(selector, context)
         for raw in arguments.get("distance", []):
-            distance = distance_squared(entity.position, context.position) ** 0.5
+            distance = distance_squared(entity.position, origin) ** 0.5
             if not in_range(distance, raw):
                 return False
+        if any(key in arguments for key in ("dx", "dy", "dz")) and not _inside_volume(
+            entity, selector, origin
+        ):
+            return False
+        for raw in arguments.get("nbt", []):
+            negated = raw.startswith("!")
+            if nbt_matches(entity.nbt, parse_snbt(raw.lstrip("!"))) == negated:
+                return False
+        for key in selector.arguments:
+            if key in UNMODELLED_SELECTOR_ARGUMENTS:
+                context.note_once(
+                    f"selector argument '{key}=' is not emulated and matches every entity"
+                )
         return True
 
     @staticmethod
@@ -198,3 +229,52 @@ class World:
             if value is None or not in_range(value, condition):
                 return False
         return True
+
+
+#: selector arguments the world model has nothing to check against
+UNMODELLED_SELECTOR_ARGUMENTS = frozenset(
+    {"team", "gamemode", "level", "advancements", "predicate", "x_rotation", "y_rotation"}
+)
+
+
+def _float_argument(selector: Selector, key: str) -> float | None:
+    raw = selector.first(key)
+    try:
+        return float(raw) if raw is not None else None
+    except ValueError:
+        return None
+
+
+def _selector_origin(selector: Selector, context: ExecutionContext) -> list[float]:
+    """``x=``/``y=``/``z=`` replace the matching coordinate of the command origin."""
+    origin = list(context.position)
+    for index, key in enumerate(("x", "y", "z")):
+        value = _float_argument(selector, key)
+        if value is not None:
+            origin[index] = value
+    return origin
+
+
+def _inside_volume(entity: Entity, selector: Selector, origin: list[float]) -> bool:
+    """``dx``/``dy``/``dz``: a box from the origin, one block larger than the deltas,
+    tested against the entity's position (bounding boxes are not modelled)."""
+    for index, key in enumerate(("dx", "dy", "dz")):
+        delta = _float_argument(selector, key) or 0.0
+        low, high = sorted((origin[index], origin[index] + delta))
+        if not low <= entity.position[index] < high + 1:
+            return False
+    return True
+
+
+def nbt_matches(actual: Any, pattern: Any) -> bool:
+    """Vanilla NBT matching: compounds match by subset, every pattern list
+    element must match some actual element, other tags must be equal."""
+    if isinstance(pattern, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and nbt_matches(actual[key], value) for key, value in pattern.items()
+        )
+    if isinstance(pattern, list):
+        return isinstance(actual, list) and all(
+            any(nbt_matches(item, wanted) for item in actual) for wanted in pattern
+        )
+    return actual == pattern

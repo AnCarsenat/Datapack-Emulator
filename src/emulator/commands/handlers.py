@@ -87,10 +87,13 @@ def _require_id(
     return False
 
 
-def _holders(context: ExecutionContext, token: str) -> list[str]:
-    """Score holders: entities from a selector, or a fake player name."""
+def _holders(context: ExecutionContext, token: str, objective: str | None = None) -> list[str]:
+    """Score holders: entities from a selector, ``*`` for every tracked holder,
+    or a fake player name."""
     if token.startswith("@"):
         return [entity.id for entity in _targets(context, token)]
+    if token == "*":
+        return context.world.scoreboard.tracked(objective)
     return [token]
 
 
@@ -175,12 +178,19 @@ def cmd_scoreboard(command: Command, context: ExecutionContext) -> CommandResult
 
     if arguments[0] == "players":
         action = arguments[1] if len(arguments) > 1 else ""
+        if action == "display":
+            # players display (name|numberformat) <targets> <objective> [...]
+            objective = arguments[4] if len(arguments) > 4 else ""
+            if objective not in board.objectives:
+                context.game_error("arguments.objective.notFound", objective)
+                return CommandResult.failure()
+            return CommandResult(success=True, value=1)  # display is not modelled
         target = arguments[2] if len(arguments) > 2 else "@s"
         objective = arguments[3] if len(arguments) > 3 else ""
         if objective and objective not in board.objectives and action != "reset":
             context.game_error("arguments.objective.notFound", objective)
             return CommandResult.failure()
-        holders = _holders(context, target)
+        holders = _holders(context, target, objective or None)
 
         if action == "set" and len(arguments) >= 5:
             value = int(arguments[4])
@@ -243,6 +253,9 @@ def cmd_scoreboard(command: Command, context: ExecutionContext) -> CommandResult
             for holder in holders:
                 left = board.get(holder, objective) or 0
                 right = (board.get(sources[0], source_objective) or 0) if sources else 0
+                if operator in ("/=", "%=") and right == 0:
+                    context.game_error("arguments.operation.div0")
+                    return CommandResult.failure()
                 if operator == "><" and sources:
                     board.set(sources[0], source_objective, left)  # swap both sides
                 last = _apply_operation(operator, left, right)

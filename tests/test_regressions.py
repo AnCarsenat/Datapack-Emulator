@@ -325,3 +325,66 @@ def test_each_version_reads_only_its_folder_spelling(make_pack):
     assert both.view_for(versions.parse("1.21.4")).function("test:tick").lines == [
         "say NEW singular"
     ]
+
+
+def test_selector_nbt_and_volume_arguments(make_pack):
+    emulator = run(
+        make_pack,
+        'summon minecraft:pig 0 0 0 {NoAI:1b,Tags:["calm"]}\n'
+        "summon minecraft:pig 20 0 0\n"
+        "execute if entity @e[type=minecraft:pig,nbt={NoAI:1b}] run say one calm pig\n"
+        'execute if entity @e[type=minecraft:pig,nbt={NoAI:1b,Tags:["calm"]},x=0,y=0,z=0,dx=2,dy=2,dz=2] run say in box\n'
+        "execute if entity @e[type=minecraft:pig,x=10,y=0,z=0,dx=2,dy=2,dz=2] run say wrongly in box\n"
+        "execute store result score #n o if entity @e[type=minecraft:pig,nbt={NoAI:1b}]\n",
+        extra={
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add o dummy\n",
+        },
+    )
+    messages = chat(emulator.output.records)
+    assert "[Server] one calm pig" in messages and "[Server] in box" in messages
+    assert "[Server] wrongly in box" not in messages
+    assert emulator.world.scoreboard.get("#n", "o") == 1
+
+
+def test_unmodelled_selector_arguments_are_reported_once(make_pack):
+    from src.emulator.runtime.output import LogSource
+
+    emulator = run(make_pack, "execute if entity @a[gamemode=creative] run say creative\n", ticks=3)
+    notes = [
+        r.message
+        for r in emulator.output.records
+        if r.source is LogSource.EMULATOR and "gamemode" in r.message
+    ]
+    assert len(notes) == 1
+
+
+def test_scoreboard_edge_cases(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "scoreboard players set #max o 2147483647\n"
+        "scoreboard players add #max o 1\n"
+        'scoreboard players display name #max o "Big"\n'
+        "scoreboard players set #zero o 0\n"
+        "scoreboard players set #a o 5\n"
+        "scoreboard players operation #a o /= #zero o\n"
+        "scoreboard players set #b o 1\n"
+        "scoreboard players set * o 9\n",
+    )
+    board = emulator.world.scoreboard
+    assert board.get("#max", "o") == 9  # wrapped to -2147483648 first, then `*` set it
+    assert game_errors(emulator.output.records) == ["Cannot divide by zero"]
+    assert board.get("#a", "o") == 9 and board.get("#b", "o") == 9
+    assert "*" not in board.scores
+
+
+def test_scores_wrap_at_32_bits(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "scoreboard players set #max o 2147483647\n"
+        "scoreboard players add #max o 1\n",
+    )
+    assert emulator.world.scoreboard.get("#max", "o") == -2147483648
