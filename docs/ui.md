@@ -24,7 +24,7 @@ layout changes are made in Qt Designer, never in code.
 
 | menu | entries |
 | --- | --- |
-| file | new / open / save / save as project ([projects](projects.md)) · recent projects · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
+| file | new / open / save / save as project ([projects](projects.md)) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · version engine… · export call graph (.dot) |
 | view | explorer · inspector · logs · world (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
@@ -211,6 +211,7 @@ file type or folders.
 | Ctrl+O | add datapack |
 | Ctrl+R | reload datapacks |
 | Ctrl+N / Ctrl+Shift+O | new / open project |
+| Ctrl+Alt+O | open last project |
 | Ctrl+S / Ctrl+Shift+S | save / save project as |
 | Ctrl+Return | open selection in external editor |
 | Ctrl+Shift+Return | open selection in external file manager |

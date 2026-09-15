@@ -102,25 +102,52 @@ class SessionController(Controller):
         self.recent_datapacks = self._push(self.recent_datapacks, path)
         self.save()
 
-    def _fill(self, menu: QMenu, entries: list[str], open_entry) -> None:
+    def _fill(self, menu: QMenu, entries: list[str], open_entry, clear=None) -> None:
         menu.clear()
         existing = [entry for entry in entries if Path(entry).exists()]
         if not existing:
             menu.addAction("nothing yet").setEnabled(False)
             return
-        for entry in existing:
+        for number, entry in enumerate(existing, start=1):
             path = Path(entry)
-            action = menu.addAction(f"{path.name}  —  {path.parent}", lambda p=path: open_entry(p))
+            action = menu.addAction(
+                f"&{number % 10}  {path.stem}  —  {path.parent}", lambda p=path: open_entry(p)
+            )
             action.setStatusTip(entry)
+        if clear is not None:
+            menu.addSeparator()
+            menu.addAction("clear the list", clear)
+
+    def open_project(self, path: Path) -> bool:
+        window = self.window
+        if not path.exists():
+            self.status(f"{path} no longer exists")
+            self.recent_projects = [entry for entry in self.recent_projects if Path(entry) != path]
+            self.save()
+            return False
+        return window.projects.confirm_close() and window.projects.open_path(path)
+
+    def open_last_project(self) -> bool:
+        """Ctrl+Alt+O: the most recent project that still exists."""
+        existing = [Path(entry) for entry in self.recent_projects if Path(entry).exists()]
+        if not existing:
+            self.status("no recent project yet: open or save one first")
+            return False
+        return self.open_project(existing[0])
+
+    def clear_recent_projects(self) -> None:
+        self.recent_projects = []
+        self.save()
+        self.status("recent projects cleared")
 
     def _fill_recent_projects(self) -> None:
         window = self.window
-
-        def open_project(path: Path) -> None:
-            if window.projects.confirm_close():
-                window.projects.open_path(path)
-
-        self._fill(window.recent_projects_menu, self.recent_projects, open_project)
+        self._fill(
+            window.recent_projects_menu,
+            self.recent_projects,
+            self.open_project,
+            clear=self.clear_recent_projects,
+        )
 
     def _fill_recent_datapacks(self) -> None:
         window = self.window

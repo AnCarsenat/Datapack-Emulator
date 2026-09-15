@@ -86,6 +86,8 @@ made before several datapacks were supported (`"archive_format": 1`, one
 | menu | does |
 | --- | --- |
 | file › new project (Ctrl+N) | asks for a name, saves the current state under it |
+| file › open recent project | the last ten projects opened or saved that still exist (*clear the list* empties it) |
+| file › open last project (Ctrl+Alt+O) | the most recent of them |
 | file › open project… (Ctrl+Shift+O) | restores settings, tests and notes, then opens the project's datapacks in place of the open ones |
 | file › add datapack… (Ctrl+O) | adds a pack to the ones analyzed; it loads after them |
 | file › remove datapack | removes one pack (also: right-click its root in the explorer); with no project open, removing the last one opens the default pack |
