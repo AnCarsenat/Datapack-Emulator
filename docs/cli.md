@@ -2,6 +2,7 @@
 
 ```sh
 datapack-emulator-cli [--quiet] {run,matrix,versions,vanilla} ...
+src/main.sh --cli    [--quiet] {run,matrix,versions,vanilla} ...   # from a checkout
 # same as: python -m datapack_emulator.emulator ...
 ```
 

@@ -21,11 +21,15 @@ python -m venv .venv
 .venv/bin/datapack-emulator          # the window; press F5
 ```
 
+Or, from a checkout, `src/main.sh` (uses `.venv/` or `src/.venv/` if present,
+no install needed beyond the requirements).
+
 The first pack in `samples/` opens on startup. Headless:
 
 ```sh
 .venv/bin/datapack-emulator-cli run    samples/hat_v2 --version 1.21.4 --vanilla
 .venv/bin/datapack-emulator-cli matrix samples/hat_v2 --declared --boundaries
+src/main.sh --cli run samples/hat_v2 --version 26.3      # same runner through the script
 ```
 
 ## Documentation
@@ -49,6 +53,7 @@ Timings are **estimates from a cost model**, not measurements — see
 src/datapack_emulator/emulator/   model, commands, runtime, analysis, version engine (no Qt)
 src/datapack_emulator/window/     window.ui, engine.ui, download.ui, and the code that wires them
 src/datapack_emulator/project.py  projects/ files
+src/main.sh     starts the window (or --cli) from a checkout
 tests/          pytest suite (no network, no Minecraft install needed)
 tools/          generate_version_data.py
 docs/           documentation

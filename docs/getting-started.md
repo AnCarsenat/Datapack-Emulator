@@ -24,11 +24,17 @@ Always from the project root:
 
 ```sh
 .venv/bin/datapack-emulator      # or: python -m datapack_emulator
+src/main.sh                      # same, without installing the package
 ```
 
+`src/main.sh` picks `.venv/` or `src/.venv/` when one exists (else `python3`)
+and puts `src/` on `PYTHONPATH`; `src/main.sh --cli …` runs the
+[command line](cli.md) instead.
+
 On a cold start the first datapack in `samples/` opens by itself, the version
-combo jumps to the release matching its `pack_format`, and a matching client
-jar is picked up if one is installed.
+combo jumps to the newest stable release the pack declares whose server reads
+its `pack.mcmeta` cleanly (hat_v2: 1.21.8), and a matching client jar is
+picked up if one is installed.
 
 ## First run
 

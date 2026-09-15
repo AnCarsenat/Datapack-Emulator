@@ -1,6 +1,7 @@
 # Architecture
 
 ```
+src/main.sh                starts the window (or --cli) without installing
 src/datapack_emulator/     the package (standard src layout)
   __main__.py, app.py      the window's entry point: datapack-emulator
   project.py               projects/ files
