@@ -37,7 +37,8 @@ class RunController(Controller):
         window.run_button.clicked.connect(self.run_emulator)
         window.run_all_button.clicked.connect(self.run_all)
         window.step_button.clicked.connect(self.step)
-        window.stop_button.clicked.connect(self.stop)
+        # clicked(bool) would pass checked=False as `refresh`
+        window.stop_button.clicked.connect(lambda: self.stop())
         window.engine_button.clicked.connect(self.open_engine)
         window.combo_speed.currentIndexChanged.connect(self.on_speed_changed)
 

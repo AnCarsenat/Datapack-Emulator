@@ -24,7 +24,7 @@ layout changes are made in Qt Designer, never in code.
 
 * **Environment**
   * *world*: the Minecraft version (on load, the newest stable release the
-    pack declares that does not mark it incompatible); players online, meaning fake players
+    pack declares whose server reads its `pack.mcmeta` cleanly); players online, meaning fake players
     `Player1…` present from the start (they are what `@a`, `@p` and `@r`
     select, what `execute as @a` runs as and who receives `tellraw`); and a
     random seed for `@r` and `sort=random`.

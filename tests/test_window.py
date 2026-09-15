@@ -116,9 +116,9 @@ def test_endless_run_stops_on_request_and_step_continues(window, make_pack):
         window.runs._on_timer()
     ticked = window.emulator.world.tick
     assert ticked > 3 and window.runs.running
-    window.runs.stop()
+    window.stop_button.click()
     assert not window.runs.running
-    assert window.statusBar().currentMessage().startswith("stopped")
+    assert window.statusBar().currentMessage().startswith(f"stopped on {window.version.id}:")
 
     window.runs.step()
     assert window.emulator.world.tick == ticked + 1
@@ -246,3 +246,12 @@ def test_all_tests_disabled_says_so(window, make_pack):
     window.environment.set_tests([CommandTest("say hi", enabled=False)])
     assert window.environment.run() == []
     assert window.statusBar().currentMessage().startswith("enable at least one test")
+
+
+def test_hat_v2_defaults_to_a_version_that_reads_its_metadata(window):
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat_v2")
+    assert window.version.stable
+    assert window.datapack.compatibility(window.version).status == "compatible"
+    assert "(" not in window.pack_label.text().split("emulating")[-1]

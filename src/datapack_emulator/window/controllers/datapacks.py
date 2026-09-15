@@ -23,8 +23,6 @@ from datapack_emulator.window.panels import (
     describe_resource,
 )
 
-#: statuses the server shows as "made for an older/newer version"
-INCOMPATIBLE_STATUSES = ("too_old", "too_new")
 #: what the pack label adds for each compatibility status
 COMPATIBILITY_NOTES = {
     "too_old": "  (pack is marked incompatible: made for an older version)",
@@ -98,22 +96,26 @@ class DatapackController(Controller):
         """Default the version combo to the newest release the pack declares.
 
         A multi-version pack's pack_format is often its oldest target (hat_v2:
-        5, but supported up to 121), so it is only the fallback. Pre-releases
-        and versions whose server would mark the pack incompatible are skipped.
+        5, but supported up to 121), so it is only the fallback. Releases whose
+        server reads the metadata cleanly come first, then those that cannot
+        read it, then any declared release; pre-releases only as a last resort.
         """
         declared = datapack.declared_versions()
-        usable = [
-            version
-            for version in declared
-            if version.stable
-            and datapack.compatibility(version).status not in INCOMPATIBLE_STATUSES
-        ]
-        if usable:
-            target = usable[-1]
-        elif declared:
-            target = declared[-1]
-        else:
-            target = versions.closest_to_pack_format(datapack.pack_format)
+        stable = [version for version in declared if version.stable]
+        statuses = {version: datapack.compatibility(version).status for version in stable}
+        target = next(
+            (
+                candidates[-1]
+                for candidates in (
+                    [version for version in stable if statuses[version] == "compatible"],
+                    [version for version in stable if statuses[version] == "unknown"],
+                    stable,
+                    declared,
+                )
+                if candidates
+            ),
+            None,
+        ) or versions.closest_to_pack_format(datapack.pack_format)
         index = self.window.combo_version.findData(target.id)
         if index >= 0:
             self.window.combo_version.setCurrentIndex(index)

@@ -189,7 +189,7 @@ class MainWindow(QMainWindow):
             "actionrun_all": self.runs.run_all,
             "actionrun_emulator": self.runs.run_emulator,
             "actionstep_tick": self.runs.step,
-            "actionstop": self.runs.stop,
+            "actionstop": lambda: self.runs.stop(),
             "actionrun_tests": self.environment.run,
             "actionenvironment": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_ENVIRONMENT)),
             "actionrun_profiler": self.runs.run_profiler,

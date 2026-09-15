@@ -10,10 +10,10 @@ from datapack_emulator.emulator import costs
 
 
 class Profiler:
+    """Per-function accumulated estimated time and call counts."""
+
     #: recent tick durations kept for display
     TICK_HISTORY = 10_000
-
-    """Per-function accumulated estimated time and call counts."""
 
     def __init__(self) -> None:
         #: function id -> {"calls", "commands", "self_us", "total_us"}
