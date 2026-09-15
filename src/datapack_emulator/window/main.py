@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
@@ -46,8 +47,10 @@ from datapack_emulator.window.controllers import (
     JarController,
     LogController,
     NavigationController,
+    NotesController,
     ProjectController,
     RunController,
+    SessionController,
     WorldController,
 )
 from datapack_emulator.window.controllers.base import (
@@ -90,6 +93,8 @@ class MainWindow(QMainWindow):
         self.environment = EnvironmentController(self)
         self.world_view = WorldController(self)
         self.console = ConsoleController(self)
+        self.notes = NotesController(self)
+        self.session = SessionController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -99,6 +104,8 @@ class MainWindow(QMainWindow):
             self.environment,
             self.world_view,
             self.console,
+            self.notes,
+            self.session,
         ):
             controller.connect()
         self._wire_actions()
@@ -107,12 +114,14 @@ class MainWindow(QMainWindow):
         self.runs._set_running(False)
         self.show_all_docks()
         self.datapacks.show(None)
+        self.session.restore()
         self.datapacks.open_default()
         self.projects.mark_saved()  # the default pack is not a change to save
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
         if self.projects.confirm_close():
             self.runs.stop(refresh=False)
+            self.session.save()
             event.accept()
         else:
             event.ignore()
@@ -133,6 +142,7 @@ class MainWindow(QMainWindow):
         self.source_label: QLabel = find(QLabel, "labelSource")
         self.log_counts: QLabel = find(QLabel, "labelLogCounts")
         self.combo_version: QComboBox = find(QComboBox, "comboVersion")
+        self.version_note: QLabel = find(QLabel, "labelVersionNote")
         self.combo_level: QComboBox = find(QComboBox, "comboLevel")
         self.edit_filter: QLineEdit = find(QLineEdit, "editLogFilter")
         self.spin_ticks: QSpinBox = find(QSpinBox, "spinTicks")
@@ -141,9 +151,15 @@ class MainWindow(QMainWindow):
         self.combo_speed: QComboBox = find(QComboBox, "comboSpeed")
         self.check_tests_during_runs: QCheckBox = find(QCheckBox, "checkTestsDuringRuns")
         self.tick_label: QLabel = find(QLabel, "labelTickStatus")
+        self.edit_project_notes: QPlainTextEdit = find(QPlainTextEdit, "editProjectNotes")
         self.table_tests: QTableWidget = find(QTableWidget, "tableTests")
         self.add_test_button: QPushButton = find(QPushButton, "buttonAddTest")
         self.remove_test_button: QPushButton = find(QPushButton, "buttonRemoveTest")
+        self.duplicate_test_button: QPushButton = find(QPushButton, "buttonDuplicateTest")
+        self.move_test_up_button: QPushButton = find(QPushButton, "buttonMoveTestUp")
+        self.move_test_down_button: QPushButton = find(QPushButton, "buttonMoveTestDown")
+        self.run_selected_test_button: QPushButton = find(QPushButton, "buttonRunSelectedTest")
+        self.console_add_test_button: QPushButton = find(QPushButton, "buttonConsoleAddTest")
         self.run_tests_button: QPushButton = find(QPushButton, "buttonRunTests")
         self.test_summary: QLabel = find(QLabel, "labelTestSummary")
         self.step_button: QPushButton = find(QPushButton, "buttonStep")
@@ -159,8 +175,16 @@ class MainWindow(QMainWindow):
         self.dock_inspector: QDockWidget = find(QDockWidget, "dockWidgetInspector")
         self.dock_logs: QDockWidget = find(QDockWidget, "dockWidgetLogs")
         self.dock_world: QDockWidget = find(QDockWidget, "dockWidgetWorld")
+        self.recent_projects_menu: QMenu = find(QMenu, "menurecent_projects")
+        self.recent_datapacks_menu: QMenu = find(QMenu, "menurecent_datapacks")
         self.world_label: QLabel = find(QLabel, "labelWorld")
         self.edit_world_filter: QLineEdit = find(QLineEdit, "editWorldFilter")
+        self.edit_objective_filter: QLineEdit = find(QLineEdit, "editObjectiveFilter")
+        self.world_summon_button: QPushButton = find(QPushButton, "buttonWorldSummon")
+        self.world_objective_button: QPushButton = find(QPushButton, "buttonWorldObjective")
+        self.env_summon_button: QPushButton = find(QPushButton, "buttonEnvSummon")
+        self.env_score_button: QPushButton = find(QPushButton, "buttonEnvScore")
+        self.env_world_button: QPushButton = find(QPushButton, "buttonEnvWorld")
         self.tabs_world: QTabWidget = find(QTabWidget, "tabsWorld")
         self.table_scores: QTableWidget = find(QTableWidget, "tableScores")
         self.tree_entities: QTreeWidget = find(QTreeWidget, "treeEntities")
@@ -232,6 +256,12 @@ class MainWindow(QMainWindow):
             ),
             "actionopen_in_source": lambda: navigation.open_in_source(navigation.selected_path()),
             "actioncopy_path": lambda: navigation.copy_path(navigation.selected_path()),
+            "actionanalyze_line": navigation.analyze_cursor_line,
+            "actionquick_open": lambda: navigation.search(0),
+            "actionreset_layout": lambda: self.session.reset_layout(),
+            "actionfocus_console": lambda: self.session.focus_console(),
+            "actionadd_console_test": lambda: self.console.add_as_test(),
+            "actionsearch_pack": lambda: navigation.search(1),
         }
         for name, slot in connections.items():
             action = self._action(name)

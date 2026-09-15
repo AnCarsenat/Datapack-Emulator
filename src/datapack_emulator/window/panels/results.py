@@ -21,6 +21,21 @@ COLUMNS = (
     "overlays",
 )
 
+COLUMN_HELP = {
+    "version": "the Minecraft version this row ran",
+    "format": "its pack format",
+    "status": "errors › tests failed › warnings › unsupported (the metadata does not claim this "
+    "version; it still loads) › ok",
+    "commands": "commands run in all ticks",
+    "total ms": "estimated time of every tick together (a cost model, not a measurement)",
+    "worst ms": "estimated time of the slowest tick; 50 ms is a whole tick",
+    "warnings": "warning records: functions or tags that failed to load, metadata problems, …",
+    "errors": "error records: typed or test commands that failed, emulator crashes",
+    "tests": "command tests passed, when run tests is ticked",
+    "unknown commands": "commands the version does not have, used by functions that failed to load",
+    "overlays": "overlay folders active in this version",
+}
+
 STATUS_COLOURS = {
     "ok": QColor("#1e6f3d"),
     "warnings": QColor("#b9770e"),
@@ -42,9 +57,11 @@ class ResultsTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(COLUMNS)
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):  # noqa: N802
-        if role != Qt.DisplayRole or orientation != Qt.Horizontal:
+        if orientation != Qt.Horizontal:
             return None
-        return COLUMNS[section]
+        if role == Qt.ToolTipRole:
+            return COLUMN_HELP.get(COLUMNS[section])
+        return COLUMNS[section] if role == Qt.DisplayRole else None
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if not index.isValid():

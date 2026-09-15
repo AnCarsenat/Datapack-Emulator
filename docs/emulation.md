@@ -109,6 +109,11 @@ command line, or run by a test — produce
 Limitations of the emulator itself (a condition or `data … block` it cannot
 evaluate, `execute on`, selector arguments it cannot check) are noted once per
 run at `info` level, so they do not mark a working pack as having warnings.
+So is every command that runs without changing the emulated world, with the
+reason (`'fill' runs, but blocks are not modelled`, `'give' runs, but
+inventories are not modelled (the item id is still checked)`, …); purely
+cosmetic ones (`particle`, `playsound`, `stopsound`) are not noted. The
+*analyze this line* action shows the same information for any line.
 
 Identical messages are capped at five per tick; the sixth says further copies
 were suppressed.

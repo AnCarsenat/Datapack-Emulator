@@ -13,6 +13,8 @@ checked against the real base game read out of a `client.jar`.
   entities with their full NBT, command storage — and runs commands typed
   into it
 * command tests at any tick, in the window, during runs and across versions
+* explains any command line: execute steps, selectors, references, version
+  support and cost; your own notes on the project and its functions
 * profiler with per-function estimated cost, call-graph DAG, version matrix
 * reads registries, tags and message strings straight from a `client.jar`
 

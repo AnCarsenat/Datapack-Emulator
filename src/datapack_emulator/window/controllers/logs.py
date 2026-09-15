@@ -95,6 +95,49 @@ class LogController(Controller):
             lines.append(f"version: {record.version}")
         self.window.navigation.copy_text("\n".join(lines), what="the record")
 
+    def command_of(self, record: LogRecord) -> str | None:
+        """The command a record is about: typed on the command line, or the
+        line of the function it came from."""
+        if record.source is LogSource.APP and record.message.startswith("> "):
+            return record.message[2:]
+        if record.command:
+            return record.command
+        source = self.source_of(record)
+        if source is not None and source[1]:
+            return self.window.navigation.line_text(*source)
+        return None
+
+    def analyze(self, record: LogRecord) -> None:
+        command = self.command_of(record)
+        if command is None:
+            self.status("this record is not about a command")
+            return
+        source = self.source_of(record)
+        where = f"{source[0]}:{source[1]}" if source else "the log"
+        self.window.navigation.analyze(command, where)
+
+    def reveal(self, record: LogRecord) -> None:
+        """Show, select and scroll to a record, loosening the filters if needed."""
+        window = self.window
+        self.flush()
+        boxes = {
+            LogSource.APP: window.check_app,
+            LogSource.EMULATOR: window.check_emulator,
+            LogSource.GAME: window.check_game,
+        }
+        boxes[record.source].setChecked(True)
+        if LEVELS.get(window.combo_level.currentText(), LogLevel.INFO) > record.level:
+            window.combo_level.setCurrentText("debug")
+        window.edit_filter.clear()
+        for row in range(self.model.rowCount()):
+            if self.model.record_at(row) is record:
+                window.log_table.selectRow(row)
+                window.log_table.scrollTo(self.model.index(row, 0))
+                window.dock_logs.show()
+                window.dock_logs.raise_()
+                return
+        self.status("that record is no longer in the log")
+
     def open_source(self, record: LogRecord) -> None:
         source = self.source_of(record)
         if source is None:
@@ -132,6 +175,14 @@ class LogController(Controller):
             label += f" ({function_id}:{line})" if line else f" ({function_id})"
         open_action = menu.addAction(label, lambda: self.open_source(record))
         open_action.setEnabled(source is not None)
+        command = self.command_of(record)
+        analyze = menu.addAction("analyze the command", lambda: self.analyze(record))
+        analyze.setEnabled(command is not None)
+        add = menu.addAction(
+            "add the command as a test",
+            lambda: self.window.environment.add_from_command(command or "", record.tick),
+        )
+        add.setEnabled(command is not None and not command.lstrip().startswith("$"))
         return menu
 
     def clear(self) -> None:

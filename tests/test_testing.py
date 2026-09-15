@@ -112,3 +112,22 @@ def test_engine_runs_tests_in_every_version_and_reports_them(make_pack):
     assert run.tests[1].reason == "not reached: the run ended before tick 10"
     assert run.tests_summary == "1/2" and run.status == "tests failed"
     assert "<td>1/2</td>" in TestEngine.to_html([run])
+
+
+def test_expected_values_are_ranges(make_pack):
+    results = run_tests(
+        _pack(make_pack),
+        [
+            CommandTest("scoreboard players get #ticks t", at_tick=2, expect_value="3"),
+            CommandTest("scoreboard players get #ticks t", at_tick=2, expect_value="4.."),
+            CommandTest("scoreboard players get #ticks t", at_tick=2, expect_value="1..3"),
+            CommandTest("scoreboard players get #ticks t", at_tick=2, expect_value="x"),
+        ],
+        version="1.21.4",
+    )
+    assert [r.passed for r in results] == [True, False, True, False]
+    assert results[1].reason == "value 3 is not 4 or more"
+    assert results[3].reason == "invalid expected value 'x'"
+    assert (
+        CommandTest.from_dict(CommandTest("a", expect_value="1..").to_dict()).expect_value == "1.."
+    )

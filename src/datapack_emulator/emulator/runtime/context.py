@@ -89,22 +89,24 @@ class ExecutionContext:
             **self._fields(key=key, failure=True),
         )
 
-    def note_once(self, text: str, level: LogLevel = LogLevel.INFO) -> LogRecord | None:
+    def note_once(
+        self, text: str, level: LogLevel = LogLevel.INFO, key: str = ""
+    ) -> LogRecord | None:
         """A diagnostic reported once per run, however often the line executes."""
         if text in self.emulator.noted:
             return None
         self.emulator.noted.add(text)
-        return self.note(text, level=level)
+        return self.note(text, level=level, key=key)
 
-    def note(self, text: str, level: LogLevel = LogLevel.WARNING) -> LogRecord:
+    def note(self, text: str, level: LogLevel = LogLevel.WARNING, key: str = "") -> LogRecord:
         """A diagnostic from the emulator itself, not from the game."""
-        return self.emulator.output.emulator(text, level=level, **self._fields())
+        return self.emulator.output.emulator(text, level=level, **self._fields(key=key))
 
     def note_key_once(
         self, key: str, *arguments: Any, level: LogLevel = LogLevel.INFO
     ) -> LogRecord | None:
         """A catalogue note reported once per run — for emulator limitations."""
-        return self.note_once(self.render(key, *arguments), level=level)
+        return self.note_once(self.render(key, *arguments), level=level, key=key)
 
     def note_key(self, key: str, *arguments: Any, level: LogLevel = LogLevel.WARNING) -> LogRecord:
         """Same, but rendered from the message catalogue."""

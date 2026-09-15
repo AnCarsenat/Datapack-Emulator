@@ -35,6 +35,19 @@ selection-background-color: rgb(228, 251, 255);</string>
       </property>
       <layout class="QVBoxLayout" name="selectionLayout">
        <item>
+        <widget class="QLabel" name="labelEngineHelp">
+         <property name="text">
+          <string>Tick the versions to test. Each one gets a fresh world with its own commands, folder names and overlays; the table on the right compares them. Select a row to see its records.</string>
+         </property>
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #666;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <layout class="QHBoxLayout" name="rangeLayout">
          <item>
           <widget class="QLabel" name="labelFrom">
@@ -44,7 +57,11 @@ selection-background-color: rgb(228, 251, 255);</string>
           </widget>
          </item>
          <item>
-          <widget class="QComboBox" name="comboFrom"/>
+          <widget class="QComboBox" name="comboFrom">
+           <property name="toolTip">
+            <string>first version of the range</string>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QLabel" name="labelTo">
@@ -54,7 +71,11 @@ selection-background-color: rgb(228, 251, 255);</string>
           </widget>
          </item>
          <item>
-          <widget class="QComboBox" name="comboTo"/>
+          <widget class="QComboBox" name="comboTo">
+           <property name="toolTip">
+            <string>last version of the range</string>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -62,6 +83,9 @@ selection-background-color: rgb(228, 251, 255);</string>
         <layout class="QHBoxLayout" name="rangeButtonsLayout">
          <item>
           <widget class="QPushButton" name="buttonSelectRange">
+           <property name="toolTip">
+            <string>tick every version from the first to the last</string>
+           </property>
            <property name="text">
             <string>select range</string>
            </property>
@@ -93,6 +117,9 @@ selection-background-color: rgb(228, 251, 255);</string>
          </item>
          <item>
           <widget class="QPushButton" name="buttonSelectAll">
+           <property name="toolTip">
+            <string>tick every version</string>
+           </property>
            <property name="text">
             <string>all</string>
            </property>
@@ -100,6 +127,9 @@ selection-background-color: rgb(228, 251, 255);</string>
          </item>
          <item>
           <widget class="QPushButton" name="buttonSelectNone">
+           <property name="toolTip">
+            <string>untick every version</string>
+           </property>
            <property name="text">
             <string>none</string>
            </property>
@@ -128,6 +158,9 @@ selection-background-color: rgb(228, 251, 255);</string>
          </item>
          <item row="0" column="1">
           <widget class="QSpinBox" name="spinTicks">
+           <property name="toolTip">
+            <string>ticks run in each version's fresh world</string>
+           </property>
            <property name="minimum">
             <number>1</number>
            </property>
@@ -148,6 +181,9 @@ selection-background-color: rgb(228, 251, 255);</string>
          </item>
          <item row="1" column="1">
           <widget class="QSpinBox" name="spinPlayers">
+           <property name="toolTip">
+            <string>fake players (Player1, …) online in each world</string>
+           </property>
            <property name="maximum">
             <number>200</number>
            </property>
@@ -165,6 +201,9 @@ selection-background-color: rgb(228, 251, 255);</string>
          </item>
          <item row="2" column="1">
           <widget class="QSpinBox" name="spinSeed">
+           <property name="toolTip">
+            <string>seeds @r and sort=random, so every version sees the same draws</string>
+           </property>
            <property name="maximum">
             <number>1000000</number>
            </property>
@@ -186,6 +225,9 @@ selection-background-color: rgb(228, 251, 255);</string>
         <layout class="QHBoxLayout" name="runLayout">
          <item>
           <widget class="QPushButton" name="buttonRun">
+           <property name="toolTip">
+            <string>run the pack in each ticked version, one after the other</string>
+           </property>
            <property name="text">
             <string>run matrix</string>
            </property>
@@ -193,6 +235,9 @@ selection-background-color: rgb(228, 251, 255);</string>
          </item>
          <item>
           <widget class="QPushButton" name="buttonExport">
+           <property name="toolTip">
+            <string>write the results table as generated/&lt;pack&gt;-matrix.html</string>
+           </property>
            <property name="text">
             <string>export html</string>
            </property>
@@ -298,6 +343,9 @@ selection-background-color: rgb(228, 251, 255);</string>
           </item>
           <item>
            <widget class="QCheckBox" name="checkApp">
+            <property name="toolTip">
+             <string>show what this program does</string>
+            </property>
             <property name="text">
              <string>app</string>
             </property>
@@ -308,6 +356,9 @@ selection-background-color: rgb(228, 251, 255);</string>
           </item>
           <item>
            <widget class="QCheckBox" name="checkEmulator">
+            <property name="toolTip">
+             <string>show what the emulation engine notices (limits, unsupported features)</string>
+            </property>
             <property name="text">
              <string>emulator</string>
             </property>
@@ -318,6 +369,9 @@ selection-background-color: rgb(228, 251, 255);</string>
           </item>
           <item>
            <widget class="QCheckBox" name="checkGame">
+            <property name="toolTip">
+             <string>show what Minecraft itself would print</string>
+            </property>
             <property name="text">
              <string>game</string>
             </property>
@@ -328,6 +382,9 @@ selection-background-color: rgb(228, 251, 255);</string>
           </item>
           <item>
            <widget class="QComboBox" name="comboLevel">
+            <property name="toolTip">
+             <string>the lowest level shown</string>
+            </property>
             <property name="currentIndex">
              <number>1</number>
             </property>
@@ -355,6 +412,9 @@ selection-background-color: rgb(228, 251, 255);</string>
           </item>
           <item>
            <widget class="QLineEdit" name="editFilter">
+            <property name="toolTip">
+             <string>show only records whose message contains this text</string>
+            </property>
             <property name="placeholderText">
              <string>filter text…</string>
             </property>

@@ -21,6 +21,7 @@ from datapack_emulator.window.panels.inspector import (
     describe_resource,
     describe_run,
     describe_version,
+    row_help,
 )
 from datapack_emulator.window.panels.logs import LEVELS, LogTableModel
 from datapack_emulator.window.panels.results import ResultsTableModel
@@ -42,5 +43,6 @@ __all__ = [
     "describe_run",
     "describe_version",
     "highlighter_for",
+    "row_help",
     "load_ui_into",
 ]

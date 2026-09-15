@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QEvent, QModelIndex, QObject
 from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem
 
 from datapack_emulator.emulator import versions
@@ -21,6 +22,7 @@ from datapack_emulator.window.panels import (
     build_explorer_model,
     describe_datapack,
     describe_resource,
+    row_help,
 )
 
 #: what the pack label adds for each compatibility status
@@ -31,11 +33,38 @@ COMPATIBILITY_NOTES = {
 }
 
 
+def version_note(datapack: Datapack, version: versions.Version) -> str:
+    """What the selected version makes of the pack, in a sentence or two."""
+    compatibility = datapack.compatibility(version)
+    notes = []
+    if not version.stable:
+        notes.append("pre-release")
+    if compatibility.status == "compatible":
+        notes.append("lists the pack as compatible")
+    elif compatibility.status in ("too_old", "too_new"):
+        age = "an older" if compatibility.status == "too_old" else "a newer"
+        notes.append(f"lists the pack as made for {age} version (it still loads)")
+    else:
+        detail = compatibility.server_log[0] if compatibility.server_log else compatibility.reason
+        notes.append(f"cannot read pack.mcmeta: {detail} (the pack still loads)")
+    notes.append(
+        "reads function/ folders"
+        if versions.uses_singular_registries(version)
+        else "reads functions/ folders"
+    )
+    overlays = datapack.view_for(version).active_overlays
+    if overlays:
+        notes.append("overlays " + ", ".join(overlays))
+    return f"{version.id}: " + " · ".join(notes)
+
+
 class DatapackController(Controller):
     def connect(self) -> None:
         window = self.window
         window.tree.clicked.connect(self.on_tree_clicked)
         window.combo_version.currentTextChanged.connect(self.on_version_changed)
+        self._inspector_rows: list[tuple[str, str]] = []
+        self._resize_watch = _OnResize(window.inspector.viewport(), self._wrap_inspector)
 
     # -- loading ----------------------------------------------------------
 
@@ -64,6 +93,7 @@ class DatapackController(Controller):
         datapack = Datapack.load(path)
         window.datapack = datapack
         window.output.app(f"loaded {datapack.path}")
+        window.session.remember_datapack(datapack.path)
         for error in datapack.errors:
             window.output.app(error, level=LogLevel.ERROR)
 
@@ -155,13 +185,16 @@ class DatapackController(Controller):
         window.tree.setModel(build_explorer_model(datapack))
         window.tree.expandToDepth(2)
         if datapack is None:
+            window.version_note.setText("")
             window.pack_label.setText("no datapack loaded")
             self.fill_inspector([])
             return
-        status = datapack.compatibility(window.version).status
+        compatibility = datapack.compatibility(window.version)
         window.pack_label.setText(
-            f"{datapack.name} — emulating {window.version.id}" + COMPATIBILITY_NOTES.get(status, "")
+            f"{datapack.name} — emulating {window.version.id}"
+            + COMPATIBILITY_NOTES.get(compatibility.status, "")
         )
+        window.version_note.setText(version_note(datapack, window.version))
         self.fill_inspector(describe_datapack(datapack, window.version))
 
     def on_tree_clicked(self, index: QModelIndex) -> None:
@@ -171,7 +204,8 @@ class DatapackController(Controller):
         resource = self.find_resource(resource_id) if resource_id else None
 
         if resource is not None:
-            self.fill_inspector(describe_resource(resource, window.version))
+            rows = describe_resource(resource, window.version)
+            self.fill_inspector(rows + window.notes.rows_for(resource.id))
         elif window.datapack is not None:
             self.fill_inspector(describe_datapack(window.datapack, window.version))
 
@@ -193,8 +227,54 @@ class DatapackController(Controller):
         return None
 
     def fill_inspector(self, rows: list[tuple[str, str]]) -> None:
+        """Rows of the inspector: long labels and values wrap to the dock's
+        width (again when it is resized); tooltips hold the full value and
+        what the property means."""
+        self._inspector_rows = [(str(key), str(value)) for key, value in rows]
         inspector = self.window.inspector
         inspector.clear()
-        for key, value in rows:
-            inspector.addTopLevelItem(QTreeWidgetItem([key, str(value)]))
-        inspector.resizeColumnToContents(0)
+        for key, value in self._inspector_rows:
+            item = QTreeWidgetItem([key, value])
+            help_text = row_help(key)
+            if help_text:
+                item.setToolTip(0, f"{key}\n{help_text}")
+            item.setToolTip(1, value)
+            inspector.addTopLevelItem(item)
+        self._wrap_inspector()
+
+    #: the property column takes at most this share of the inspector's width
+    LABEL_SHARE = 0.4
+
+    def _wrap_inspector(self) -> None:
+        inspector = self.window.inspector
+        if inspector.topLevelItemCount() != len(self._inspector_rows):
+            return
+        width = max(120, inspector.viewport().width())
+        character = max(1, inspector.fontMetrics().averageCharWidth())
+        metrics = inspector.fontMetrics()
+        # measured on the unwrapped labels: the items may hold wrapped ones
+        natural = max(
+            (metrics.horizontalAdvance(key) for key, _ in self._inspector_rows), default=0
+        )
+        label_width = min(natural + 24, int(width * self.LABEL_SHARE))
+        inspector.setColumnWidth(0, label_width)
+        label_chars = max(12, (label_width - 12) // character)
+        value_chars = max(16, (width - label_width - 16) // character)
+        for index, (key, value) in enumerate(self._inspector_rows):
+            item = inspector.topLevelItem(index)
+            item.setText(0, textwrap.fill(key, label_chars, break_long_words=True))
+            item.setText(1, textwrap.fill(value, value_chars, break_long_words=True) or value)
+
+
+class _OnResize(QObject):
+    """Calls back when a widget is resized (the inspector re-wraps its text)."""
+
+    def __init__(self, widget, callback):
+        super().__init__(widget)
+        self._callback = callback
+        widget.installEventFilter(self)
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 (Qt API)
+        if event.type() == QEvent.Resize:
+            self._callback()
+        return False

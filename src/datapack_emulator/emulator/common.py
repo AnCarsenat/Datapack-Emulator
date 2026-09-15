@@ -287,12 +287,47 @@ def snbt_to_json(text: str) -> str:
 
 
 def split_path(path: str) -> list[str]:
-    return [part for part in re.split(r"[.\[\]]", path.strip()) if part]
+    """``a.b[0]."minecraft:x"`` -> ``["a", "b", "0", "minecraft:x"]``.
+
+    Keys may be quoted (with ``"`` or ``'``) to hold dots, colons or spaces;
+    list indexes are the numbers in brackets.
+    """
+    parts: list[str] = []
+    text = path.strip()
+    index = 0
+    current = ""
+    while index < len(text):
+        char = text[index]
+        if char in "\"'":
+            end = index + 1
+            quoted = []
+            while end < len(text) and text[end] != char:
+                if text[end] == "\\" and end + 1 < len(text):
+                    end += 1
+                quoted.append(text[end])
+                end += 1
+            current += "".join(quoted)
+            index = end + 1
+            continue
+        if char in ".[]":
+            if current:
+                parts.append(current)
+            current = ""
+        else:
+            current += char
+        index += 1
+    if current:
+        parts.append(current)
+    return parts
 
 
 def nbt_get(store: dict[str, Any], path: str) -> Any:
+    return _get_parts(store, split_path(path))
+
+
+def _get_parts(store: Any, parts: list[str]) -> Any:
     node: Any = store
-    for part in split_path(path):
+    for part in parts:
         if isinstance(node, dict):
             if part not in node:
                 return None
@@ -359,7 +394,7 @@ def nbt_remove(store: dict[str, Any], path: str) -> bool:
     parts = split_path(path)
     if not parts:
         return False
-    parent = nbt_get(store, ".".join(parts[:-1])) if len(parts) > 1 else store
+    parent = _get_parts(store, parts[:-1])
     last = parts[-1]
     if isinstance(parent, dict) and last in parent:
         del parent[last]

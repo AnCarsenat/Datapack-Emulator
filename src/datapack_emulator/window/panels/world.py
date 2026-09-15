@@ -23,6 +23,11 @@ TRIGGER_COLOUR = QColor("#d6e9ff")
 KEY_ROLE = Qt.UserRole
 #: the UUID of an entity's top-level item
 UUID_ROLE = Qt.UserRole + 1
+#: an NBT item's value and path inside its entity or storage
+VALUE_ROLE = Qt.UserRole + 2
+PATH_ROLE = Qt.UserRole + 3
+#: the storage id of a storage tree's top-level item
+STORAGE_ROLE = Qt.UserRole + 4
 #: changes listed in a score's tooltip
 HISTORY_SHOWN = 20
 #: entities listed at most; the filter narrows a bigger world down
@@ -60,26 +65,25 @@ def history_text(board: Scoreboard, holder: str, objective: str) -> str:
 
 
 def fill_scoreboard(
-    table: QTableWidget, world: World, previous: Snapshot, text_filter: str = ""
-) -> Snapshot:
-    """Rows are holders, columns objectives. Returns the values shown, to pass
-    back as ``previous`` next time so changed cells can be highlighted."""
+    table: QTableWidget,
+    world: World,
+    previous: Snapshot,
+    holder_filter: str = "",
+    objective_filter: str = "",
+) -> tuple[Snapshot, list[str], list[str]]:
+    """Rows are holders, columns objectives. Returns the values shown (pass them
+    back as ``previous`` so changed cells are highlighted), and the holders and
+    objectives of the rows and columns."""
     board = world.scoreboard
-    wanted = text_filter.strip().lower()
-    objectives = [
-        name for name in board.objectives if not wanted or wanted in name.lower()
-    ] or list(board.objectives)
+    wanted_objective = objective_filter.strip().lower()
+    objectives = [name for name in board.objectives if wanted_objective in name.lower()]
     by_id = {entity.id: entity for entity in world.entities}
     players = {entity.id for entity in world.players}
     holders = sorted(board.tracked(), key=lambda holder: (holder not in players, holder.lower()))
     labels = {holder: holder_label(by_id, holder) for holder in holders}
+    wanted = holder_filter.strip().lower()
     if wanted:
-        objective_hit = any(wanted in name.lower() for name in objectives)
-        holders = [
-            holder
-            for holder in holders
-            if objective_hit or wanted in holder.lower() or wanted in labels[holder].lower()
-        ]
+        holders = [h for h in holders if wanted in h.lower() or wanted in labels[h].lower()]
     slots = {objective: slot for slot, objective in board.display_slots.items()}
 
     table.setUpdatesEnabled(False)
@@ -119,26 +123,37 @@ def fill_scoreboard(
             table.setItem(row, column, item)
     table.resizeColumnsToContents()
     table.setUpdatesEnabled(True)
-    return snapshot
+    return snapshot, holders, objectives
 
 
 def _scalar(value: Any) -> str:
     return to_snbt(value)
 
 
-def _add_nbt(parent: QTreeWidgetItem, key: str, value: Any, path: str) -> None:
+def _add_nbt(parent: QTreeWidgetItem, key: str, value: Any, owner: str, nbt_path: str) -> None:
+    """One NBT entry; ``owner`` (UUID or storage id) and ``nbt_path`` make its key."""
     item = QTreeWidgetItem(parent, [key, ""])
-    item.setData(0, KEY_ROLE, path)
+    item.setData(0, KEY_ROLE, f"{owner}/{nbt_path}")
+    item.setData(0, PATH_ROLE, nbt_path)
+    item.setData(0, VALUE_ROLE, value)
     if isinstance(value, dict):
         item.setText(1, f"{{{len(value)} entries}}")
         for child_key, child in value.items():
-            _add_nbt(item, child_key, child, f"{path}.{child_key}")
+            _add_nbt(item, child_key, child, owner, _join(nbt_path, child_key))
     elif isinstance(value, list) and any(isinstance(entry, (dict, list)) for entry in value):
         item.setText(1, f"[{len(value)} entries]")
         for index, child in enumerate(value):
-            _add_nbt(item, f"[{index}]", child, f"{path}[{index}]")
+            _add_nbt(item, f"[{index}]", child, owner, f"{nbt_path}[{index}]")
     else:
         item.setText(1, _scalar(value))
+        item.setToolTip(1, "double-click to change this value")
+
+
+def _join(path: str, key: str) -> str:
+    """An NBT path segment; keys with unusual characters are quoted."""
+    bare = key.replace("_", "").replace("-", "").isalnum()
+    segment = key if bare else '"' + key.replace('"', '\\"') + '"'
+    return f"{path}.{segment}" if path else segment
 
 
 def expanded_keys(tree: QTreeWidget) -> set[str]:
@@ -211,7 +226,7 @@ def expand_entity(item: QTreeWidgetItem, entity: Entity | None) -> None:
         QTreeWidgetItem(item, ["(gone)", "the entity no longer exists"])
         return
     for key, value in entity.data().items():
-        _add_nbt(item, key, value, f"{entity.uuid}/{key}")
+        _add_nbt(item, key, value, entity.uuid, _join("", key))
 
 
 def fill_storage(
@@ -226,8 +241,9 @@ def fill_storage(
             continue
         item = QTreeWidgetItem(tree, [storage_id, f"{{{len(contents)} entries}}"])
         item.setData(0, KEY_ROLE, storage_id)
+        item.setData(0, STORAGE_ROLE, storage_id)
         for key, value in contents.items():
-            _add_nbt(item, key, value, f"{storage_id}/{key}")
+            _add_nbt(item, key, value, storage_id, _join("", key))
     _restore_expanded(tree, keys)
     tree.resizeColumnToContents(0)
     tree.setUpdatesEnabled(True)

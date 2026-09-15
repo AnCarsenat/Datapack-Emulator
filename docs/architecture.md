@@ -31,12 +31,14 @@ src/datapack_emulator/     the package (standard src layout)
     analysis/
       profiler.py          Profiler and its HTML report
       graph.py             CallGraph
+      explain.py           explain_line: what one command line does (analyze line)
     engine.py              TestEngine, VersionRun
     testing.py             CommandTest, TestSchedule, run_tests (the environment tab's tests)
     __main__.py            CLI: datapack-emulator-cli
   window/                  Qt only
     window.ui, engine.ui,  ALL layout
-    download.ui
+    download.ui, search.ui,
+    score_graph.ui
     main.py                MainWindow: loads window.ui, shared state, action wiring
     controllers/           one per concern of the main window
       projects.py          new / open / save project
@@ -46,10 +48,14 @@ src/datapack_emulator/     the package (standard src layout)
       environment.py       the environment tab's tests table
       world.py             world dock: scoreboard grid, entities, storage
       console.py           the logs dock's command line
+      notes.py             project and function notes
+      session.py           recent projects/datapacks, remembered window layout
       navigation.py        source view, external editor / file manager, right-click menus
       logs.py              logs dock: buffered model, filters, record menu
     engine_window.py       EngineWindow
     download_dialog.py     DownloadDialog + DownloadWorker (QThread)
+    search_dialog.py       SearchDialog: quick open and search in pack
+    score_graph.py         ScoreGraphDialog: a score over time
     panels/                models and widgets the controllers fill
       uiloader.py, explorer.py, inspector.py, logs.py, results.py, graph.py, highlight.py,
       world.py
@@ -61,7 +67,7 @@ samples/     example packs: hat (formats 6–107.1, 1.16.2 → 26.2) and hat_v2
              (formats 5–121, runs cleanly from 1.16.1 to 26.3)
 projects/    saved .dpemu projects (git-ignored)
 generated/   reports and .dot files (git-ignored)
-.cache/      downloaded client jars, unpacked projects (git-ignored)
+.cache/      downloaded client jars, unpacked projects, window-state.json (git-ignored)
 ```
 
 These folders sit in the checkout when the package runs from one (a folder

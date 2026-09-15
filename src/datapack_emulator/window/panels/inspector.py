@@ -10,6 +10,59 @@ from datapack_emulator.emulator.versions import Version
 
 Rows = list[tuple[str, str]]
 
+#: what an inspector row means, by label (or the start of the label)
+ROW_HELP: dict[str, str] = {
+    "path": "the datapack folder",
+    "pack_format": "the format pack.mcmeta declares; before 1.20.2 it is the only one read",
+    "supported": "the format range the pack claims (supported_formats, min_format/max_format)",
+    "matches versions": "releases whose pack format is in that range",
+    "description": "the pack's description from pack.mcmeta",
+    "namespaces": "folders under data/",
+    "overlays": "overlay folders and the formats they apply to (1.20.2+)",
+    "emulating": "the version selected in the environment tab",
+    "pack supports it": "whether this version lists the pack as compatible; it loads either way",
+    "active overlays": "overlays this version applies on top of the base pack (last listed wins)",
+    "functions": "functions this version reads (folder spelling and overlays included)",
+    "function tags": "function tags this version reads",
+    "icon": "pack.png size",
+    "id": "the resource location",
+    "registry": "the folder it lives in",
+    "source": "base pack, or the overlay it comes from",
+    "file": "where it is on disk",
+    "commands": "command lines in the function",
+    "macro": "whether the function has $ macro lines (1.20.2+)",
+    "estimated cost": "cost model estimate of one run, excluding functions it calls",
+    "calls": "functions and tags it calls, schedules or tests",
+    "unsupported in": "features the function uses that this version lacks: it fails to load",
+    "your note": "your own note, saved with the project (right-click › edit note…)",
+    "line": "the line being analyzed",
+    "from": "where the line comes from",
+    "command": "the command and what it does",
+    "in the emulator": "how much of it the emulator runs",
+    "step": "one execute subcommand, in order: each changes who, where or whether the rest runs",
+    "run ›": "the command execute runs at the end",
+    "targets": "what a selector matches",
+    "references": "a function or tag the line uses, checked against the pack",
+    "loads in": "whether a function with this line loads in the version",
+    "macro line": "a $ line: filled in with the macro arguments when the function is called",
+    "macro support": "macros need 1.20.2",
+    "NBT": "the SNBT payload of the command",
+    "text": "the text component of tellraw / title",
+    "called by": "functions and tags that call it (from the call graph)",
+    "edge": "one call graph edge and its kind: call, macro, schedule, condition or tag",
+    "error": "a problem reading the file",
+}
+
+
+def row_help(label: str) -> str:
+    """The explanation of an inspector row, matching the longest known prefix."""
+    stripped = label.removeprefix("run › ")
+    best = ""
+    for key in ROW_HELP:
+        if stripped.startswith(key) and len(key) > len(best):
+            best = key
+    return ROW_HELP.get(best, "")
+
 
 def _format(value) -> str:
     if value is None:

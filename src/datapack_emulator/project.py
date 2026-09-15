@@ -98,6 +98,9 @@ class Project:
     tests: list[dict[str, Any]] = field(default_factory=list)
     #: run the tests during run all / run emulator / step
     tests_during_runs: bool = False
+    #: the user's own notes: about the project, and per function id
+    notes: str = ""
+    function_notes: dict[str, str] = field(default_factory=dict)
     #: where it was saved; ``None`` until the first save
     path: Path | None = None
 
@@ -116,6 +119,8 @@ class Project:
             "speed": self.speed,
             "tests": [dict(test) for test in self.tests],
             "tests_during_runs": self.tests_during_runs,
+            "notes": self.notes,
+            "function_notes": dict(sorted(self.function_notes.items())),
         }
 
     @classmethod
@@ -132,6 +137,14 @@ class Project:
             speed=str(data.get("speed", "fast")),
             tests=[dict(test) for test in data.get("tests", []) if isinstance(test, dict)],
             tests_during_runs=bool(data.get("tests_during_runs", False)),
+            notes=str(data.get("notes", "")),
+            function_notes={
+                str(key): str(value)
+                for key, value in (data.get("function_notes") or {}).items()
+                if str(value).strip()
+            }
+            if isinstance(data.get("function_notes"), dict)
+            else {},
             path=path,
         )
 
