@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import random
 import uuid as _uuid
+from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -52,46 +54,83 @@ class Entity:
         return f"<Entity {self.type} {self.id} tags={sorted(self.tags)}>"
 
 
+#: criteria whose scores the game computes; commands cannot change them
+READ_ONLY_CRITERIA = frozenset({"health", "food", "air", "armor", "xp", "level"})
+
+
+def wrap_int(value: int) -> int:
+    """Scores are Java ints: they wrap around at 32 bits."""
+    return (int(value) + 2**31) % 2**32 - 2**31
+
+
 class Scoreboard:
-    def __init__(self) -> None:
+    #: changes remembered per score, for the scoreboard grid's history
+    HISTORY = 64
+
+    def __init__(self, clock: Callable[[], int] = lambda: 0) -> None:
         self.objectives: dict[str, str] = {}  # name -> criterion
+        self.display_names: dict[str, str] = {}  # name -> display name (text)
+        self.display_slots: dict[str, str] = {}  # slot -> objective
         self.scores: dict[str, dict[str, int]] = {}  # holder -> objective -> value
         self.enabled_triggers: set[tuple[str, str]] = set()
+        #: (holder, objective) -> (tick, value or None when reset), oldest first
+        self.history: dict[tuple[str, str], deque[tuple[int, int | None]]] = {}
+        self._clock = clock
 
-    def add_objective(self, name: str, criterion: str = "dummy") -> bool:
+    def add_objective(self, name: str, criterion: str = "dummy", display: str = "") -> bool:
         if name in self.objectives:
             return False
         self.objectives[name] = criterion
+        self.display_names[name] = display or name
         return True
 
     def remove_objective(self, name: str) -> bool:
         existed = self.objectives.pop(name, None) is not None
-        for holder in self.scores.values():
-            holder.pop(name, None)
+        self.display_names.pop(name, None)
+        for holder, values in self.scores.items():
+            if values.pop(name, None) is not None:
+                self._remember(holder, name, None)
+        self.enabled_triggers = {pair for pair in self.enabled_triggers if pair[1] != name}
+        self.display_slots = {s: o for s, o in self.display_slots.items() if o != name}
         return existed
+
+    def is_read_only(self, objective: str) -> bool:
+        return self.objectives.get(objective) in READ_ONLY_CRITERIA
 
     def get(self, holder: str, objective: str) -> int | None:
         return self.scores.get(holder, {}).get(objective)
 
     def set(self, holder: str, objective: str, value: int) -> None:
-        # scores are Java ints: they wrap around at 32 bits
-        wrapped = (int(value) + 2**31) % 2**32 - 2**31
-        self.scores.setdefault(holder, {})[objective] = wrapped
+        wrapped = wrap_int(value)
+        values = self.scores.setdefault(holder, {})
+        if values.get(objective) != wrapped or objective not in values:
+            self._remember(holder, objective, wrapped)
+        values[objective] = wrapped
 
     def tracked(self) -> list[str]:
         """Every holder with a score in any objective — what ``*`` means."""
         return [holder for holder, values in self.scores.items() if values]
 
     def add(self, holder: str, objective: str, delta: int) -> int:
-        value = (self.get(holder, objective) or 0) + int(delta)
+        value = wrap_int((self.get(holder, objective) or 0) + int(delta))
         self.set(holder, objective, value)
         return value
 
-    def reset(self, holder: str, objective: str | None = None) -> None:
-        if objective is None:
+    def reset(self, holder: str, objective: str | None = None) -> bool:
+        """Remove one score, or all of a holder's; whether anything was there."""
+        values = self.scores.get(holder, {})
+        removed = [objective] if objective is not None else list(values)
+        removed = [name for name in removed if name in values]
+        for name in removed:
+            del values[name]
+            self._remember(holder, name, None)
+        if not values:
             self.scores.pop(holder, None)
-        else:
-            self.scores.get(holder, {}).pop(objective, None)
+        return bool(removed)
+
+    def _remember(self, holder: str, objective: str, value: int | None) -> None:
+        changes = self.history.setdefault((holder, objective), deque(maxlen=self.HISTORY))
+        changes.append((self._clock(), value))
 
 
 class World:
@@ -99,7 +138,7 @@ class World:
 
     def __init__(self, players: int = 1, seed: int = 0) -> None:
         self.entities: list[Entity] = []
-        self.scoreboard = Scoreboard()
+        self.scoreboard = Scoreboard(clock=lambda: self.tick)
         self.storage: dict[str, dict[str, Any]] = {}
         self.gamerules: dict[str, str] = {
             "maxCommandChainLength": "65536",
