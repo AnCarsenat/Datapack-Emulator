@@ -2,12 +2,15 @@
 
 ## Requirements
 
-* Python 3 — developed and tested on 3.14
-* PySide6 (with QtWebEngine, for the profiler tab), pyqtgraph, numpy
+* Python 3.10 or newer (developed on 3.14)
+* for the window: PySide6 (with QtWebEngine, for the profiler tab), pyqtgraph,
+  numpy — the emulator core and the CLI need nothing beyond the standard
+  library
 
 ```sh
 python -m venv src/.venv
-src/.venv/bin/pip install PySide6 pyqtgraph numpy
+src/.venv/bin/pip install -r requirements.txt       # the window
+src/.venv/bin/pip install -r requirements-dev.txt   # plus pytest and ruff
 ```
 
 Optional: a Minecraft **client.jar** for the version you target. If you have
