@@ -22,23 +22,25 @@ layout changes are made in Qt Designer, never in code.
 
 ### Tabs
 
-* **Environment**
+* **Environment** (scrolls when the window is short)
   * *world*: the Minecraft version (on load, the newest stable release the
-    pack declares whose server reads its `pack.mcmeta` cleanly); players online, meaning fake players
-    `Player1…` present from the start (they are what `@a`, `@p` and `@r`
+    pack declares whose server reads its `pack.mcmeta` cleanly); players
+    online, meaning fake players `Player1…` present from the start (they are what `@a`, `@p` and `@r`
     select, what `execute as @a` runs as and who receives `tellraw`); and a
     random seed for `@r` and `sort=random`.
   * *run*: ticks (`-1` = until stopped; 20 ticks are one second) and speed —
     as fast as possible, or real time at 20 ticks per second (switchable
-    while running). Runs tick in
-    small batches, so the window stays responsive and logs keep flowing.
+    while running). Runs tick in small batches, so the window stays
+    responsive and logs keep flowing.
   * *tests*: commands run as the server in a fresh world after
     `#minecraft:load` (tick 0) or at a later tick — `function hat:tick`,
     `say hi`, `scoreboard players get …`. A test passes when the command
     succeeds without a visible error and, if *expect output* is set, that
     text appears in the game output. Untick a row to skip it; hover a result
-    for the records it produced. Tests, speed and seed are saved with the
-    project.
+    for the records it produced. Tests and every setting here are saved in
+    the project's `.dpemu` file (Ctrl+S); the title shows `*` while there
+    are unsaved changes, and closing asks to save them. See
+    [projects](projects.md).
 
 * **Profiler** — HTML report (`generated/index.html`): calls, commands, self
   and total estimated time per function, share of the run, worst tick.

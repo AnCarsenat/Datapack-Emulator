@@ -52,13 +52,13 @@ Timings are **estimates from a cost model**, not measurements — see
 ```
 src/datapack_emulator/emulator/   model, commands, runtime, analysis, version engine (no Qt)
 src/datapack_emulator/window/     window.ui, engine.ui, download.ui, and the code that wires them
-src/datapack_emulator/project.py  projects/ files
+src/datapack_emulator/project.py  .dpemu project files
 src/main.sh     starts the window (or --cli) from a checkout
 tests/          pytest suite (no network, no Minecraft install needed)
 tools/          generate_version_data.py
 docs/           documentation
 samples/        example datapacks
-projects/       your saved projects      (git-ignored)
+projects/       your saved .dpemu projects (git-ignored)
 generated/      reports and .dot files   (git-ignored)
 .cache/         downloaded client jars   (git-ignored)
 ```

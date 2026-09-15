@@ -16,7 +16,10 @@ class JarController(Controller):
     def use(self, assets: VanillaAssets | None) -> None:
         """Adopt base-game assets: registries to check ids, strings to quote."""
         window = self.window
+        previous = window.vanilla.jar_path if window.vanilla else None
         window.vanilla = assets
+        if (assets.jar_path if assets else None) != previous:
+            window.projects.mark_modified()  # the project remembers the jar
         if assets is None:
             window.vanilla_label.setText("no client jar")
             window.vanilla_label.setToolTip(

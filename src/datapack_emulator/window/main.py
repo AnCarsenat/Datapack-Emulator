@@ -87,6 +87,7 @@ class MainWindow(QMainWindow):
         self.navigation = NavigationController(self)
         self.environment = EnvironmentController(self)
         for controller in (
+            self.projects,
             self.log_view,
             self.datapacks,
             self.runs,
@@ -101,6 +102,14 @@ class MainWindow(QMainWindow):
         self.show_all_docks()
         self.datapacks.show(None)
         self.datapacks.open_default()
+        self.projects.mark_saved()  # the default pack is not a change to save
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        if self.projects.confirm_close():
+            self.runs.stop(refresh=False)
+            event.accept()
+        else:
+            event.ignore()
 
     # -- setup ------------------------------------------------------------
 

@@ -4,7 +4,7 @@
 src/main.sh                starts the window (or --cli) without installing
 src/datapack_emulator/     the package (standard src layout)
   __main__.py, app.py      the window's entry point: datapack-emulator
-  project.py               projects/ files
+  project.py               .dpemu project archives (and legacy .json projects)
   settings/main.py         WINDOW, EMULATION, PATHS (finds the checkout root)
   emulator/                no Qt anywhere in here
     versions.py            version ordering, ranges, formats, feature queries
@@ -55,9 +55,9 @@ tests/       pytest suite; conftest.py builds synthetic packs and client jars
 .github/     CI workflow, Dependabot, issue and pull request templates
 docs/
 samples/     example packs: hat (single version), hat_v2 (1.16.1 → 26.3)
-projects/    saved projects (git-ignored)
+projects/    saved .dpemu projects (git-ignored)
 generated/   reports and .dot files (git-ignored)
-.cache/      downloaded client jars (git-ignored)
+.cache/      downloaded client jars, unpacked projects (git-ignored)
 ```
 
 These folders sit in the checkout when the package runs from one (a folder
