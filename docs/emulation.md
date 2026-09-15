@@ -29,7 +29,9 @@ Deliberately small: no blocks, chunks or physics.
   pearls, snowballs, signs…, 1 for tools, armour, potions…, or the
   `max_stack_size` component). Players have 36 container slots (hotbar 0–8,
   inventory 9–35; the selected slot is 0), armour, offhand and an ender
-  chest; other entities have hands, armour, body armour and a saddle.
+  chest; other living entities (armour stands included) have hands, armour,
+  body armour and a saddle; markers, items, projectiles, displays, boats,
+  minecarts and the like have no equipment slots.
   `data get entity` shows them in the version's own format:
 
   | version | items | where |
@@ -39,7 +41,8 @@ Deliberately small: no blocks, chunks or physics.
   | 1.21.5 | same | armour, hands, body and saddle in `equipment` |
 
   `data merge`/`modify` on a mob loads its items back; killed players drop
-  their items as `minecraft:item` entities unless `keepInventory` is true.
+  their items as `minecraft:item` entities unless `keepInventory`
+  (`keep_inventory` from 1.21.11) is true.
 * **storage** — `data … storage` compounds.
 * **gamerules** — stored; `maxCommandChainLength` is enforced.
 
@@ -55,8 +58,9 @@ not store (effects, attributes, …) fail the check. Both produce one emulator
 note per run.
 
 NBT paths support compound keys, quoted keys (`"minecraft:custom_data"`),
-list indexes (`Pos[0]`, `list[-1]`) and list filters (`Inventory[{Slot:103b}]`;
-`data remove` removes every matching element).
+list indexes (`Pos[0]`, `list[-1]`) and list filters (`Inventory[{Slot:103b}]`:
+reading takes the first match, setting and `data remove` reach every match, and
+setting through a filter with no match adds the element).
 
 ## Commands
 
@@ -75,11 +79,11 @@ list indexes (`Pos[0]`, `list[-1]`) and list filters (`Inventory[{Slot:103b}]`;
 | `summon` | keeps the NBT (a `UUID` is used, duplicates refused); the position argument wins over `Pos` |
 | `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z> [<yaw> <pitch>]` |
 | `give` | players only; stacks onto matching stacks (selected slot, offhand, container order), then empty slots; what does not fit drops as item entities; at most 100 stacks |
-| `clear` | `[targets] [item predicate] [maxCount]`: removes matching items (not the ender chest); `maxCount 0` only counts. Predicates: an id, `*`, `#tag` (from the client jar or the pack), `[component=value]`, `[component]` and the old `{nbt}` subset; `~` sub-predicates and `count` are noted and not checked |
-| `item` | `replace entity <targets> <slot> with <item> [count]`, `replace entity … from entity <source> <slot> [modifier]`, `modify entity <targets> <slot> <modifier>` (pack item modifiers: `set_count`, `set_components`, `set_nbt`); `block` forms are noted (no blocks) |
+| `clear` | `[targets] [item predicate] [maxCount]`: removes matching items (not the ender chest); `maxCount 0` only counts. Predicates: an id, `*`, `#tag` (from the client jar or the pack), `[component=value]`, `[component]`, `!` negation, `|` alternatives, and the old `{nbt}` subset; `~` sub-predicates and `count` are noted and not checked. Items are taken in slot order; a negative count is rejected |
+| `item` | counts must be 1–99 (1–64 before 1.20.5) and fit the item's stack; `replace entity <targets> <slot> with <item> [count]`, `replace entity … from entity <source> <slot> [modifier]`, `modify entity <targets> <slot> <modifier>` (pack item modifiers: `set_count`, `set_components`, `set_nbt`); `block` forms are noted (no blocks) |
 | `replaceitem` | `entity <targets> <slot> <item> [count]` (before 1.17) |
 | `enchant` | adds the enchantment to the held item in the version's format (`Enchantments`, `enchantments.levels`, `enchantments`); which items accept it is not checked |
-| `loot` | `give`, `spawn` and `replace entity` with a `loot <table>` source, from the pack or the client jar: rolls, weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`; conditions count as passing and other functions are skipped (noted). `fish`, `kill`, `mine` and `insert` are noted |
+| `loot` | `give` (what does not fit is lost), `spawn` and `replace entity <targets> <slot> [count]` (numbered slots from that one) with a `loot <table>` source, from the pack or the client jar: rolls (uniform ranges inclusive), weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`, stacks split to their limit; returns the number of stacks. Conditions count as passing and other functions are skipped (noted). `fish`, `kill`, `mine` and `insert` are noted |
 | `data` | on one entity or a storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data") |
 | `say me msg tell w tellraw title teammsg` | logged as `game` output; text components in JSON or (1.21.5+) SNBT, with `score` and `selector` parts resolved per recipient |
 | `gamerule` | |
