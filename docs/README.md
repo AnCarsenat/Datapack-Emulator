@@ -12,5 +12,6 @@
 | [engine.md](engine.md) | test one pack across many Minecraft versions |
 | [costs.md](costs.md) | read (and tune) the execution-time estimates |
 | [architecture.md](architecture.md) | find your way around the code before changing it |
+| [plans.md](plans.md) | see what is planned and pick something to work on |
 
 Contributing guidelines live in [CONTRIBUTING.md](../CONTRIBUTING.md).
