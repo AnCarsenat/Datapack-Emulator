@@ -10,7 +10,12 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QMenu
 
 from datapack_emulator.window.controllers.base import TAB_SOURCE, Controller
-from datapack_emulator.window.panels import PATH_ROLE, describe_resource, highlighter_for
+from datapack_emulator.window.panels import (
+    PACK_INDEX_ROLE,
+    PATH_ROLE,
+    describe_resource,
+    highlighter_for,
+)
 
 
 class NavigationController(Controller):
@@ -268,11 +273,26 @@ class NavigationController(Controller):
         menu.exec(edit.viewport().mapToGlobal(point))
 
     def explorer_menu(self, point: QPoint) -> None:
-        tree = self.window.tree
+        window = self.window
+        tree = window.tree
         index = tree.indexAt(point)
         value = index.data(PATH_ROLE) if index.isValid() else None
         path = Path(value) if value else None
         menu = self.path_menu(path, path.name if path else "")
+        pack_index = index.data(PACK_INDEX_ROLE) if index.isValid() else None
+        menu.addSeparator()
+        if pack_index is not None and window.datapack is not None:
+            count = len(window.datapack)
+            menu.addAction("remove from the project", lambda: window.datapacks.remove(pack_index))
+            up = menu.addAction(
+                "load earlier (move up)", lambda: window.datapacks.move(pack_index, -1)
+            )
+            up.setEnabled(pack_index > 0)
+            down = menu.addAction(
+                "load later (move down)", lambda: window.datapacks.move(pack_index, 1)
+            )
+            down.setEnabled(pack_index < count - 1)
+        menu.addAction("add datapack…", window.datapacks.import_)
         menu.exec(tree.viewport().mapToGlobal(point))
 
     def graph_menu(self, node_id: str, global_point: QPoint) -> None:

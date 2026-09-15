@@ -9,7 +9,7 @@ from PySide6.QtCore import QEvent, QModelIndex, QObject
 from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.datapack import Datapack
+from datapack_emulator.emulator.datapack import Datapack, DatapackSet
 from datapack_emulator.emulator.resources import Resource
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel
@@ -69,59 +69,122 @@ class DatapackController(Controller):
     # -- loading ----------------------------------------------------------
 
     def import_(self) -> None:
+        """file › add datapack: another pack analyzed alongside the others."""
         start = PATHS.SAMPLES if PATHS.SAMPLES.is_dir() else Path.home()
         chosen = QFileDialog.getExistingDirectory(
             self.window, "select a datapack folder (the one holding pack.mcmeta)", str(start)
         )
         if chosen:
-            self.load(Path(chosen))
+            self.add(Path(chosen))
 
     def open_default(self) -> None:
         """Cold start: open the first pack in samples/ so there is something to run."""
         sample = default_sample()
         if sample is None:
-            self.status("no datapack loaded — file > import datapack")
+            self.status("no datapack loaded — file › add datapack")
             return
         self.load(sample)
         self.window.output.app(
-            f"opened the sample datapack {sample.name} (file > import to change)"
+            f"opened the sample datapack {sample.name} (file › add datapack for more, "
+            "or open a project)"
         )
 
     def load(self, path: Path, keep_project: bool = False, keep_version: bool = False) -> None:
+        """Analyze this one pack (replacing the ones loaded)."""
+        self.load_many([path], keep_project=keep_project, keep_version=keep_version)
+
+    def load_many(
+        self, paths: list[Path], keep_project: bool = False, keep_version: bool = False
+    ) -> None:
+        """Analyze these packs together, in load order; an empty list unloads all."""
+        packs = DatapackSet(Datapack.load(path) for path in paths)
+        self._use(packs, keep_project=keep_project, keep_version=keep_version)
+
+    def add(self, path: Path) -> None:
+        """One more pack, loaded after the others (so it wins on shared ids)."""
+        window = self.window
+        current = window.datapack
+        if current is None:
+            self.load(path)
+            return
+        if current.index_of(path) is not None:
+            self.status(f"{path.name} is already analyzed")
+            return
+        pack = DatapackSet(current.packs)
+        pack.add(Datapack.load(path))
+        self._use(pack, keep_version=True)
+
+    def remove(self, index: int) -> None:
+        window = self.window
+        if window.datapack is None or not 0 <= index < len(window.datapack):
+            return
+        packs = DatapackSet(window.datapack.packs)
+        removed = packs.remove(index)
+        window.output.app(f"removed the datapack {removed.name} from the project")
+        self._use(packs, keep_version=True)
+
+    def move(self, index: int, step: int) -> None:
+        window = self.window
+        if window.datapack is None:
+            return
+        packs = DatapackSet(window.datapack.packs)
+        if packs.move(index, step):
+            self._use(packs, keep_version=True)
+
+    def _use(
+        self, packs: DatapackSet, keep_project: bool = False, keep_version: bool = False
+    ) -> None:
         window = self.window
         window.log_view.clear()
-        datapack = Datapack.load(path)
-        window.datapack = datapack
-        window.output.app(f"loaded {datapack.path}")
-        window.session.remember_datapack(datapack.path)
-        for error in datapack.errors:
+        window.call_graph = None
+        if not packs:
+            window.runs.stop(refresh=False)
+            window.datapack = None
+            window.emulator = None
+            window.world_view.forget()
+            self.show(None)
+            if not keep_project:
+                window.project.datapacks = []
+                window.projects.mark_modified()
+            window.projects.refresh_title()
+            self.status("no datapack analyzed — file › add datapack")
+            return
+        window.datapack = packs
+        for pack in packs:
+            window.output.app(f"loaded {pack.path}")
+            window.session.remember_datapack(pack.path)
+        for error in packs.errors:
             window.output.app(error, level=LogLevel.ERROR)
 
         if not keep_version and (not keep_project or not window.project.version):
             # reloading keeps the version on screen and a project remembers its
-            # own; a freshly imported pack gets its newest declared release
-            self.select_pack_version(datapack)
+            # own; freshly loaded packs get their newest declared release
+            self.select_pack_version(packs)
         window.jars.autoload()
         self.rebuild_emulator()
-        window.call_graph = None
-        self.show(datapack)
+        self.show(packs)
         if not keep_project:
             if window.project.path is None:
-                window.project.name = datapack.name
-            window.project.datapack = datapack.path
+                window.project.name = packs.name
+            window.project.datapacks = packs.paths
             window.projects.mark_modified()
         window.projects.refresh_title()
+        functions = len(packs.view_for(window.version).functions)
         self.status(
-            f"{datapack.name}: {len(datapack.namespaces)} namespace(s), "
-            f"{len(datapack.functions)} function(s), pack_format {datapack.pack_format} "
-            f"({datapack.minecraft_version})"
+            f"{packs.name}: {len(packs.namespaces)} namespace(s), {functions} function(s) in "
+            f"{window.version.id}"
+            + (
+                f", pack_format {packs.pack_format} ({packs.minecraft_version})"
+                if len(packs) == 1
+                else f", {len(packs)} datapacks"
+            )
         )
 
     def reload(self) -> None:
         if self.window.datapack is None:
             self.status("nothing to reload")
             return
-        self.load(self.window.datapack.path, keep_project=True, keep_version=True)
+        self.load_many(self.window.datapack.paths, keep_project=True, keep_version=True)
 
     def select_pack_version(self, datapack: Datapack) -> None:
         """Default the version combo to the newest release the pack declares.
@@ -216,14 +279,15 @@ class DatapackController(Controller):
             window.navigation.show_source(path)
 
     def find_resource(self, resource_id: str) -> Resource | None:
-        datapack = self.window.datapack
-        if datapack is None:
+        packs = self.window.datapack
+        if packs is None:
             return None
-        for layer in [datapack.base, *datapack.overlays]:
-            for namespace in layer.namespaces.values():
-                for resource in namespace.resources():
-                    if resource.id == resource_id:
-                        return resource
+        for pack in packs:
+            for layer in [pack.base, *pack.overlays]:
+                for namespace in layer.namespaces.values():
+                    for resource in namespace.resources():
+                        if resource.id == resource_id:
+                            return resource
         return None
 
     def fill_inspector(self, rows: list[tuple[str, str]]) -> None:

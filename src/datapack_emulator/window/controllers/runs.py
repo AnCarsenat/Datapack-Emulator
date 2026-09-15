@@ -295,7 +295,8 @@ class RunController(Controller):
         if not self.need_datapack():
             return
         graph = window.call_graph or CallGraph.from_pack(window.datapack.view_for(window.version))
-        target = PATHS.GENERATED / f"{window.datapack.name}-{window.version.id}.dot"
+        name = window.datapack.name.replace(" + ", "+")
+        target = PATHS.GENERATED / f"{name}-{window.version.id}.dot"
         graph.write_dot(target)
         self.status(f"wrote {target}")
         window.output.app(f"call graph exported to {target}")

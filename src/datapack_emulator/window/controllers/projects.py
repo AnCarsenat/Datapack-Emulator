@@ -99,8 +99,10 @@ class ProjectController(Controller):
                 window.jars.use(window.library.load_jar(Path(project.vanilla_jar)))
             except Exception as exc:
                 window.output.app(f"cannot read {project.vanilla_jar}: {exc}", level=LogLevel.ERROR)
-        if project.datapack and Path(project.datapack).is_dir():
-            window.datapacks.load(Path(project.datapack), keep_project=True)
+        # the project's own packs replace whatever was open (the sample, other packs)
+        window.datapacks.load_many(
+            [Path(path) for path in project.datapacks if Path(path).is_dir()], keep_project=True
+        )
         if window.engine_window is not None and window.datapack is not None:
             window.engine_window.set_datapack(window.datapack)
             if project.engine_versions:
@@ -110,7 +112,7 @@ class ProjectController(Controller):
         """Read the current window state back into the project."""
         window = self.window
         project = window.project
-        project.datapack = window.datapack.path if window.datapack else None
+        project.datapacks = window.datapack.paths if window.datapack else []
         project.version = window.version.id
         project.ticks = window.spin_ticks.value()
         project.players = window.spin_players.value()

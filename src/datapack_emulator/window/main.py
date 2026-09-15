@@ -179,6 +179,7 @@ class MainWindow(QMainWindow):
         self.dock_world: QDockWidget = find(QDockWidget, "dockWidgetWorld")
         self.recent_projects_menu: QMenu = find(QMenu, "menurecent_projects")
         self.recent_datapacks_menu: QMenu = find(QMenu, "menurecent_datapacks")
+        self.remove_datapack_menu: QMenu = find(QMenu, "menuremove_datapack")
         self.world_label: QLabel = find(QLabel, "labelWorld")
         self.edit_world_filter: QLineEdit = find(QLineEdit, "editWorldFilter")
         self.edit_objective_filter: QLineEdit = find(QLineEdit, "editObjectiveFilter")

@@ -965,7 +965,12 @@ QMenuBar::item:selected {
     </widget>
     <widget class="QMenu" name="menurecent_datapacks">
      <property name="title">
-      <string>recent datapacks</string>
+      <string>add a recent datapack</string>
+     </property>
+    </widget>
+    <widget class="QMenu" name="menuremove_datapack">
+     <property name="title">
+      <string>remove datapack</string>
      </property>
     </widget>
     <addaction name="actionnew_project"/>
@@ -975,8 +980,9 @@ QMenuBar::item:selected {
     <addaction name="menurecent_projects"/>
     <addaction name="separator"/>
     <addaction name="actionimport_datapack"/>
-    <addaction name="actionreload_datapack"/>
     <addaction name="menurecent_datapacks"/>
+    <addaction name="menuremove_datapack"/>
+    <addaction name="actionreload_datapack"/>
     <addaction name="separator"/>
     <addaction name="actionload_vanilla"/>
     <addaction name="actiondownload_vanilla"/>
@@ -1537,10 +1543,10 @@ QMenuBar::item:selected {
   </action>
   <action name="actionimport_datapack">
    <property name="text">
-    <string>import datapack</string>
+    <string>add datapack…</string>
    </property>
    <property name="statusTip">
-    <string>open a datapack folder (the one holding pack.mcmeta)</string>
+    <string>analyze another datapack folder (the one holding pack.mcmeta) together with the ones loaded; later packs win on shared ids, tags add up</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+O</string>
@@ -1551,7 +1557,7 @@ QMenuBar::item:selected {
     <string>reload datapack</string>
    </property>
    <property name="statusTip">
-    <string>read the datapack from disk again, keeping the version and project (after editing files)</string>
+    <string>read every analyzed datapack from disk again, keeping the version and project (after editing files)</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+R</string>

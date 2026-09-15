@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 
-from datapack_emulator.emulator.datapack import Datapack, Layer
+from datapack_emulator.emulator.datapack import Datapack, DatapackSet, Layer
 from datapack_emulator.emulator.namespace import DirectoryNode, Namespace
 
 #: role holding the filesystem path of a row
@@ -14,20 +14,38 @@ PATH_ROLE = int(Qt.UserRole) + 1
 RESOURCE_ROLE = int(Qt.UserRole) + 2
 #: role holding the overlay directory a row belongs to ("" for the base pack)
 OVERLAY_ROLE = int(Qt.UserRole) + 3
+#: role holding a pack root row's position in the load order
+PACK_INDEX_ROLE = int(Qt.UserRole) + 4
 
 OVERLAY_COLOUR = QColor("#8e44ad")
 ERROR_COLOUR = QColor("#c0392b")
 
 
-def build_explorer_model(datapack: Datapack | None) -> QStandardItemModel:
-    """Pack files, then ``data/``, then one subtree per overlay directory."""
+def build_explorer_model(packs: DatapackSet | Datapack | None) -> QStandardItemModel:
+    """One root per pack, in load order: pack files, ``data/``, then one
+    subtree per overlay directory."""
     model = QStandardItemModel()
-    model.setHorizontalHeaderLabels(["datapack"])
-    if datapack is None:
-        model.appendRow(QStandardItem("no datapack loaded"))
+    if packs is None or (isinstance(packs, DatapackSet) and not packs):
+        model.setHorizontalHeaderLabels(["datapack"])
+        model.appendRow(QStandardItem("no datapack — file › add datapack"))
         return model
+    members = list(packs) if isinstance(packs, DatapackSet) else [packs]
+    model.setHorizontalHeaderLabels(
+        ["datapack" if len(members) == 1 else f"{len(members)} datapacks, in load order"]
+    )
+    for index, datapack in enumerate(members):
+        _add_pack(model, datapack, index, len(members))
+    return model
 
-    root = _item(datapack.name, str(datapack.path))
+
+def _add_pack(model: QStandardItemModel, datapack: Datapack, index: int, count: int) -> None:
+    label = datapack.name if count == 1 else f"{index + 1}. {datapack.name}"
+    root = _item(label, str(datapack.path))
+    root.setData(index, PACK_INDEX_ROLE)
+    root.setToolTip(
+        f"{datapack.path}\nright-click to remove it from the project"
+        + ("; later packs win on shared ids, tags add up" if count > 1 else "")
+    )
     model.appendRow(root)
 
     if datapack.mcmeta is not None:
@@ -43,7 +61,6 @@ def build_explorer_model(datapack: Datapack | None) -> QStandardItemModel:
         item = _layer_item(layer, label)
         item.setForeground(QBrush(OVERLAY_COLOUR))
         root.appendRow(item)
-    return model
 
 
 def _layer_item(layer: Layer, label: str) -> QStandardItem:
