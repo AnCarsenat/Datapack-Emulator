@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 from PySide6.QtCore import QModelIndex
@@ -224,6 +225,8 @@ class DatapackController(Controller):
         return None
 
     def fill_inspector(self, rows: list[tuple[str, str]]) -> None:
+        """Rows of the inspector; long values wrap to the dock's width (the
+        full value is in the tooltip) and properties explain themselves."""
         inspector = self.window.inspector
         inspector.clear()
         for key, value in rows:
@@ -234,3 +237,11 @@ class DatapackController(Controller):
             item.setToolTip(1, str(value))
             inspector.addTopLevelItem(item)
         inspector.resizeColumnToContents(0)
+        metrics = inspector.fontMetrics()
+        room = inspector.viewport().width() - inspector.columnWidth(0) - 16
+        characters = max(24, room // max(1, metrics.averageCharWidth()))
+        for index in range(inspector.topLevelItemCount()):
+            item = inspector.topLevelItem(index)
+            text = item.toolTip(1)
+            if len(text) > characters:
+                item.setText(1, textwrap.fill(text, characters, break_long_words=True))

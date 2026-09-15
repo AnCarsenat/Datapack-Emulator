@@ -67,7 +67,7 @@ samples/     example packs: hat (formats 6–107.1, 1.16.2 → 26.2) and hat_v2
              (formats 5–121, runs cleanly from 1.16.1 to 26.3)
 projects/    saved .dpemu projects (git-ignored)
 generated/   reports and .dot files (git-ignored)
-.cache/      downloaded client jars, unpacked projects (git-ignored)
+.cache/      downloaded client jars, unpacked projects, window-state.json (git-ignored)
 ```
 
 These folders sit in the checkout when the package runs from one (a folder

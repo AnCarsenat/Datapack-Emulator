@@ -404,7 +404,7 @@ QMenuBar::item:selected {
                <item>
                 <widget class="QLabel" name="labelTestsHelp">
                  <property name="text">
-                  <string>Each test runs a command on the server console in a fresh world, e.g. "function hat:tick", or "execute as Player1 run trigger hat" for a command a player would type. Like in game, it runs in its tick after that tick's functions (tick 0 is the first tick, where #minecraft:load runs too). It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
+                  <string>Each test runs a command on the server console in a fresh world, e.g. "function hat:tick", or "execute as Player1 run trigger hat" for a command a player would type. Like in game, it runs in its tick after that tick's functions (tick 0 is the first tick, where #minecraft:load runs too). It passes when the command succeeds without a visible error, its output contains "expect output" and its result is in "expect value" (when those are set). Right-click a test for more.</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
@@ -804,6 +804,15 @@ QMenuBar::item:selected {
      </property>
      <item>
       <widget class="QTreeWidget" name="inspectorTree">
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+       <property name="uniformRowHeights">
+        <bool>false</bool>
+       </property>
+       <property name="toolTip">
+        <string>hover a property for what it means, a value for all of it</string>
+       </property>
        <property name="alternatingRowColors">
         <bool>true</bool>
        </property>
