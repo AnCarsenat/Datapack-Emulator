@@ -260,6 +260,7 @@ class MainWindow(QMainWindow):
             "actionquick_open": lambda: navigation.search(0),
             "actionreset_layout": lambda: self.session.reset_layout(),
             "actionfocus_console": lambda: self.session.focus_console(),
+            "actionadd_console_test": lambda: self.console.add_as_test(),
             "actionsearch_pack": lambda: navigation.search(1),
         }
         for name, slot in connections.items():

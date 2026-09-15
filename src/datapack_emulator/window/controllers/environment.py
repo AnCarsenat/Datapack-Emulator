@@ -162,11 +162,13 @@ class EnvironmentController(Controller):
                 for index, test in enumerate(tests)
             ]
         if not any(test.enabled for test in tests):
-            self.status(
-                "enable at least one test (environment tab)"
-                if tests
-                else "add a test first (environment tab)"
-            )
+            if rows:
+                message = "the selected tests are disabled: tick their box first"
+            elif tests:
+                message = "enable at least one test (environment tab)"
+            else:
+                message = "add a test first (environment tab)"
+            self.status(message)
             window.tabs.setCurrentWidget(window.tab_page(TAB_ENVIRONMENT))
             return []
         window.runs.stop(refresh=False)

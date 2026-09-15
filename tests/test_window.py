@@ -646,7 +646,7 @@ def test_world_dock_edits_scores_and_nbt_through_commands(app, window, monkeypat
     from PySide6.QtWidgets import QInputDialog
 
     from datapack_emulator.settings import PATHS
-    from datapack_emulator.window.score_graph import ScoreGraphDialog, step_points
+    from datapack_emulator.window.score_graph import ScoreGraphDialog, step_segments
 
     window.datapacks.load(PATHS.SAMPLES / "hat")
     window.console.run("scoreboard objectives add kills dummy")
@@ -668,8 +668,8 @@ def test_world_dock_edits_scores_and_nbt_through_commands(app, window, monkeypat
     assert view._objectives == ["kills"]
     window.edit_objective_filter.clear()
 
-    ticks, values = step_points(board, "Player1", "kills", window.emulator.world.tick)
-    assert values == [2, 9] and len(ticks) == len(values) + 1
+    ((edges, values),) = step_segments(board, "Player1", "kills", window.emulator.world.tick)
+    assert values == [2, 9] and len(edges) == len(values) + 1
     ScoreGraphDialog(board, "Player1", "kills", window.emulator.world.tick, window).close()
 
     window.tabs_world.setCurrentIndex(1)
@@ -730,7 +730,7 @@ def test_help_notes_explain_rows_versions_and_columns(window):
     window.combo_version.setCurrentIndex(index)
     assert "cannot read pack.mcmeta" in window.version_note.text()
     first = window.inspector.topLevelItem(0)
-    assert first.text(0) == "path" and first.toolTip(0) == "the datapack folder"
+    assert first.text(0) == "path" and first.toolTip(0) == "path\nthe datapack folder"
     model = window.log_view.model
     assert "silent in game" in model.headerData(2, QtCore_Qt.Horizontal, QtCore_Qt.ToolTipRole)
     from PySide6.QtGui import QAction
@@ -741,3 +741,28 @@ def test_help_notes_explain_rows_versions_and_columns(window):
         if action.objectName().startswith("action") and not action.statusTip()
     ]
     assert missing == [], "every menu action explains itself in the status bar"
+
+
+def test_damaged_window_state_and_tag_notes(app, tmp_path, monkeypatch):
+    import json
+
+    from datapack_emulator.settings import PATHS
+
+    monkeypatch.setattr(PATHS, "PROJECTS", tmp_path / "projects")
+    monkeypatch.setattr(PATHS, "GENERATED", tmp_path / "generated")
+    monkeypatch.setattr(PATHS, "CACHE", tmp_path / ".cache")
+    (tmp_path / ".cache").mkdir()
+    (tmp_path / ".cache" / "window-state.json").write_text(
+        json.dumps({"recent_projects": None, "recent_datapacks": [1, "x"], "docks": 5})
+    )
+    from datapack_emulator.window import MainWindow
+
+    window = MainWindow()
+    try:
+        assert window.session.recent_projects == []
+        window.notes.set_function_note("#minecraft:tick", "the tag")
+        assert window.notes.function_note("minecraft:tick") == ""
+        assert window.notes.function_note("#minecraft:tick") == "the tag"
+    finally:
+        window.projects.modified = False
+        window.close()

@@ -25,11 +25,11 @@ class NotesController(Controller):
     # -- function notes -----------------------------------------------------
 
     def function_note(self, function_id: str) -> str:
-        return self.window.project.function_notes.get(function_id.lstrip("#"), "")
+        return self.window.project.function_notes.get(function_id, "")
 
     def set_function_note(self, function_id: str, text: str) -> None:
         notes = self.window.project.function_notes
-        key = function_id.lstrip("#")
+        key = function_id  # a #tag keeps its #, so it never shares a function's note
         if text.strip():
             notes[key] = text.strip()
         else:

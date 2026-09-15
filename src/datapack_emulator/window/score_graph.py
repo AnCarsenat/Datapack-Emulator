@@ -13,18 +13,32 @@ from datapack_emulator.window.panels import load_ui_into
 UI_FILE = Path(__file__).with_name("score_graph.ui")
 
 
-def step_points(board: Scoreboard, holder: str, objective: str, now: int) -> tuple[list, list]:
-    """``(ticks, values)`` for a step plot; a reset shows as a gap (no point)."""
-    ticks: list[float] = []
+def step_segments(
+    board: Scoreboard, holder: str, objective: str, now: int
+) -> list[tuple[list[float], list[float]]]:
+    """Step-plot segments ``(tick edges, values)`` with ``len(edges) == len(values) + 1``.
+
+    Each value holds until the next change; a reset ends the segment, so the
+    time the score was unset shows as a gap. The last value holds until ``now``.
+    """
+    segments: list[tuple[list[float], list[float]]] = []
+    edges: list[float] = []
     values: list[float] = []
     for tick, value in board.history.get((holder, objective), ()):
+        if values:
+            edges.append(tick)  # the previous value ends here
         if value is None:
+            if values:
+                segments.append((edges, values))
+            edges, values = [], []
             continue
-        ticks.append(tick)
+        if not values:
+            edges = [tick]
         values.append(value)
-    if ticks:
-        ticks.append(max(now, ticks[-1]))  # the last value holds until now
-    return ticks, values
+    if values:
+        edges.append(max(now, edges[-1]))
+        segments.append((edges, values))
+    return segments
 
 
 class ScoreGraphDialog(QDialog):
@@ -36,9 +50,11 @@ class ScoreGraphDialog(QDialog):
         self.plot.setLabel("bottom", "game time")
         self.plot.setLabel("left", objective)
         container.layout().addWidget(self.plot)
-        ticks, values = step_points(board, holder, objective, now)
-        if values:
-            self.plot.plot(ticks, values, stepMode="center", pen=pg.mkPen("#2c7be5", width=2))
+        segments = step_segments(board, holder, objective, now)
+        pen = pg.mkPen("#2c7be5", width=2)
+        values = [value for _, segment in segments for value in segment]
+        for edges, segment in segments:
+            self.plot.plot(edges, segment, stepMode="center", pen=pen)
         taken = sorted(set(values))
         self.findChild(QLabel, "labelScoreGraph").setText(
             f"{objective} of {holder}: {len(values)} change(s), values "

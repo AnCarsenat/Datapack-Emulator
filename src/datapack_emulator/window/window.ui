@@ -924,6 +924,7 @@ QMenuBar::item:selected {
     <addaction name="actionsource"/>
     <addaction name="separator"/>
     <addaction name="actionfocus_console"/>
+    <addaction name="actionadd_console_test"/>
    </widget>
    <addaction name="menufile"/>
    <addaction name="menuedit"/>
@@ -1138,9 +1139,6 @@ QMenuBar::item:selected {
          </property>
          <property name="toolTip">
           <string>add the command in the line (or the last one run) to the environment tab's tests, at the current tick (Ctrl+T)</string>
-         </property>
-         <property name="shortcut">
-          <string>Ctrl+T</string>
          </property>
         </widget>
        </item>
@@ -1686,6 +1684,17 @@ QMenuBar::item:selected {
    </property>
    <property name="statusTip">
     <string>put every dock back where it starts, all of them open</string>
+   </property>
+  </action>
+  <action name="actionadd_console_test">
+   <property name="text">
+    <string>add command line as test</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+T</string>
+   </property>
+   <property name="statusTip">
+    <string>add the command being typed (or the last one run) to the environment tab's tests, at the current tick</string>
    </property>
   </action>
   <action name="actionfocus_console">

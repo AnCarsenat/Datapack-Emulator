@@ -213,12 +213,12 @@ def _valid_range(expression: str) -> bool:
     if len(parts) > 2 or not any(parts):
         return False
     try:
-        for part in parts:
-            if part:
-                float(part)
+        numbers = [float(part) for part in parts if part]
     except ValueError:
         return False
-    return True
+    if any(number != number or number in (float("inf"), float("-inf")) for number in numbers):
+        return False  # nan / inf
+    return len(numbers) < 2 or numbers[0] <= numbers[1]
 
 
 def describe_range(expression: str) -> str:

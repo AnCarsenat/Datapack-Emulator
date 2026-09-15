@@ -27,7 +27,7 @@ layout changes are made in Qt Designer, never in code.
 | file | new / open / save / save as project ([projects](projects.md)) · recent projects · import datapack · reload datapack · recent datapacks · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · version engine… · export call graph (.dot) |
-| view | explorer · inspector · logs · world (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line |
+| view | explorer · inspector · logs · world (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
 
 Hovering a menu entry explains it in the status bar; buttons, filters,
 column headers and inspector rows explain themselves in tooltips.

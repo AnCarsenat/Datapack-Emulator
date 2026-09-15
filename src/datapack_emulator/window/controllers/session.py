@@ -23,6 +23,13 @@ def state_file() -> Path:
     return PATHS.CACHE / "window-state.json"
 
 
+def _paths(value) -> list[str]:
+    """A recent list from a hand-edited or damaged state file."""
+    if not isinstance(value, list):
+        return []
+    return [entry for entry in value if isinstance(entry, str)][:MAX_RECENT]
+
+
 class SessionController(Controller):
     def __init__(self, window):
         super().__init__(window)
@@ -49,8 +56,8 @@ class SessionController(Controller):
         window = self.window
         self._default_state = window.saveState()
         data = self._read()
-        self.recent_projects = [str(p) for p in data.get("recent_projects", [])][:MAX_RECENT]
-        self.recent_datapacks = [str(p) for p in data.get("recent_datapacks", [])][:MAX_RECENT]
+        self.recent_projects = _paths(data.get("recent_projects"))
+        self.recent_datapacks = _paths(data.get("recent_datapacks"))
         geometry = data.get("geometry")
         docks = data.get("docks")
         if isinstance(geometry, str):

@@ -221,6 +221,8 @@ def describe_step(subcommand: Subcommand) -> str:
 def emulation_status(name: str, version: Version) -> str:
     spec = command_set(version).spec(name)
     if not spec.available:
+        if spec.since is None and spec.removed is None:
+            return "not a command in any version (a typo?): the whole function fails to load"
         if spec.removed is not None and version >= spec.removed:
             return f"removed in {spec.removed.id}: the whole function fails to load"
         since = spec.since.id if spec.since else "a later version"
