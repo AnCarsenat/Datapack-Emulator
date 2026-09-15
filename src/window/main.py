@@ -64,7 +64,7 @@ log = logging.getLogger(__name__)
 
 UI_FILE = Path(__file__).with_name("window.ui")
 
-TAB_PROFILER, TAB_GRAPH, TAB_SOURCE, TAB_CHAT = 0, 1, 2, 3
+TAB_PROFILER, TAB_GRAPH, TAB_SOURCE = 0, 1, 2
 
 
 class MainWindow(QMainWindow):
@@ -101,7 +101,6 @@ class MainWindow(QMainWindow):
         self.inspector: QTreeWidget = find(QTreeWidget, "inspectorTree")
         self.log_table: QTableView = find(QTableView, "logTable")
         self.source_edit: QPlainTextEdit = find(QPlainTextEdit, "sourceEdit")
-        self.chat_view: QPlainTextEdit = find(QPlainTextEdit, "chatView")
         self.web_view: QWebEngineView = find(QWebEngineView, "webEngineView")
         self.pack_label: QLabel = find(QLabel, "labelPack")
         self.vanilla_label: QLabel = find(QLabel, "labelVanilla")
@@ -183,7 +182,6 @@ class MainWindow(QMainWindow):
             "actionprofile": lambda: self.tabs.setCurrentIndex(TAB_PROFILER),
             "actiongraphview": lambda: self.tabs.setCurrentIndex(TAB_GRAPH),
             "actionsource": lambda: self.tabs.setCurrentIndex(TAB_SOURCE),
-            "actionchat": lambda: self.tabs.setCurrentIndex(TAB_CHAT),
             "actionopen_file_in_editor": self.open_selected_externally,
             "actionopen_folder_in_explorer": self.open_selected_folder,
             "actionopen_in_source": lambda: self.open_in_source(self._selected_path()),
@@ -493,17 +491,15 @@ class MainWindow(QMainWindow):
             f"{self.version.id}: {ticks} tick(s), {profiler.total_us / 1000:.2f} ms estimated, "
             f"worst tick {profiler.worst_tick_us / 1000:.2f} ms"
         )
-        self._refresh_chat()
         self.run_profiler()
 
     def run_all(self) -> None:
-        """F5: emulate, refresh the profiler, rebuild the graph and the chat."""
+        """F5: emulate, refresh the profiler, rebuild the graph."""
         if self.datapack is None:
             self.statusBar().showMessage("load a datapack first")
             return
         self.run_emulator()
         self.run_graphview()
-        self._refresh_chat()
         self.tabs.setCurrentIndex(TAB_PROFILER)
         assert self.emulator is not None
         profiler = self.emulator.profiler
@@ -778,17 +774,5 @@ class MainWindow(QMainWindow):
     def clear_logs(self) -> None:
         self.output.clear()
         self.logs.clear()
-        self.chat_view.clear()
         self.log_counts.setText(self.logs.summary())
 
-    def _refresh_chat(self) -> None:
-        """The game tab: only what a player would have seen."""
-        lines = []
-        for record in self.output.records:
-            if record.source is not LogSource.GAME:
-                continue
-            if record.level >= LogLevel.ERROR:
-                lines.append(f"[{record.tick}] § {record.message}")
-            elif record.level > LogLevel.DEBUG:
-                lines.append(f"[{record.tick}] {record.message}")
-        self.chat_view.setPlainText("\n".join(lines))

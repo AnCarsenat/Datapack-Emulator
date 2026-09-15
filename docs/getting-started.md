@@ -35,10 +35,9 @@ jar is picked up if one is installed.
 2. **Profiler** tab — estimated time per function, worst tick against the 50 ms
    budget. Right-click a row to open that function.
 3. **Call graph** tab — the function DAG. Right-click a node to open it.
-4. **Game chat** tab — what a player would have seen: `say`, `tellraw`,
-   `title`, and the red command errors.
-5. **Logs** dock — everything, filterable by source (app / emulator / game),
-   level and text.
+4. **Logs** dock — everything, filterable by source and level. Untick *app*
+   and *emulator* to see only what a player would have seen: `say`,
+   `tellraw`, `title`, and the red command errors.
 
 ## Try another version
 

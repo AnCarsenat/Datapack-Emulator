@@ -15,7 +15,7 @@ layout changes are made in Qt Designer, never in code.
 | client.jar label | which base-game jar is in use (tooltip: what it contains) |
 | version | Minecraft version to emulate — decides commands, overlays, message wording |
 | players / ticks | world size and run length |
-| run all (F5) | emulate + profiler + call graph + chat |
+| run all (F5) | emulate + profiler + call graph |
 | run emulator | emulate and refresh the profiler only |
 | engine… | open the version test engine |
 
@@ -29,8 +29,6 @@ layout changes are made in Qt Designer, never in code.
 * **Source** — the selected file with syntax highlighting for `.mcfunction`
   (commands, subcommands, selectors, resource locations, NBT, macros,
   comments) and JSON/`pack.mcmeta`.
-* **Game chat** — game output only, as a player would read it; errors are
-  prefixed with `§`.
 
 ### Docks
 

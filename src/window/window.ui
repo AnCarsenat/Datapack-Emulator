@@ -152,7 +152,7 @@ QMenuBar::item:selected {
          <string>run all (F5)</string>
         </property>
         <property name="toolTip">
-         <string>emulate, refresh the profiler, rebuild the call graph and the chat</string>
+         <string>emulate, refresh the profiler and rebuild the call graph</string>
         </property>
        </widget>
       </item>
@@ -288,51 +288,6 @@ QMenuBar::item:selected {
     background-color: rgb(253, 253, 253);
     border: 1px solid rgb(225, 225, 225);
     selection-background-color: rgb(228, 251, 255);
-}</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="chat_view">
-       <attribute name="title">
-        <string>Game chat</string>
-       </attribute>
-       <layout class="QVBoxLayout" name="chatLayout">
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
-        <item>
-         <widget class="QLabel" name="labelChat">
-          <property name="text">
-           <string>what a player would see: say, tellraw, title, and command errors</string>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">color: #555;</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPlainTextEdit" name="chatView">
-          <property name="readOnly">
-           <bool>true</bool>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">QPlainTextEdit {
-    font-family: monospace;
-    font-size: 12px;
-    background-color: rgb(32, 32, 32);
-    color: rgb(230, 230, 230);
-    border: none;
 }</string>
           </property>
          </widget>
@@ -497,7 +452,6 @@ QMenuBar::item:selected {
     <addaction name="actionprofile"/>
     <addaction name="actiongraphview"/>
     <addaction name="actionsource"/>
-    <addaction name="actionchat"/>
    </widget>
    <addaction name="menufile"/>
    <addaction name="menuedit"/>
@@ -786,7 +740,7 @@ QMenuBar::item:selected {
     <string>run all</string>
    </property>
    <property name="toolTip">
-    <string>emulate, refresh the profiler, rebuild the call graph and the chat</string>
+    <string>emulate, refresh the profiler and rebuild the call graph</string>
    </property>
    <property name="shortcut">
     <string>F5</string>
@@ -851,11 +805,6 @@ QMenuBar::item:selected {
   <action name="actionsource">
    <property name="text">
     <string>source tab</string>
-   </property>
-  </action>
-  <action name="actionchat">
-   <property name="text">
-    <string>game chat tab</string>
    </property>
   </action>
  </widget>

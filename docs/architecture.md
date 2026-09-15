@@ -66,7 +66,7 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
         │         World / ExecutionContext
         │         context.chat / feedback / game_error ── MessageCatalogue ── client.jar
         ▼
-   OutputBus ──► logs dock, game chat, engine window, CLI
+   OutputBus ──► logs dock, engine window, CLI
    Profiler  ──► profiler tab, HTML report
 ```
 

@@ -35,7 +35,7 @@ Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
 | `tag` | add/remove |
 | `summon`, `kill`, `tp`/`teleport` | |
 | `data` | get/merge/remove/modify on entities and storage (set, merge, append, prepend) |
-| `say me msg tell w tellraw title teammsg` | go to game chat |
+| `say me msg tell w tellraw title teammsg` | logged as `game` output |
 | `gamerule` | |
 
 **Checked, no state change:** `setblock`, `give`, `clear`, `effect`,
