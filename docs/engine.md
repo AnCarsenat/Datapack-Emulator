@@ -20,13 +20,18 @@ for run in engine.run(chosen):
 1. Build the `PackView` for the version (base + matching overlays).
 2. Load that version's client jar if a library is given and one is available.
 3. **Static checks**, no ticks needed:
-   * does `pack.mcmeta` declare support for this format → `unsupported`
+   * how the version reads `pack.mcmeta` (`Datapack.compatibility`): what the
+     server logs about invalid metadata, and whether the pack list would call
+     it incompatible → `unsupported`
    * registry folders spelled the way this version does not read
      (`functions/` on 1.21+, `function/` before)
    * overlays declared for a version that predates them
-   * per function, every feature it uses that the version lacks
-     (unknown commands, `execute on` before 1.19.4, macros before 1.20.2, …)
+   (the last two are `info` for packs whose declared range spans the change)
 4. Run a fresh `Emulator` for the requested ticks, with its own world and bus.
+   Its `FunctionLibrary` drops every function with a line the version cannot
+   parse (unknown commands, `execute on` before 1.19.4, macros before 1.20.2,
+   …) and every tag missing a required entry, and logs each as a `game`
+   warning; `unknown_commands` / `failed_functions` summarise them.
 5. Build the call graph: missing functions, unreachable functions, recursion.
 
 ## `VersionRun`
