@@ -184,7 +184,7 @@ def entity_summary(entity: Entity) -> str:
     return " · ".join(parts)
 
 
-def fill_entities(tree: QTreeWidget, world: World, text_filter: str = "") -> None:
+def fill_entities(tree: QTreeWidget, world: World, text_filter: str = "", version=None) -> None:
     """One item per entity; its NBT is built when the item is expanded
     (:func:`expand_entity`), so a big world stays quick to refresh."""
     wanted = text_filter.strip().lower()
@@ -209,7 +209,7 @@ def fill_entities(tree: QTreeWidget, world: World, text_filter: str = "") -> Non
         item.setToolTip(0, f"UUID {entity.uuid}\nsummoned at tick {entity.born}")
         QTreeWidgetItem(item, [PLACEHOLDER, ""])
         if entity.uuid in keys:
-            expand_entity(item, entity)
+            expand_entity(item, entity, version)
     if matching > shown:
         QTreeWidgetItem(tree, [f"… {matching - shown} more", "narrow them down with the filter"])
     _restore_expanded(tree, keys)
@@ -217,7 +217,7 @@ def fill_entities(tree: QTreeWidget, world: World, text_filter: str = "") -> Non
     tree.setUpdatesEnabled(True)
 
 
-def expand_entity(item: QTreeWidgetItem, entity: Entity | None) -> None:
+def expand_entity(item: QTreeWidgetItem, entity: Entity | None, version=None) -> None:
     """Replace the placeholder under an entity's item with its NBT."""
     if item.childCount() != 1 or item.child(0).text(0) != PLACEHOLDER:
         return
@@ -225,7 +225,7 @@ def expand_entity(item: QTreeWidgetItem, entity: Entity | None) -> None:
     if entity is None:
         QTreeWidgetItem(item, ["(gone)", "the entity no longer exists"])
         return
-    for key, value in entity.data().items():
+    for key, value in entity.data(version).items():
         _add_nbt(item, key, value, entity.uuid, _join("", key))
 
 

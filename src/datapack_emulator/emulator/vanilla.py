@@ -31,6 +31,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -194,6 +195,26 @@ class VanillaAssets:
         return assets
 
     # -- queries ----------------------------------------------------------
+
+    def read_json(self, name: str) -> dict[str, Any] | None:
+        """A JSON file from the jar (``data/minecraft/loot_table/…``), or None."""
+        try:
+            with zipfile.ZipFile(self.jar_path) as archive:
+                if name not in archive.namelist():
+                    return None
+                data = _read_json(archive, name)
+        except (OSError, zipfile.BadZipFile):
+            return None
+        return data if isinstance(data, dict) and data else None
+
+    def loot_table(self, table_id: str) -> dict[str, Any] | None:
+        """A vanilla loot table by id; ``loot_table/`` from 1.21, ``loot_tables/`` before."""
+        path = _qualify(table_id).split(":", 1)[1]
+        for folder in ("loot_table", "loot_tables"):
+            data = self.read_json(f"data/minecraft/{folder}/{path}.json")
+            if data is not None:
+                return data
+        return None
 
     def knows(self, registry: str, resource_id: str) -> bool | None:
         """``True``/``False``, or ``None`` when that registry was not found."""

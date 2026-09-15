@@ -115,7 +115,7 @@ class WorldController(Controller):
                 window.edit_objective_filter.text(),
             )
         elif tab == TAB_ENTITIES:
-            fill_entities(window.tree_entities, world, text)
+            fill_entities(window.tree_entities, world, text, emulator.version)
         else:
             fill_storage(window.tree_storage, world.storage, text)
         self._fill_seconds = time.monotonic() - started
@@ -125,7 +125,8 @@ class WorldController(Controller):
         window = self.window
         if item.parent() is None and window.emulator is not None:
             uuid = str(item.data(0, UUID_ROLE))
-            expand_entity(item, window.emulator.world.entity_by_id(uuid))
+            emulator = window.emulator
+            expand_entity(item, emulator.world.entity_by_id(uuid), emulator.version)
         window.tree_entities.resizeColumnToContents(0)
 
     def forget(self) -> None:
@@ -305,6 +306,8 @@ class WorldController(Controller):
             menu.addAction("copy UUID", lambda: navigation.copy_text(entity.uuid, "the UUID"))
             menu.addAction(
                 "copy data (SNBT)",
-                lambda: navigation.copy_text(to_snbt(entity.data()), "the entity data"),
+                lambda: navigation.copy_text(
+                    to_snbt(entity.data(window.emulator.version)), "the entity data"
+                ),
             )
         menu.exec(tree.viewport().mapToGlobal(point))

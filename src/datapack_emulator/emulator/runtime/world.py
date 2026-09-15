@@ -21,10 +21,12 @@ from datapack_emulator.emulator.common import (
     flatten_text_component,
     in_range,
     load_text_component,
+    nbt_matches,
     normalise_id,
     parse_snbt,
     split_arguments,
 )
+from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory
 
 if TYPE_CHECKING:  # pragma: no cover
     from datapack_emulator.emulator.runtime.context import ExecutionContext
@@ -40,18 +42,16 @@ ENTITY_DEFAULTS: dict[str, Any] = {
     "Invulnerable": 0,
     "PortalCooldown": 0,
 }
-#: what a player adds (inventories and abilities are not modelled)
+#: what a player adds (abilities are not modelled; the inventory has its own model)
 PLAYER_DEFAULTS: dict[str, Any] = {
     "Health": 20.0,
     "foodLevel": 20,
     "XpLevel": 0,
     "XpP": 0.0,
-    "SelectedItemSlot": 0,
-    "Inventory": [],
     "playerGameType": 0,
 }
 #: kept in the entity's own fields, not in ``nbt``
-SYNCED_KEYS = ("Pos", "Rotation", "UUID", "Tags")
+SYNCED_KEYS = ("Pos", "Rotation", "UUID", "Tags", *INVENTORY_KEYS)
 
 
 def normalise_rotation(rotation: list[float]) -> list[float]:
@@ -101,6 +101,11 @@ class Entity:
     is_player: bool = False
     #: the game time it was summoned at
     born: int = 0
+    inventory: Inventory = field(default=None)  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.inventory is None:
+            self.inventory = Inventory(player=self.is_player)
 
     @property
     def id(self) -> str:
@@ -120,8 +125,12 @@ class Entity:
                 return text
         return self.type.split(":")[-1].replace("_", " ").title()
 
-    def data(self) -> dict[str, Any]:
-        """The entity's full NBT, as ``data get entity`` shows it (a copy)."""
+    def data(self, version: Any = None) -> dict[str, Any]:
+        """The entity's full NBT, as ``data get entity`` shows it (a copy).
+
+        ``version`` picks the item format (see :mod:`runtime.inventory`); without
+        one the newest format is used.
+        """
         data: dict[str, Any] = {
             "Pos": [float(value) for value in self.position],
             **copy.deepcopy(ENTITY_DEFAULTS),
@@ -134,6 +143,7 @@ class Entity:
         else:
             data["id"] = self.type
         data.update(copy.deepcopy(self.nbt))
+        data.update(self.inventory.to_nbt(version))
         if self.tags:
             data["Tags"] = sorted(self.tags)
         return data
@@ -150,6 +160,7 @@ class Entity:
         tags = data.get("Tags")
         if isinstance(tags, list):  # without the key, Entity.load keeps the tags
             self.tags = {str(tag) for tag in tags}
+        self.inventory.load_nbt(data)
         defaults = {**ENTITY_DEFAULTS, **(PLAYER_DEFAULTS if self.is_player else {})}
         self.nbt = {
             key: copy.deepcopy(value)
@@ -374,7 +385,7 @@ class World:
         for raw in arguments.get("nbt", []):
             negated = raw.startswith("!")
             pattern = parse_snbt(raw.lstrip("!"))
-            data = _entity_data(entity)
+            data = _entity_data(entity, context)
             unmodelled = sorted(key for key in pattern if key not in data)
             if unmodelled:
                 context.note_once(
@@ -441,9 +452,9 @@ def _inside_volume(entity: Entity, selector: Selector, origin: list[float]) -> b
     return True
 
 
-def _entity_data(entity: Entity) -> dict[str, Any]:
-    """The NBT a selector's ``nbt=`` sees."""
-    return entity.data()
+def _entity_data(entity: Entity, context: ExecutionContext) -> dict[str, Any]:
+    """The NBT a selector's ``nbt=`` sees, in the emulated version's format."""
+    return entity.data(context.emulator.version)
 
 
 def _numbers(value: Any, count: int) -> bool:
@@ -452,17 +463,3 @@ def _numbers(value: Any, count: int) -> bool:
         and len(value) == count
         and all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in value)
     )
-
-
-def nbt_matches(actual: Any, pattern: Any) -> bool:
-    """Vanilla NBT matching: compounds match by subset, every pattern list
-    element must match some actual element, other tags must be equal."""
-    if isinstance(pattern, dict):
-        return isinstance(actual, dict) and all(
-            key in actual and nbt_matches(actual[key], value) for key, value in pattern.items()
-        )
-    if isinstance(pattern, list):
-        return isinstance(actual, list) and all(
-            any(nbt_matches(item, wanted) for item in actual) for wanted in pattern
-        )
-    return actual == pattern

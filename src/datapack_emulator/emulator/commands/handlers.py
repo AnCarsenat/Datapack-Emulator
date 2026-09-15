@@ -752,6 +752,8 @@ def cmd_kill(command: Command, context: ExecutionContext) -> CommandResult:
     token = command.arguments[0] if command.arguments else "@s"
     victims = _require_targets(context, token)
     for entity in victims:
+        if entity.is_player:
+            drop_inventory_on_death(context, entity)
         context.world.kill(entity)
     if len(victims) == 1:
         context.feedback("commands.kill.success.single", victims[0].display)
@@ -836,7 +838,7 @@ def _macro_arguments(rest: list[str], context: ExecutionContext) -> dict[str, An
         store: Any = context.world.storage.get(normalise_id(target), {})
     elif source == "entity":
         entities = _targets(context, target)
-        store = entities[0].data() if entities else {}
+        store = entities[0].data(context.emulator.version) if entities else {}
     else:
         context.note_key_once(
             "emulator.unimplemented", f"function ... with {source}", context.emulator.version.id
@@ -931,7 +933,7 @@ def _data_target(
         if action != "get" and entity.is_player:
             context.game_error("commands.data.entity.invalid")
             return None
-        return _DataTarget(entity.data(), entity=entity)
+        return _DataTarget(entity.data(context.emulator.version), entity=entity)
     # block NBT is not modelled
     context.note_key_once(
         "emulator.unimplemented", f"data {action} block", context.emulator.version.id
@@ -1096,7 +1098,7 @@ def _data_source(context: ExecutionContext, source: list[str]) -> tuple[bool, An
         entities = _require_targets(context, target)
         if not entities:
             return (False, None)
-        store = entities[0].data()
+        store = entities[0].data(context.emulator.version)
     else:  # block NBT is not modelled
         context.note_key_once(
             "emulator.unimplemented", "data modify ... from block", context.emulator.version.id
@@ -1313,7 +1315,7 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
         for entity in _targets(context, arguments[2]):
             if entity.is_player:  # player data cannot be modified
                 continue
-            data = entity.data()
+            data = entity.data(context.emulator.version)
             nbt_set(data, arguments[3], _stored_number(value, arguments[4:6]))
             entity.apply_data(data)
 
@@ -1336,6 +1338,8 @@ def condition_count(arguments: list[str], context: ExecutionContext) -> int:
     ``entity``, otherwise 1 (0 when it fails)."""
     if arguments and arguments[0] == "entity" and len(arguments) >= 2:
         return len(context.world.select(Selector.parse(arguments[1]), context))
+    if arguments and arguments[0] == "items":
+        return items_condition_count(arguments, context) or 0
     return int(evaluate_condition(arguments, context))
 
 
@@ -1381,10 +1385,13 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
             return nbt_get(store, arguments[3]) is not None
         if arguments[1] == "entity":
             return any(
-                nbt_get(entity.data(), arguments[3]) is not None
+                nbt_get(entity.data(context.emulator.version), arguments[3]) is not None
                 for entity in _targets(context, arguments[2])
             )
         return False
+
+    if kind == "items":
+        return bool(items_condition_count(arguments, context))
 
     if kind == "dimension" and len(arguments) >= 2:
         return context.dimension == normalise_id(arguments[1])
@@ -1417,26 +1424,20 @@ UNMODELLED: dict[str, str] = {
     "advancement": "advancements are not modelled",
     "attribute": "attributes are not modelled (queries return 1)",
     "bossbar": "boss bars are not modelled",
-    "clear": "inventories are not modelled (the item id is still checked)",
     "clone": "blocks are not modelled",
     "damage": "health and damage are not modelled",
     "difficulty": "the difficulty is not modelled",
     "effect": "status effects are not modelled (the effect id is still checked)",
-    "enchant": "items are not modelled",
     "experience": "experience is not modelled",
     "fill": "blocks are not modelled",
     "fillbiome": "biomes are not modelled",
     "forceload": "chunks are not modelled",
     "gamemode": "game modes are not modelled (gamemode= in selectors is not checked)",
-    "give": "inventories are not modelled (the item id is still checked)",
-    "item": "items and inventories are not modelled",
-    "loot": "loot tables and inventories are not modelled",
     "particle": "particles have no effect on the world",
     "place": "blocks and structures are not modelled",
     "playsound": "sounds have no effect on the world",
     "random": "random draws are not modelled: the result is always 1",
     "recipe": "recipes are not modelled",
-    "replaceitem": "items and inventories are not modelled",
     "ride": "vehicles and passengers are not modelled",
     "rotate": "use tp or data to turn entities: rotate is not modelled",
     "setblock": "blocks are not modelled (the block id is still checked)",
@@ -1485,26 +1486,20 @@ HANDLERS: dict[str, Handler] = {
     "advancement": cmd_noop,
     "attribute": cmd_noop,
     "bossbar": cmd_noop,
-    "clear": _checking("item", 1, "argument.item.id.invalid"),
     "clone": cmd_noop,
     "damage": cmd_noop,
     "difficulty": cmd_noop,
     "effect": cmd_effect,
-    "enchant": cmd_noop,
     "experience": cmd_noop,
     "fill": cmd_noop,
     "fillbiome": cmd_noop,
     "forceload": cmd_noop,
     "gamemode": cmd_noop,
-    "give": _checking("item", 1, "argument.item.id.invalid"),
-    "item": cmd_noop,
-    "loot": cmd_noop,  # "loot give @s loot <id>" needs the whole grammar to check
     "particle": _checking("particle", 0, "argument.id.unknown"),
     "place": cmd_noop,
     "playsound": cmd_noop,
     "random": cmd_noop,
     "recipe": cmd_noop,
-    "replaceitem": cmd_noop,
     "ride": cmd_noop,
     "rotate": cmd_noop,
     "setblock": cmd_setblock,
@@ -1520,3 +1515,13 @@ HANDLERS: dict[str, Handler] = {
     "worldborder": cmd_noop,
     "xp": cmd_noop,
 }
+
+
+# item and inventory commands live in their own module, which needs the helpers above
+from datapack_emulator.emulator.commands.items import (  # noqa: E402
+    ITEM_HANDLERS,
+    drop_inventory_on_death,
+    items_condition_count,
+)
+
+HANDLERS.update(ITEM_HANDLERS)

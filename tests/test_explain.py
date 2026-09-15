@@ -33,9 +33,10 @@ def test_version_support_and_emulator_coverage_are_reported():
     old = _rows("item replace entity @s armor.head with air", "1.16.1")
     assert old["in the emulator"].startswith("does not exist in 1.16.1 (added in 1.17)")
     assert old["loads in 1.16.1"].startswith("no")
-    new = _rows("item replace entity @s armor.head with air")
-    assert new["in the emulator"] == (
-        "runs without changing the emulated world: items and inventories are not modelled"
+    assert _rows("item replace entity @s armor.head with air")["in the emulator"] == "emulated"
+    fill = _rows("fill ~ ~ ~ ~1 ~1 ~1 stone")
+    assert fill["in the emulator"] == (
+        "runs without changing the emulated world: blocks are not modelled"
     )
     macro = _rows("$function test:x {a:$(a)}", "1.20.1")
     assert "needs the argument(s) a" in macro["macro line"] and "NBT" not in macro
