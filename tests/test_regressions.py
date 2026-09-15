@@ -388,3 +388,30 @@ def test_scores_wrap_at_32_bits(make_pack):
         "scoreboard players add #max o 1\n",
     )
     assert emulator.world.scoreboard.get("#max", "o") == -2147483648
+
+
+def test_tellraw_resolves_score_and_selector_components(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "scoreboard players set #a o 42\n"
+        "scoreboard players set @a o 7\n"
+        'tellraw @a ["score ",{"score":{"name":"#a","objective":"o"}},'
+        '" mine ",{"score":{"name":"*","objective":"o"}}," who ",{"selector":"@a"}]\n',
+    )
+    assert chat(emulator.output.records) == ["[Player1] score 42 mine 7 who Player1"]
+
+
+def test_reports_escape_pack_content(make_pack):
+    from src.emulator import TestEngine
+
+    pack = Datapack.load(
+        make_pack(
+            {"data/test/function/tick.mcfunction": "say hi\n"}, name="<img src=x onerror=alert(1)>"
+        )
+    )
+    run_result = TestEngine(pack, ticks=1).run_version("1.21.4")
+    matrix = TestEngine.to_html([run_result], pack.name)
+    profile = run_result.profiler.to_html(f"Function profiler — {pack.name}")
+    for page in (matrix, profile):
+        assert "<img" not in page and "&lt;img" in page

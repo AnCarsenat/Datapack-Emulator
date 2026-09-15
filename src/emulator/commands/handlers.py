@@ -25,6 +25,8 @@ from src.emulator.commands.parser import (
 from src.emulator.commands.result import CommandResult
 from src.emulator.common import (
     as_int,
+    flatten_text_component,
+    load_text_component,
     merge_compound,
     nbt_get,
     nbt_remove,
@@ -32,7 +34,6 @@ from src.emulator.common import (
     normalise_id,
     normalise_tagged_id,
     parse_snbt,
-    parse_text_component,
     parse_value,
 )
 from src.emulator.runtime.context import ExecutionContext
@@ -127,14 +128,36 @@ def cmd_msg(command: Command, context: ExecutionContext) -> CommandResult:
 def cmd_tellraw(command: Command, context: ExecutionContext) -> CommandResult:
     if len(command.arguments) < 2:
         return CommandResult.failure()
-    text = parse_text_component(" ".join(command.arguments[1:]))
-    if text is None:
+    component = load_text_component(" ".join(command.arguments[1:]))
+    if component is None:
         context.game_error("command.unknown.argument")
         return CommandResult.failure()
     targets = _require_targets(context, command.arguments[0])
     for entity in targets:
+        text = flatten_text_component(component, _text_resolver(context, entity))
         context.chat(f"[{entity.display}] {text}")
     return CommandResult(success=bool(targets), value=len(targets))
+
+
+def _text_resolver(context: ExecutionContext, viewer: Entity | None):
+    """Scores and selectors inside a text component, as ``viewer`` would see them."""
+
+    def resolve(kind: str, value: Any) -> str:
+        if kind == "score" and isinstance(value, dict):
+            name = str(value.get("name", ""))
+            if name == "*":
+                holders = [viewer.id] if viewer is not None else []
+            else:
+                holders = _holders(context, name)
+            if not holders:
+                return ""
+            score = context.world.scoreboard.get(holders[0], str(value.get("objective", "")))
+            return "" if score is None else str(score)
+        if kind == "selector":
+            return ", ".join(entity.display for entity in _targets(context, str(value)))
+        return ""
+
+    return resolve
 
 
 def cmd_title(command: Command, context: ExecutionContext) -> CommandResult:
@@ -144,10 +167,13 @@ def cmd_title(command: Command, context: ExecutionContext) -> CommandResult:
     action = command.arguments[1]
     if action in ("title", "subtitle", "actionbar") and len(command.arguments) > 2:
         payload = " ".join(command.arguments[2:])
-        text = parse_text_component(payload)
-        if text is None:
-            text = payload
+        component = load_text_component(payload)
         for entity in targets:
+            text = (
+                payload
+                if component is None
+                else flatten_text_component(component, _text_resolver(context, entity))
+            )
             context.chat(f"[{entity.display} {action}] {text}")
     return CommandResult(success=bool(targets), value=len(targets))
 

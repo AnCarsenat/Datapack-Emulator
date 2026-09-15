@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from html import escape
 from pathlib import Path
 
 from src.emulator import versions
@@ -318,11 +319,11 @@ class TestEngine:
                 f"<td>{run.worst_tick_us / 1000:.2f}</td>"
                 f"<td>{run.warnings}</td>"
                 f"<td>{run.errors}</td>"
-                f"<td class='id'>{', '.join(sorted(run.unknown_commands)) or '-'}</td>"
-                f"<td class='id'>{', '.join(run.overlays) or '-'}</td>"
+                f"<td class='id'>{escape(', '.join(sorted(run.unknown_commands))) or '-'}</td>"
+                f"<td class='id'>{escape(', '.join(run.overlays)) or '-'}</td>"
                 "</tr>"
             )
-        title = f"Version matrix — {pack_name}" if pack_name else "Version matrix"
+        title = escape(f"Version matrix — {pack_name}" if pack_name else "Version matrix")
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>{title}</title>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 
 from src.emulator import costs
@@ -53,13 +54,16 @@ class Profiler:
     # -- reporting --------------------------------------------------------
 
     def to_html(self, title: str = "Function profiler", subtitle: str = "") -> str:
+        # titles and function ids come from the pack: escape them, the report
+        # is shown in the app's web view
+        title, subtitle = escape(title), escape(subtitle)
         rows: list[str] = []
         total = self.total_us or 1.0
         for function_id, entry in self.sorted_entries():
             share = 100.0 * entry["total_us"] / total
             rows.append(
-                f'<tr data-function="{function_id}" title="right-click to open the source">'
-                f"<td class='id'>{function_id}</td>"
+                f'<tr data-function="{escape(function_id)}" title="right-click to open the source">'
+                f"<td class='id'>{escape(function_id)}</td>"
                 f"<td>{int(entry['calls'])}</td>"
                 f"<td>{int(entry['commands'])}</td>"
                 f"<td>{entry['self_us'] / 1000:.3f}</td>"
@@ -126,7 +130,7 @@ def comparison_html(results: list[tuple[str, Profiler]], title: str = "Version c
     for label, profiler in results:
         rows.append(
             "<tr>"
-            f"<td class='id'>{label}</td>"
+            f"<td class='id'>{escape(label)}</td>"
             f"<td>{len(profiler.tick_times)}</td>"
             f"<td>{profiler.total_us / 1000:.2f}</td>"
             f"<td>{profiler.average_tick_us / 1000:.2f}</td>"
@@ -136,4 +140,4 @@ def comparison_html(results: list[tuple[str, Profiler]], title: str = "Version c
     return (
         "<h3>{}</h3><table><thead><tr><th>version</th><th>ticks</th><th>total ms</th>"
         "<th>avg ms</th><th>worst ms</th></tr></thead><tbody>{}</tbody></table>"
-    ).format(title, "\n".join(rows))
+    ).format(escape(title), "\n".join(rows))

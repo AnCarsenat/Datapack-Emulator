@@ -11,7 +11,7 @@ import json
 import logging
 import math
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -39,40 +39,60 @@ def normalise_tagged_id(value: str) -> str:
     return normalise_id(value)
 
 
-def flatten_text_component(component: Any) -> str:
-    """Turn a JSON text component (or a raw string) into plain text."""
-    if isinstance(component, str):
-        return component
+#: resolves the dynamic parts of a text component: ``(kind, value) -> text``,
+#: with kind "score" (value: {"name", "objective"}) or "selector" (value: str)
+TextResolver = Callable[[str, Any], str]
+
+
+def flatten_text_component(component: Any, resolve: TextResolver | None = None) -> str:
+    """Turn a text component (or a raw string) into plain text.
+
+    ``score`` and ``selector`` parts need the world to read; without a
+    ``resolve`` callback they render as nothing rather than as raw data.
+    """
+    if isinstance(component, (str, int, float)):
+        return str(component)
     if isinstance(component, list):
-        return "".join(flatten_text_component(part) for part in component)
-    if isinstance(component, dict):
-        text = str(component.get("text", ""))
-        for key in ("selector", "score", "keybind", "translate"):
-            if key in component and not text:
-                value = component[key]
-                text = value if isinstance(value, str) else str(value)
-        extra = component.get("extra")
-        if extra:
-            text += flatten_text_component(extra)
-        return text
-    return ""
+        return "".join(flatten_text_component(part, resolve) for part in component)
+    if not isinstance(component, dict):
+        return ""
+    if "text" in component:
+        text = str(component["text"])
+    elif "score" in component:
+        text = resolve("score", component["score"]) if resolve else ""
+    elif "selector" in component:
+        text = resolve("selector", component["selector"]) if resolve else ""
+    elif "translate" in component:
+        text = str(component.get("fallback", component["translate"]))
+    elif "keybind" in component:
+        text = str(component["keybind"])
+    else:
+        text = ""
+    extra = component.get("extra")
+    if extra:
+        text += flatten_text_component(extra, resolve)
+    return text
 
 
-def parse_text_component(payload: str) -> str | None:
-    """Plain text of a ``tellraw``/``title`` component, or ``None`` if unreadable.
+def load_text_component(payload: str) -> Any | None:
+    """Parse a ``tellraw``/``title`` component from JSON or (1.21.5+) SNBT.
 
-    Accepts JSON (every version) and SNBT (1.21.5 and later), e.g.
-    ``{text:"hi",color:"red"}`` or ``["",{text:"a"},'b']``.
+    Returns ``None`` when neither parses, e.g. ``{text:"hi",color:"red"}`` and
+    ``["",{text:"a"},'b']`` are both accepted.
     """
     payload = payload.strip()
-    try:
-        return flatten_text_component(json.loads(payload))
-    except json.JSONDecodeError:
-        pass
-    try:
-        return flatten_text_component(json.loads(snbt_to_json(payload)))
-    except json.JSONDecodeError:
-        return None
+    for candidate in (payload, None):
+        try:
+            return json.loads(candidate if candidate is not None else snbt_to_json(payload))
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def parse_text_component(payload: str, resolve: TextResolver | None = None) -> str | None:
+    """Plain text of a component, or ``None`` if it cannot be parsed."""
+    component = load_text_component(payload)
+    return None if component is None else flatten_text_component(component, resolve)
 
 
 # ---------------------------------------------------------------------------
