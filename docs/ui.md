@@ -68,6 +68,7 @@ All three are open by default and can be toggled from *view*.
 | explorer row | open in source view · open in external editor · open in external file manager · copy path |
 | call-graph node | same, plus *show in inspector*; tags open their `.json` |
 | profiler row | same as a graph node |
+| log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from; double-click opens the file too |
 
 "External editor" and "external file manager" use the desktop's default handler
 (`QDesktopServices`), so they open whatever your system associates with the

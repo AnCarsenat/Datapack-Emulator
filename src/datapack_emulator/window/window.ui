@@ -839,6 +839,12 @@ QMenuBar::item:selected {
        <property name="alternatingRowColors">
         <bool>true</bool>
        </property>
+       <property name="contextMenuPolicy">
+        <enum>Qt::CustomContextMenu</enum>
+       </property>
+       <property name="toolTip">
+        <string>right-click a record to copy it or open its file; double-click to open the file</string>
+       </property>
        <property name="showGrid">
         <bool>false</bool>
        </property>

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QModelIndex, QPoint, QTimer
+from PySide6.QtWidgets import QMenu
 
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource
 from datapack_emulator.window.controllers.base import Controller
@@ -32,6 +33,8 @@ class LogController(Controller):
         for box in (window.check_app, window.check_emulator, window.check_game):
             box.toggled.connect(self.apply_filter)
         window.output.listeners.append(self.on_record)
+        window.log_table.customContextMenuRequested.connect(self.context_menu)
+        window.log_table.doubleClicked.connect(self.on_double_click)
         self.apply_filter()
 
     def on_record(self, record: LogRecord) -> None:
@@ -65,6 +68,71 @@ class LogController(Controller):
         )
         window.log_counts.setText(self.model.summary())
         window.log_table.resizeColumnsToContents()
+
+    # -- acting on a record -----------------------------------------------
+
+    def record_at(self, index: QModelIndex) -> LogRecord | None:
+        return self.model.record_at(index.row()) if index.isValid() else None
+
+    def source_of(self, record: LogRecord) -> tuple[str, int] | None:
+        """``(function id, line)`` a record came from, if it names a real file."""
+        if not record.function or record.function.startswith("<"):
+            return None  # <server>, <test>: typed commands have no file
+        if self.window.navigation.function_path(record.function) is None:
+            return None
+        return (record.function, record.line)
+
+    def copy_message(self, record: LogRecord) -> None:
+        self.window.navigation.copy_text(record.message, what="the message")
+
+    def copy_details(self, record: LogRecord) -> None:
+        lines = [record.format()]
+        if record.command:
+            lines.append(f"command: {record.command}")
+        if record.key:
+            lines.append(f"key: {record.key}")
+        if record.version:
+            lines.append(f"version: {record.version}")
+        self.window.navigation.copy_text("\n".join(lines), what="the record")
+
+    def open_source(self, record: LogRecord) -> None:
+        source = self.source_of(record)
+        if source is None:
+            self.status("this record does not come from a file of the pack")
+            return
+        self.window.navigation.open_function(*source)
+
+    def on_double_click(self, index: QModelIndex) -> None:
+        record = self.record_at(index)
+        if record is not None and self.source_of(record) is not None:
+            self.open_source(record)
+
+    def context_menu(self, point: QPoint) -> None:
+        table = self.window.log_table
+        record = self.record_at(table.indexAt(point))
+        menu = self.menu_for(record)
+        menu.exec(table.viewport().mapToGlobal(point))
+
+    def menu_for(self, record: LogRecord | None) -> QMenu:
+        menu = QMenu(self.window)
+        if record is None:
+            menu.addAction("right-click a record").setEnabled(False)
+            return menu
+        is_error = record.failure or record.level >= LogLevel.WARNING
+        menu.addAction(
+            "copy error message" if is_error else "copy message",
+            lambda: self.copy_message(record),
+        )
+        menu.addAction("copy with details", lambda: self.copy_details(record))
+        menu.addSeparator()
+        source = self.source_of(record)
+        label = "open file in source view"
+        if source is not None:
+            function_id, line = source
+            label += f" ({function_id}:{line})" if line else f" ({function_id})"
+        open_action = menu.addAction(label, lambda: self.open_source(record))
+        open_action.setEnabled(source is not None)
+        return menu
 
     def clear(self) -> None:
         self._pending.clear()

@@ -150,3 +150,47 @@ def test_tests_table_runs_commands_and_saves_with_the_project(window, make_pack,
         "scoreboard players get #ticks t",
         "say hi",
     ]
+
+
+def test_log_records_can_be_copied_and_opened_in_the_source_view(app, window, make_pack):
+    from PySide6.QtWidgets import QApplication
+
+    from datapack_emulator.emulator.runtime.output import LogLevel
+
+    window.datapacks.load(
+        make_pack(
+            {
+                "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+                "data/test/function/tick.mcfunction": "say hi\nscoreboard players set @a missing 1\n",
+            }
+        )
+    )
+    window.combo_level.setCurrentText("debug")
+    window.spin_ticks.setValue(1)
+    window.runs.run_emulator()
+    window.runs.wait()
+    window.log_view.flush()
+
+    model = window.log_view.model
+    rows = [model.record_at(row) for row in range(model.rowCount())]
+    failure = next(r for r in rows if r.failure)
+    assert failure.function == "test:tick" and failure.line == 2
+
+    menu = window.log_view.menu_for(failure)
+    texts = [action.text() for action in menu.actions() if action.text()]
+    assert texts[0] == "copy error message"
+    assert "open file in source view (test:tick:2)" in texts
+
+    window.log_view.copy_message(failure)
+    assert QApplication.clipboard().text() == "Unknown scoreboard objective 'missing'"
+
+    window.log_view.open_source(failure)
+    assert window.source_label.text().endswith("tick.mcfunction:2")
+    assert window.source_edit.textCursor().blockNumber() == 1
+
+    typed = next(r for r in rows if r.source.value == "app")
+    assert window.log_view.source_of(typed) is None
+    assert not [
+        a for a in window.log_view.menu_for(typed).actions() if a.text().startswith("open")
+    ][0].isEnabled()
+    assert failure.level == LogLevel.DEBUG  # silent: it failed inside a function
