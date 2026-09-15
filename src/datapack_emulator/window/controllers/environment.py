@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import QTableWidgetItem
+from PySide6.QtWidgets import QAbstractItemDelegate, QTableWidgetItem, QWidget
 
 from datapack_emulator.emulator.testing import CommandTest, TestResult, run_tests
 from datapack_emulator.window.controllers.base import TAB_ENVIRONMENT, Controller
@@ -53,6 +53,14 @@ class EnvironmentController(Controller):
         table = self.window.table_tests
         for row in sorted({index.row() for index in table.selectedIndexes()}, reverse=True):
             table.removeRow(row)
+
+    def commit_edits(self) -> None:
+        """Keep what is typed in a cell that is still open (e.g. Ctrl+S mid-edit)."""
+        table = self.window.table_tests
+        for editor in table.viewport().findChildren(QWidget):
+            if editor.isVisible() and editor.parent() is table.viewport():
+                table.commitData(editor)
+                table.closeEditor(editor, QAbstractItemDelegate.NoHint)
 
     def tests(self) -> list[CommandTest]:
         table = self.window.table_tests

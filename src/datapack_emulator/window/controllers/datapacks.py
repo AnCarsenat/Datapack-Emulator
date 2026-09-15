@@ -79,6 +79,7 @@ class DatapackController(Controller):
             if window.project.path is None:
                 window.project.name = datapack.name
             window.project.datapack = datapack.path
+            window.projects.mark_modified()
         window.projects.refresh_title()
         self.status(
             f"{datapack.name}: {len(datapack.namespaces)} namespace(s), "

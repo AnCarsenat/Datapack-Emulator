@@ -8,7 +8,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLineEdit  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -22,12 +22,15 @@ def window(app, tmp_path, monkeypatch):
 
     monkeypatch.setattr(PATHS, "PROJECTS", tmp_path / "projects")
     monkeypatch.setattr(PATHS, "GENERATED", tmp_path / "generated")
+    monkeypatch.setattr(PATHS, "CACHE", tmp_path / ".cache")
     from datapack_emulator.window import MainWindow
 
     window = MainWindow()
     window.show()
     app.processEvents()
     yield window
+    # a test that edits settings would otherwise wait on the "save changes?" box
+    window.projects.modified = False
     window.close()
 
 
@@ -255,3 +258,63 @@ def test_hat_v2_defaults_to_a_version_that_reads_its_metadata(window):
     assert window.version.stable
     assert window.datapack.compatibility(window.version).status == "compatible"
     assert "(" not in window.pack_label.text().split("emulating")[-1]
+
+
+def test_environment_tab_scrolls(window):
+    from PySide6.QtWidgets import QScrollArea
+
+    scroll = window.findChild(QScrollArea, "scrollEnvironment")
+    assert scroll is not None and scroll.widgetResizable()
+    assert window.table_tests.minimumHeight() >= 200
+    assert scroll.widget().isAncestorOf(window.table_tests)
+
+
+def test_ctrl_s_saves_tests_into_a_dpemu_and_open_restores_them(app, window, make_pack):
+    import zipfile
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    from datapack_emulator.emulator.testing import CommandTest
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.projects.mark_saved()
+    window.environment.set_tests([CommandTest("say hi", at_tick=2)])
+    assert window.projects.modified and window.windowTitle().startswith("Datapack Emulator — *")
+
+    # a cell still being edited when Ctrl+S is pressed is kept
+    table = window.table_tests
+    table.editItem(table.item(0, 1))
+    app.processEvents()
+    editor = next(w for w in table.viewport().findChildren(QLineEdit) if w.isVisible())
+    editor.setText("function test:tick")
+    window.activateWindow()
+    QTest.keyClick(window, Qt.Key_S, Qt.ControlModifier)
+    app.processEvents()
+
+    saved = window.project.path
+    assert saved is not None and saved.suffix == ".dpemu" and saved.parent == PATHS.PROJECTS
+    assert not window.projects.modified and "*" not in window.windowTitle()
+    with zipfile.ZipFile(saved) as archive:
+        assert "datapack/pack.mcmeta" in archive.namelist()
+
+    window.environment.set_tests([])
+    window.projects.mark_saved()
+    assert window.projects.open_path(saved)
+    assert [(t.command, t.at_tick) for t in window.environment.tests()] == [
+        ("function test:tick", 2)
+    ]
+    assert window.datapack.path == window.project.datapack
+    assert not window.projects.modified
+
+
+def test_closing_with_unsaved_changes_asks_first(window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    window.spin_seed.setValue(window.spin_seed.value() + 1)
+    assert window.projects.modified
+    monkeypatch.setattr(window.projects, "ask_save_changes", lambda: QMessageBox.Cancel)
+    assert not window.close() and window.isVisible()
+    monkeypatch.setattr(window.projects, "ask_save_changes", lambda: QMessageBox.Discard)
+    assert window.close()

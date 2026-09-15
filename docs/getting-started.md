@@ -60,7 +60,8 @@ To compare many versions at once, open the **engine** window (Ctrl+E) — see
 ## Use your own pack
 
 *file › import datapack* (Ctrl+O) and pick the folder holding `pack.mcmeta`.
-Then *file › save project* (Ctrl+S) to find it again next time — see
+Then *file › save project* (Ctrl+S) to find it again next time: one `.dpemu`
+file holds the settings, the tests and a copy of the datapack — see
 [projects.md](projects.md).
 
 ## Without the window

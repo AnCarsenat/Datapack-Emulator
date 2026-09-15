@@ -8,13 +8,78 @@ from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 
 from datapack_emulator.emulator.runtime.output import LogLevel
 from datapack_emulator.emulator.testing import CommandTest
-from datapack_emulator.project import Project, projects_dir
+from datapack_emulator.project import LEGACY_SUFFIX, SUFFIX, Project, projects_dir
 from datapack_emulator.window.controllers.base import Controller
+
+SAVE_FILTER = f"Datapack Emulator project (*{SUFFIX})"
+OPEN_FILTER = f"Datapack Emulator projects (*{SUFFIX} *{LEGACY_SUFFIX})"
 
 
 class ProjectController(Controller):
+    def __init__(self, window):
+        super().__init__(window)
+        #: the widgets differ from what was last saved or opened
+        self.modified = False
+        self._applying = False
+
+    def connect(self) -> None:
+        window = self.window
+        for spin in (window.spin_ticks, window.spin_players, window.spin_seed):
+            spin.valueChanged.connect(self.mark_modified)
+        for combo in (window.combo_speed, window.combo_version):
+            combo.currentIndexChanged.connect(self.mark_modified)
+        table = window.table_tests
+        table.itemChanged.connect(self._on_test_item_changed)
+        table.model().rowsInserted.connect(self.mark_modified)
+        table.model().rowsRemoved.connect(self.mark_modified)
+
+    # -- unsaved changes ------------------------------------------------------
+
+    def mark_modified(self, *_args) -> None:
+        if not self._applying and not self.modified:
+            self.modified = True
+            self.refresh_title()
+
+    def mark_saved(self) -> None:
+        self.modified = False
+        self.refresh_title()
+
+    def _on_test_item_changed(self, item) -> None:
+        from datapack_emulator.window.controllers.environment import COLUMN_RESULT
+
+        if item.column() != COLUMN_RESULT:  # results are not part of the project
+            self.mark_modified()
+
+    def confirm_close(self) -> bool:
+        """Before the window closes: save, discard or stay. True to close."""
+        if not self.modified:
+            return True
+        answer = self.ask_save_changes()
+        if answer == QMessageBox.Save:
+            return self.save()
+        return answer == QMessageBox.Discard
+
+    def ask_save_changes(self) -> QMessageBox.StandardButton:
+        return QMessageBox.question(
+            self.window,
+            "unsaved changes",
+            f"Save the changes to {self.window.project.name} (settings and tests)?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save,
+        )
+
+    # -- applying and capturing ----------------------------------------------
+
     def apply(self, project: Project) -> None:
         """Put a loaded project into the widgets, then open its datapack."""
+        self._applying = True
+        try:
+            self._apply(project)
+        finally:
+            self._applying = False
+        self.mark_saved()
+
+    def _apply(self, project: Project) -> None:
         window = self.window
         window.project = project
         if project.version:
@@ -33,7 +98,6 @@ class ProjectController(Controller):
                 window.output.app(f"cannot read {project.vanilla_jar}: {exc}", level=LogLevel.ERROR)
         if project.datapack and Path(project.datapack).is_dir():
             window.datapacks.load(Path(project.datapack), keep_project=True)
-        self.refresh_title()
 
     def capture(self) -> Project:
         """Read the current window state back into the project."""
@@ -45,6 +109,7 @@ class ProjectController(Controller):
         project.players = window.spin_players.value()
         project.seed = window.spin_seed.value()
         project.speed = window.runs.speed
+        window.environment.commit_edits()  # a cell still being typed in counts
         project.tests = [test.to_dict() for test in window.environment.tests()]
         project.vanilla_jar = str(window.vanilla.jar_path) if window.vanilla else ""
         if window.engine_window is not None:
@@ -56,7 +121,8 @@ class ProjectController(Controller):
     def refresh_title(self) -> None:
         project = self.window.project
         where = f" — {project.path}" if project.path else ""
-        self.window.setWindowTitle(f"Datapack Emulator — {project.title}{where}")
+        star = "*" if self.modified else ""
+        self.window.setWindowTitle(f"Datapack Emulator — {star}{project.title}{where}")
 
     def new(self) -> None:
         name, accepted = QInputDialog.getText(self.window, "new project", "project name:")
@@ -67,37 +133,52 @@ class ProjectController(Controller):
         self.save()
 
     def open(self) -> None:
+        if not self.confirm_close():
+            return
         chosen, _ = QFileDialog.getOpenFileName(
-            self.window, "open project", str(projects_dir()), "Projects (*.json)"
+            self.window, "open project", str(projects_dir()), OPEN_FILTER
         )
-        if not chosen:
-            return
-        try:
-            project = Project.load(Path(chosen))
-        except (OSError, ValueError) as exc:
-            QMessageBox.warning(self.window, "open project", f"cannot read {chosen}:\n{exc}")
-            return
-        self.window.output.app(f"opened project {chosen}")
-        self.apply(project)
+        if chosen:
+            self.open_path(Path(chosen))
 
-    def save(self) -> None:
+    def open_path(self, path: Path) -> bool:
+        try:
+            project = Project.load(path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self.window, "open project", f"cannot read {path}:\n{exc}")
+            return False
+        self.window.output.app(f"opened project {path}")
+        self.apply(project)
+        return True
+
+    def save(self) -> bool:
+        """Ctrl+S: write the project's .dpemu (a legacy .json saves beside itself)."""
         window = self.window
         project = self.capture()
         if project.path is None and project.name == "untitled" and window.datapack is not None:
             project.name = window.datapack.name
-        target = project.save()
-        self.refresh_title()
-        window.output.app(f"saved project {target}")
-        self.status(f"saved {target}")
+        return self._write(project, None)
 
-    def save_as(self) -> None:
-        suggestion = str(self.capture().default_path())
+    def save_as(self) -> bool:
+        project = self.capture()
         chosen, _ = QFileDialog.getSaveFileName(
-            self.window, "save project as", suggestion, "Projects (*.json)"
+            self.window, "save project as", str(project.default_path()), SAVE_FILTER
         )
-        if not chosen:
-            return
-        self.window.project = self.window.project.renamed(Path(chosen).stem)
-        self.capture().save(Path(chosen))
-        self.refresh_title()
-        self.status(f"saved {chosen}")
+        return self.save_to(Path(chosen)) if chosen else False
+
+    def save_to(self, path: Path) -> bool:
+        """Save under a new name (the suffix is always .dpemu)."""
+        name = path.stem if path.suffix in (SUFFIX, LEGACY_SUFFIX) else path.name
+        self.window.project = self.window.project.renamed(name)
+        return self._write(self.capture(), path)
+
+    def _write(self, project: Project, path: Path | None) -> bool:
+        try:
+            target = project.save(path)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self.window, "save project", f"cannot write:\n{exc}")
+            return False
+        self.mark_saved()
+        self.window.output.app(f"saved project {target}")
+        self.status(f"saved {target}")
+        return True
