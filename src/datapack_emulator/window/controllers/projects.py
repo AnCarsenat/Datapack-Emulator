@@ -160,6 +160,7 @@ class ProjectController(Controller):
             return False
         self.window.output.app(f"opened project {path}")
         self.apply(project)
+        self.window.session.remember_project(project.path or path)
         return True
 
     def save(self) -> bool:
@@ -207,6 +208,7 @@ class ProjectController(Controller):
             return False
         self.window.project = project
         self.mark_saved()
+        self.window.session.remember_project(target)
         self.window.output.app(f"saved project {target}")
         self.status(f"saved {target}")
         return True

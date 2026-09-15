@@ -801,13 +801,25 @@ QMenuBar::item:selected {
     <property name="title">
      <string>file</string>
     </property>
+    <widget class="QMenu" name="menurecent_projects">
+     <property name="title">
+      <string>recent projects</string>
+     </property>
+    </widget>
+    <widget class="QMenu" name="menurecent_datapacks">
+     <property name="title">
+      <string>recent datapacks</string>
+     </property>
+    </widget>
     <addaction name="actionnew_project"/>
     <addaction name="actionopen_project"/>
     <addaction name="actionsave_project"/>
     <addaction name="actionsave_project_as"/>
+    <addaction name="menurecent_projects"/>
     <addaction name="separator"/>
     <addaction name="actionimport_datapack"/>
     <addaction name="actionreload_datapack"/>
+    <addaction name="menurecent_datapacks"/>
     <addaction name="separator"/>
     <addaction name="actionload_vanilla"/>
     <addaction name="actiondownload_vanilla"/>
@@ -852,11 +864,14 @@ QMenuBar::item:selected {
     <addaction name="actioninspector"/>
     <addaction name="actionlog"/>
     <addaction name="actionworld"/>
+    <addaction name="actionreset_layout"/>
     <addaction name="separator"/>
     <addaction name="actionenvironment"/>
     <addaction name="actionprofile"/>
     <addaction name="actiongraphview"/>
     <addaction name="actionsource"/>
+    <addaction name="separator"/>
+    <addaction name="actionfocus_console"/>
    </widget>
    <addaction name="menufile"/>
    <addaction name="menuedit"/>
@@ -1431,6 +1446,12 @@ QMenuBar::item:selected {
    <property name="text">
     <string>environment tab</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+1</string>
+   </property>
+   <property name="statusTip">
+    <string>world settings, run settings, tests and notes</string>
+   </property>
   </action>
   <action name="actionrun_all">
    <property name="text">
@@ -1460,6 +1481,12 @@ QMenuBar::item:selected {
    <property name="text">
     <string>explorer</string>
    </property>
+   <property name="shortcut">
+    <string>Alt+1</string>
+   </property>
+   <property name="statusTip">
+    <string>show or hide the explorer dock</string>
+   </property>
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -1470,6 +1497,12 @@ QMenuBar::item:selected {
   <action name="actioninspector">
    <property name="text">
     <string>inspector</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+2</string>
+   </property>
+   <property name="statusTip">
+    <string>show or hide the inspector dock</string>
    </property>
    <property name="checkable">
     <bool>true</bool>
@@ -1482,11 +1515,36 @@ QMenuBar::item:selected {
    <property name="text">
     <string>logs</string>
    </property>
+   <property name="shortcut">
+    <string>Alt+3</string>
+   </property>
+   <property name="statusTip">
+    <string>show or hide the logs dock</string>
+   </property>
    <property name="checkable">
     <bool>true</bool>
    </property>
    <property name="checked">
     <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionreset_layout">
+   <property name="text">
+    <string>reset layout</string>
+   </property>
+   <property name="statusTip">
+    <string>put every dock back where it starts, all of them open</string>
+   </property>
+  </action>
+  <action name="actionfocus_console">
+   <property name="text">
+    <string>command line</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+L</string>
+   </property>
+   <property name="statusTip">
+    <string>jump to the logs dock's command line to run a command in the current world</string>
    </property>
   </action>
   <action name="actionquick_open">
@@ -1526,6 +1584,12 @@ QMenuBar::item:selected {
    <property name="text">
     <string>world</string>
    </property>
+   <property name="shortcut">
+    <string>Alt+4</string>
+   </property>
+   <property name="statusTip">
+    <string>show or hide the world dock: scoreboard grid, entities, storage</string>
+   </property>
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -1537,15 +1601,33 @@ QMenuBar::item:selected {
    <property name="text">
     <string>profiler tab</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+2</string>
+   </property>
+   <property name="statusTip">
+    <string>the profiler report of the last run</string>
+   </property>
   </action>
   <action name="actiongraphview">
    <property name="text">
     <string>call graph tab</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+3</string>
+   </property>
+   <property name="statusTip">
+    <string>the call graph of the emulated version</string>
+   </property>
   </action>
   <action name="actionsource">
    <property name="text">
     <string>source tab</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+4</string>
+   </property>
+   <property name="statusTip">
+    <string>the file opened last, with syntax highlighting</string>
    </property>
   </action>
  </widget>

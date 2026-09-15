@@ -693,3 +693,27 @@ def test_world_dock_edits_scores_and_nbt_through_commands(app, window, monkeypat
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("12", True))
     view.edit_value(storage.child(0))
     assert window.emulator.world.storage["demo:mem"]["n"] == 12
+
+
+def test_session_remembers_recent_items_and_layout(app, window, make_pack, tmp_path):
+    from datapack_emulator.window.controllers.session import state_file
+
+    pack = _hat_like_pack(make_pack)
+    window.datapacks.load(pack)
+    saved = window.projects.capture().save(tmp_path / "recent.dpemu")
+    window.projects._write(window.project, saved)
+    assert window.session.recent_datapacks[0] == str(pack.resolve())
+    assert window.session.recent_projects[0] == str(saved.resolve())
+
+    window.recent_datapacks_menu.aboutToShow.emit()
+    labels = [action.text() for action in window.recent_datapacks_menu.actions()]
+    assert any(label.startswith(pack.name) for label in labels)
+
+    window.dock_world.hide()
+    window.session.save()
+    assert state_file().is_file()
+    window.session.reset_layout()
+    assert window.dock_world.isVisible()
+
+    window.session.focus_console()
+    assert window.dock_logs.isVisible()

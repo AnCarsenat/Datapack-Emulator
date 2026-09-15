@@ -64,6 +64,7 @@ class DatapackController(Controller):
         datapack = Datapack.load(path)
         window.datapack = datapack
         window.output.app(f"loaded {datapack.path}")
+        window.session.remember_datapack(datapack.path)
         for error in datapack.errors:
             window.output.app(error, level=LogLevel.ERROR)
 

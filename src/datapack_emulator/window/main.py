@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
@@ -49,6 +50,7 @@ from datapack_emulator.window.controllers import (
     NotesController,
     ProjectController,
     RunController,
+    SessionController,
     WorldController,
 )
 from datapack_emulator.window.controllers.base import (
@@ -92,6 +94,7 @@ class MainWindow(QMainWindow):
         self.world_view = WorldController(self)
         self.console = ConsoleController(self)
         self.notes = NotesController(self)
+        self.session = SessionController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -102,6 +105,7 @@ class MainWindow(QMainWindow):
             self.world_view,
             self.console,
             self.notes,
+            self.session,
         ):
             controller.connect()
         self._wire_actions()
@@ -110,12 +114,14 @@ class MainWindow(QMainWindow):
         self.runs._set_running(False)
         self.show_all_docks()
         self.datapacks.show(None)
+        self.session.restore()
         self.datapacks.open_default()
         self.projects.mark_saved()  # the default pack is not a change to save
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
         if self.projects.confirm_close():
             self.runs.stop(refresh=False)
+            self.session.save()
             event.accept()
         else:
             event.ignore()
@@ -168,6 +174,8 @@ class MainWindow(QMainWindow):
         self.dock_inspector: QDockWidget = find(QDockWidget, "dockWidgetInspector")
         self.dock_logs: QDockWidget = find(QDockWidget, "dockWidgetLogs")
         self.dock_world: QDockWidget = find(QDockWidget, "dockWidgetWorld")
+        self.recent_projects_menu: QMenu = find(QMenu, "menurecent_projects")
+        self.recent_datapacks_menu: QMenu = find(QMenu, "menurecent_datapacks")
         self.world_label: QLabel = find(QLabel, "labelWorld")
         self.edit_world_filter: QLineEdit = find(QLineEdit, "editWorldFilter")
         self.edit_objective_filter: QLineEdit = find(QLineEdit, "editObjectiveFilter")
@@ -249,6 +257,8 @@ class MainWindow(QMainWindow):
             "actioncopy_path": lambda: navigation.copy_path(navigation.selected_path()),
             "actionanalyze_line": navigation.analyze_cursor_line,
             "actionquick_open": lambda: navigation.search(0),
+            "actionreset_layout": lambda: self.session.reset_layout(),
+            "actionfocus_console": lambda: self.session.focus_console(),
             "actionsearch_pack": lambda: navigation.search(1),
         }
         for name, slot in connections.items():
