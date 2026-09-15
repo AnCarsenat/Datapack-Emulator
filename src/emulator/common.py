@@ -6,8 +6,10 @@ NBT plumbing.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
+import math
 import re
 from collections.abc import Iterable
 from typing import Any
@@ -325,11 +327,28 @@ def parse_value(text: str) -> Any:
         return text.strip('"')
 
 
-def as_int(value: Any) -> int:
+def as_int(value: Any, scale: float | None = None) -> int:
+    """What ``data get`` returns: numbers floored (after scaling), lengths otherwise."""
     if isinstance(value, bool):
-        return int(value)
+        value = int(value)
     if isinstance(value, (int, float)):
-        return int(value)
+        return math.floor(value * (scale if scale is not None else 1))
     if isinstance(value, (list, dict, str)):
         return len(value)
     return 0
+
+
+def merge_compound(target: dict[str, Any], source: dict[str, Any]) -> bool:
+    """Vanilla CompoundTag.merge: nested compounds merge, anything else is replaced.
+
+    Returns whether anything changed.
+    """
+    changed = False
+    for key, value in source.items():
+        current = target.get(key)
+        if isinstance(value, dict) and isinstance(current, dict):
+            changed = merge_compound(current, value) or changed
+        elif current != value:
+            target[key] = copy.deepcopy(value)
+            changed = True
+    return changed

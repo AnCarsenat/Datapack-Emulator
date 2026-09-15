@@ -204,3 +204,52 @@ def test_trailing_condition_runs_its_function_once(make_pack):
     )
     assert emulator.world.scoreboard.get("#calls", "o") == 1
     assert emulator.world.scoreboard.get("#r", "o") == 1
+
+
+def test_data_merges_are_deep(make_pack):
+    emulator = run(
+        make_pack,
+        "data merge storage t:s {a:{c:2},keep:1}\n"
+        "data merge storage t:s {a:{b:1}}\n"
+        "data modify storage t:m obj set value {x:1}\n"
+        "data modify storage t:m obj merge value {y:2}\n",
+    )
+    assert emulator.world.storage["t:s"] == {"a": {"c": 2, "b": 1}, "keep": 1}
+    assert emulator.world.storage["t:m"]["obj"] == {"x": 1, "y": 2}
+
+
+def test_data_modify_set_string_slices_the_source(make_pack):
+    emulator = run(
+        make_pack,
+        'data modify storage t:s name set value "minecraft:stone"\n'
+        "data modify storage t:s short set string storage t:s name 10\n"
+        "data modify storage t:s middle set string storage t:s name 0 9\n",
+    )
+    storage = emulator.world.storage["t:s"]
+    assert storage["short"] == "stone" and storage["middle"] == "minecraft"
+
+
+def test_data_get_scales_and_floors(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "data modify storage t:s v set value 1.5d\n"
+        "data modify storage t:s n set value -1.5d\n"
+        "execute store result score #scaled o run data get storage t:s v 10\n"
+        "execute store result score #neg o run data get storage t:s n\n",
+    )
+    board = emulator.world.scoreboard
+    assert board.get("#scaled", "o") == 15
+    assert board.get("#neg", "o") == -2
+
+
+def test_append_to_a_non_list_fails(make_pack):
+    emulator = run(
+        make_pack,
+        "data modify storage t:s v set value 5\n"
+        "data modify storage t:s v append value 1\n"
+        "data modify storage t:s fresh append value 1\n",
+    )
+    storage = emulator.world.storage["t:s"]
+    assert storage["v"] == 5 and storage["fresh"] == [1]
+    assert game_errors(emulator.output.records) == ["Expected a list: got 5"]

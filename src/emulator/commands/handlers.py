@@ -11,6 +11,7 @@ the world model has no blocks or inventories to change.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from typing import Any
 
@@ -24,6 +25,7 @@ from src.emulator.commands.parser import (
 from src.emulator.commands.result import CommandResult
 from src.emulator.common import (
     as_int,
+    merge_compound,
     nbt_get,
     nbt_remove,
     nbt_set,
@@ -496,19 +498,19 @@ def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
 
     if action == "get":
         path = arguments[3] if len(arguments) > 3 else ""
-        value = nbt_get(stores[0], path)
+        value = nbt_get(stores[0], path) if path else stores[0]
         if value is None:
             context.game_error("commands.data.get.unknown", path)
             return CommandResult.failure()
-        return CommandResult(success=True, value=as_int(value))
+        scale = _float_or_none(arguments[4]) if len(arguments) > 4 else None
+        if scale is not None and not isinstance(value, (int, float)):
+            context.game_error("commands.data.get.invalid", path)
+            return CommandResult.failure()
+        return CommandResult(success=True, value=as_int(value, scale))
 
     if action == "merge" and len(arguments) >= 4:
         payload = parse_snbt(" ".join(arguments[3:]))
-        changed = 0
-        for store in stores:
-            if any(store.get(key) != value for key, value in payload.items()):
-                changed += 1
-            store.update(payload)
+        changed = sum(1 for store in stores if merge_compound(store, payload))
         if not changed:
             context.game_error("commands.data.merge.failed")
             return CommandResult.failure()
@@ -519,31 +521,79 @@ def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
         return CommandResult(success=removed > 0, value=removed)
 
     if action == "modify" and len(arguments) >= 6:
-        path, operation = arguments[3], arguments[4]
-        source = arguments[5:]
-        index = 0
-        if operation == "insert" and source:
-            index = int(source[0]) if source[0].lstrip("-").isdigit() else 0
-            source = source[1:]
-        value: Any = None
-        if source and source[0] == "value":
-            value = parse_value(" ".join(source[1:]))
-        elif source and source[0] == "from":
-            found, value = _data_source(context, source[1:])
-            if not found:
-                return CommandResult.failure()
-        for store in stores:
-            if operation in ("set", "merge"):
-                nbt_set(store, path, value)
-            elif operation in ("append", "prepend", "insert"):
-                existing = nbt_get(store, path)
-                if not isinstance(existing, list):
-                    existing = []
-                    nbt_set(store, path, existing)
-                position = {"append": len(existing), "prepend": 0}.get(operation, index)
-                existing.insert(position, value)
-        return CommandResult(success=True, value=len(stores))
+        return _data_modify(context, stores, arguments[3], arguments[4], arguments[5:])
     return CommandResult.failure()
+
+
+def _data_modify(
+    context: ExecutionContext,
+    stores: list[dict[str, Any]],
+    path: str,
+    operation: str,
+    source: list[str],
+) -> CommandResult:
+    """``data modify <target> <path> <operation> (value|from|string) ...``"""
+    index = 0
+    if operation == "insert" and source:
+        index = int(source[0]) if source[0].lstrip("-").isdigit() else 0
+        source = source[1:]
+    value: Any = None
+    if source and source[0] == "value":
+        value = parse_value(" ".join(source[1:]))
+    elif source and source[0] in ("from", "string"):
+        found, value = _data_source(context, source[1:])
+        if not found:
+            return CommandResult.failure()
+        if source[0] == "string":  # 1.19.4+: set string <source> [path] [start] [end]
+            value = _substring(value, source[4:6] if len(source) > 3 else [])
+    else:
+        return CommandResult.failure()
+
+    changed = 0
+    for store in stores:
+        current = nbt_get(store, path)
+        if operation == "set":
+            nbt_set(store, path, copy.deepcopy(value))
+            changed += 1
+        elif operation == "merge":
+            if not isinstance(value, dict):
+                context.game_error("commands.data.modify.expected_object", value)
+                return CommandResult.failure()
+            if current is None:
+                nbt_set(store, path, copy.deepcopy(value))
+                changed += 1
+            elif not isinstance(current, dict):
+                context.game_error("commands.data.modify.expected_object", current)
+                return CommandResult.failure()
+            elif merge_compound(current, value):
+                changed += 1
+        elif operation in ("append", "prepend", "insert"):
+            if current is None:
+                current = []
+                nbt_set(store, path, current)
+            elif not isinstance(current, list):
+                context.game_error("commands.data.modify.expected_list", current)
+                return CommandResult.failure()
+            position = {"append": len(current), "prepend": 0}.get(operation, index)
+            current.insert(position, copy.deepcopy(value))
+            changed += 1
+    return CommandResult(success=changed > 0, value=changed)
+
+
+def _float_or_none(token: str) -> float | None:
+    try:
+        return float(token)
+    except ValueError:
+        return None
+
+
+def _substring(value: Any, bounds: list[str]) -> str:
+    """``set string``: the source as text, optionally sliced like vanilla
+    (negative indices count from the end)."""
+    text = value if isinstance(value, str) else str(value)
+    start = int(bounds[0]) if bounds else 0
+    end = int(bounds[1]) if len(bounds) > 1 else len(text)
+    return text[start:end]
 
 
 def _data_source(context: ExecutionContext, source: list[str]) -> tuple[bool, Any]:
