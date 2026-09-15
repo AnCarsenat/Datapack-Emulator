@@ -415,3 +415,42 @@ def test_reports_escape_pack_content(make_pack):
     profile = run_result.profiler.to_html(f"Function profiler — {pack.name}")
     for page in (matrix, profile):
         assert "<img" not in page and "&lt;img" in page
+
+
+def test_nbt_filter_sees_tags_and_reports_unmodelled_data(make_pack):
+    from src.emulator.runtime.output import LogSource
+
+    emulator = run(
+        make_pack,
+        "summon minecraft:pig\n"
+        "tag @e[type=minecraft:pig] add b\n"
+        'execute if entity @e[type=minecraft:pig,nbt={Tags:["b"]}] run say tagged pig\n'
+        'execute if entity @a[nbt={SelectedItem:{id:"minecraft:stick"}}] run say holding\n',
+    )
+    assert "[Server] tagged pig" in chat(emulator.output.records)
+    notes = [r.message for r in emulator.output.records if r.source is LogSource.EMULATOR]
+    assert any("SelectedItem" in note for note in notes)
+
+
+def test_star_means_every_tracked_holder(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "scoreboard objectives add p dummy\n"
+        "scoreboard players set #a p 1\n"
+        "scoreboard players set * o 5\n",
+    )
+    assert emulator.world.scoreboard.get("#a", "o") == 5
+
+
+def test_data_get_saturates_and_set_string_needs_a_value(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "data modify storage t:s big set value 1e20d\n"
+        "data modify storage t:s obj set value {A:1}\n"
+        "execute store result score #big o run data get storage t:s big\n"
+        "data modify storage t:s text set string storage t:s obj\n",
+    )
+    assert emulator.world.scoreboard.get("#big", "o") == 2147483647
+    assert "text" not in emulator.world.storage["t:s"]

@@ -88,13 +88,13 @@ def _require_id(
     return False
 
 
-def _holders(context: ExecutionContext, token: str, objective: str | None = None) -> list[str]:
+def _holders(context: ExecutionContext, token: str) -> list[str]:
     """Score holders: entities from a selector, ``*`` for every tracked holder,
     or a fake player name."""
     if token.startswith("@"):
         return [entity.id for entity in _targets(context, token)]
     if token == "*":
-        return context.world.scoreboard.tracked(objective)
+        return context.world.scoreboard.tracked()
     return [token]
 
 
@@ -216,7 +216,7 @@ def cmd_scoreboard(command: Command, context: ExecutionContext) -> CommandResult
         if objective and objective not in board.objectives and action != "reset":
             context.game_error("arguments.objective.notFound", objective)
             return CommandResult.failure()
-        holders = _holders(context, target, objective or None)
+        holders = _holders(context, target)
 
         if action == "set" and len(arguments) >= 5:
             value = int(arguments[4])
@@ -584,6 +584,9 @@ def _data_modify(
         if not found:
             return CommandResult.failure()
         if source[0] == "string":  # 1.19.4+: set string <source> [path] [start] [end]
+            if isinstance(value, (dict, list)):
+                context.game_error("commands.data.modify.expected_value", value)
+                return CommandResult.failure()
             value = _substring(value, source[4:6] if len(source) > 3 else [])
     else:
         return CommandResult.failure()

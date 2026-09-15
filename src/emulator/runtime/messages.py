@@ -80,6 +80,7 @@ VANILLA: dict[str, str] = {
     ),
     "commands.data.modify.expected_list": "Expected a list: got %s",
     "commands.data.modify.expected_object": "Expected an object: got %s",
+    "commands.data.modify.expected_value": "Expected a value: got %s",
     # schedule
     "commands.schedule.created.function": "Scheduled function '%s' in %s tick(s) at gametime %s",
     "commands.schedule.cleared.success": "Removed %s schedule(s) with ID %s",

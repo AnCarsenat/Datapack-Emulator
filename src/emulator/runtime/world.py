@@ -78,13 +78,9 @@ class Scoreboard:
         wrapped = (int(value) + 2**31) % 2**32 - 2**31
         self.scores.setdefault(holder, {})[objective] = wrapped
 
-    def tracked(self, objective: str | None = None) -> list[str]:
-        """Every holder with a score (in ``objective``, if given) — what ``*`` means."""
-        return [
-            holder
-            for holder, values in self.scores.items()
-            if objective is None or objective in values
-        ]
+    def tracked(self) -> list[str]:
+        """Every holder with a score in any objective — what ``*`` means."""
+        return [holder for holder, values in self.scores.items() if values]
 
     def add(self, holder: str, objective: str, delta: int) -> int:
         value = (self.get(holder, objective) or 0) + int(delta)
@@ -206,7 +202,15 @@ class World:
             return False
         for raw in arguments.get("nbt", []):
             negated = raw.startswith("!")
-            if nbt_matches(entity.nbt, parse_snbt(raw.lstrip("!"))) == negated:
+            pattern = parse_snbt(raw.lstrip("!"))
+            data = _entity_data(entity)
+            unmodelled = sorted(key for key in pattern if key not in data)
+            if unmodelled:
+                context.note_once(
+                    f"selector nbt={{...}}: {', '.join(unmodelled)} not stored for "
+                    f"{entity.type} by the emulator, so the check fails"
+                )
+            if nbt_matches(data, pattern) == negated:
                 return False
         for key in selector.arguments:
             if key in UNMODELLED_SELECTOR_ARGUMENTS:
@@ -264,6 +268,15 @@ def _inside_volume(entity: Entity, selector: Selector, origin: list[float]) -> b
         if not low <= entity.position[index] < high + 1:
             return False
     return True
+
+
+def _entity_data(entity: Entity) -> dict[str, Any]:
+    """The NBT a selector sees: what was summoned or set, plus the entity's tags
+    (``tag`` writes into ``Tags`` in vanilla, but they are kept apart here)."""
+    data = dict(entity.nbt)
+    if entity.tags:
+        data["Tags"] = sorted(set(data.get("Tags", [])) | entity.tags)
+    return data
 
 
 def nbt_matches(actual: Any, pattern: Any) -> bool:

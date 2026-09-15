@@ -352,7 +352,8 @@ def as_int(value: Any, scale: float | None = None) -> int:
     if isinstance(value, bool):
         value = int(value)
     if isinstance(value, (int, float)):
-        return math.floor(value * (scale if scale is not None else 1))
+        scaled = math.floor(value * (scale if scale is not None else 1))
+        return max(-(2**31), min(2**31 - 1, scaled))  # Java's (int) cast saturates
     if isinstance(value, (list, dict, str)):
         return len(value)
     return 0
