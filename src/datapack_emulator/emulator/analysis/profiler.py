@@ -27,7 +27,7 @@ class Profiler:
 
     #: recent tick durations kept for display
     TICK_HISTORY = 10_000
-    #: deeper calls (recursion) are added to one "…" node at this depth
+    #: calls deeper than this (recursion) are added up in one "…" node under the last one
     MAX_PATH = 32
     DEEPER = "…"
 
@@ -55,7 +55,7 @@ class Profiler:
     def _path(self) -> CallPath:
         if len(self._stack) <= self.MAX_PATH:
             return tuple(self._stack)
-        return (*self._stack[: self.MAX_PATH - 1], self.DEEPER)
+        return (*self._stack[: self.MAX_PATH], self.DEEPER)
 
     def call(self, function_id: str) -> None:
         self._entry(function_id)["calls"] += 1
@@ -234,9 +234,8 @@ class Profiler:
                 f"({100.0 * one['total_us'] / tick_cost:.1f}%) &middot; "
                 f"self {one['self_us'] / 1000:.4f} ms &middot; {one['calls']:.2f} calls</span>"
             )
-            attribute = (
-                "" if name.startswith(("#", "<", self.DEEPER)) else f' data-function="{name}"'
-            )
+            is_function = not key[-1].startswith(("#", "<", self.DEEPER))
+            attribute = f' data-function="{name}"' if is_function else ""
             inner = self._tree_html(key, tick_cost, index)
             if inner:
                 out.append(f"<details open{attribute}><summary>{label}</summary>")

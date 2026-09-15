@@ -37,7 +37,10 @@ class _Row(QTreeWidgetItem):
 
 def summary(profiler: Profiler) -> str:
     if not profiler.ticks:
-        return "no ticks run yet: run or step the emulator"
+        return (
+            "no ticks run yet — the numbers below are totals (load, typed commands), "
+            "not per tick: run or step the emulator"
+        )
     average = profiler.average_tick_us / 1000
     worst = profiler.worst_tick_us / 1000
     budget = costs.TICK_BUDGET_US / 1000

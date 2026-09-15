@@ -333,5 +333,24 @@ def test_profiler_tree_caps_recursion(make_pack):
         "function test:loop\n",
         extra={"data/test/function/loop.mcfunction": "function test:loop\n"},
     )
-    longest = max(len(path) for path in emulator.profiler.tree)
-    assert longest <= emulator.profiler.MAX_PATH
+    profiler = emulator.profiler
+    longest = max(len(path) for path in profiler.tree)
+    assert longest == profiler.MAX_PATH + 1  # the "…" node under the 32nd call
+    deepest = next(path for path in profiler.tree if len(path) == profiler.MAX_PATH + 1)
+    assert deepest[-1] == profiler.DEEPER
+    parent = deepest[:-1]
+    index = profiler.children_index()
+    children_total = sum(profiler.tree[child]["total_us"] for child in index.get(parent, []))
+    node = profiler.tree[parent]
+    assert abs(node["self_us"] + children_total - node["total_us"]) < 1e-6  # nothing counted twice
+
+
+def test_profiler_report_does_not_link_schedules(make_pack):
+    emulator = run(
+        make_pack,
+        "schedule function test:b 1t\n",
+        ticks=3,
+        extra={"data/test/function/b.mcfunction": "say b\n"},
+    )
+    html = emulator.profiler.to_html("t")
+    assert "&lt;schedule&gt;" in html and 'data-function="&lt;schedule&gt;"' not in html
