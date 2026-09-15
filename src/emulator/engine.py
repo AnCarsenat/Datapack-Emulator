@@ -97,6 +97,9 @@ class VersionRun:
 class TestEngine:
     """Runs a pack across versions and collects one :class:`VersionRun` each."""
 
+    #: not a pytest test class, despite the name
+    __test__ = False
+
     def __init__(
         self,
         datapack: Datapack,
