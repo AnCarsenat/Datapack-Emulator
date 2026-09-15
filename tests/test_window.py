@@ -607,3 +607,36 @@ def test_tests_workflow_buttons_and_records(app, window, make_pack):
     window.console.add_as_test()
     last = env.tests()[-1]
     assert last.command == "scoreboard players add #x t 1" and last.at_tick == 0
+
+
+def test_search_dialog_quick_open_and_text(app, window):
+    from datapack_emulator.settings import PATHS
+    from datapack_emulator.window.search_dialog import MODE_TEXT, SearchDialog
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    view = window.datapack.view_for(window.version)
+    opened = []
+    dialog = SearchDialog(view, lambda path, line: opened.append((path.name, line)), parent=window)
+    dialog.edit.setText("tick")
+    labels = [dialog.results.item(i).text() for i in range(dialog.results.count())]
+    assert "hat:tick  (function)" in labels and "#minecraft:tick  (function tag)" in labels
+    dialog.combo_mode.setCurrentIndex(MODE_TEXT)
+    dialog.edit.setText("hat_saver")
+    assert dialog.results.count() >= 2 and dialog.results.item(0).text().startswith("hat:tick:")
+    dialog.activate_current()
+    assert opened and opened[0][0] == "tick.mcfunction" and opened[0][1] > 0
+
+
+def test_source_view_runs_functions_and_shows_callers(window):
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.navigation.open_function("hat:tick")
+    window.console.run("function hat:tick")
+    assert any(e.type == "minecraft:armor_stand" for e in window.emulator.world.entities)
+    window.navigation.calls_and_callers("hat:tick")
+    rows = {
+        window.inspector.topLevelItem(i).text(0): window.inspector.topLevelItem(i).text(1)
+        for i in range(window.inspector.topLevelItemCount())
+    }
+    assert "#minecraft:tick" in rows["called by"]

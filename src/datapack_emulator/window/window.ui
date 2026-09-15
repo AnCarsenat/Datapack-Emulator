@@ -789,6 +789,9 @@ QMenuBar::item:selected {
     <addaction name="actionopen_folder_in_explorer"/>
     <addaction name="actioncopy_path"/>
     <addaction name="separator"/>
+    <addaction name="actionquick_open"/>
+    <addaction name="actionsearch_pack"/>
+    <addaction name="separator"/>
     <addaction name="actionanalyze_line"/>
    </widget>
    <widget class="QMenu" name="menurun">
@@ -1407,6 +1410,28 @@ QMenuBar::item:selected {
    </property>
    <property name="checked">
     <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionquick_open">
+   <property name="text">
+    <string>quick open…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
+   </property>
+   <property name="statusTip">
+    <string>open a function or function tag of the emulated version by typing part of its id</string>
+   </property>
+  </action>
+  <action name="actionsearch_pack">
+   <property name="text">
+    <string>search in pack…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+F</string>
+   </property>
+   <property name="statusTip">
+    <string>find every function line containing some text, and open it at that line</string>
    </property>
   </action>
   <action name="actionanalyze_line">

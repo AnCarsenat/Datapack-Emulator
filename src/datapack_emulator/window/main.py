@@ -242,6 +242,8 @@ class MainWindow(QMainWindow):
             "actionopen_in_source": lambda: navigation.open_in_source(navigation.selected_path()),
             "actioncopy_path": lambda: navigation.copy_path(navigation.selected_path()),
             "actionanalyze_line": navigation.analyze_cursor_line,
+            "actionquick_open": lambda: navigation.search(0),
+            "actionsearch_pack": lambda: navigation.search(1),
         }
         for name, slot in connections.items():
             action = self._action(name)

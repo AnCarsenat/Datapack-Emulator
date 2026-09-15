@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SearchDialog</class>
+ <widget class="QDialog" name="SearchDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>720</width>
+    <height>460</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Search the pack</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">background-color: rgb(255, 255, 255);
+color: rgb(0, 0, 0);</string>
+  </property>
+  <layout class="QVBoxLayout" name="searchLayout">
+   <item>
+    <layout class="QHBoxLayout" name="searchBarLayout">
+     <item>
+      <widget class="QComboBox" name="comboSearchMode">
+       <property name="toolTip">
+        <string>open: functions, tags and files by name (Ctrl+P) · text: every line of every function containing the text (Ctrl+Shift+F)</string>
+       </property>
+       <item>
+        <property name="text">
+         <string>open</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>text</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="editSearch">
+       <property name="placeholderText">
+        <string>type to search — ↑/↓ to pick, Enter to open</string>
+       </property>
+       <property name="clearButtonEnabled">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QListWidget" name="listResults">
+     <property name="alternatingRowColors">
+      <bool>true</bool>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">QListWidget { font-family: monospace; font-size: 11px; }</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelSearchSummary">
+     <property name="text">
+      <string>searches the version being emulated (base pack and active overlays)</string>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">color: #666;</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
