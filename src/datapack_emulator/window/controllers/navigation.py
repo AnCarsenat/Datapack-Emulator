@@ -17,6 +17,8 @@ class NavigationController(Controller):
     def __init__(self, window):
         super().__init__(window)
         self._highlighter = None
+        #: the file shown in the source view
+        self.source_path: Path | None = None
 
     def connect(self) -> None:
         window = self.window
@@ -24,6 +26,7 @@ class NavigationController(Controller):
         window.graph_widget.node_menu_requested.connect(self.graph_menu)
         window.web_view.setContextMenuPolicy(Qt.CustomContextMenu)
         window.web_view.customContextMenuRequested.connect(self.profiler_menu)
+        window.source_edit.customContextMenuRequested.connect(self.source_menu)
 
     # -- the explorer selection ---------------------------------------------
 
@@ -96,6 +99,7 @@ class NavigationController(Controller):
 
     def show_source(self, path: Path, line: int = 0) -> None:
         window = self.window
+        self.source_path = path
         window.source_label.setText(f"{path}:{line}" if line else str(path))
         self._detach_highlighter()
         if path.suffix.lower() == ".png":
@@ -116,6 +120,57 @@ class NavigationController(Controller):
                 window.source_edit.centerCursor()
         window.tabs.setCurrentWidget(window.tab_page(TAB_SOURCE))
 
+    # -- analysing lines ------------------------------------------------------
+
+    def function_at(self, path: Path | None) -> str | None:
+        """The id of the function a file holds in the version being emulated."""
+        window = self.window
+        if path is None or window.datapack is None:
+            return None
+        view = window.datapack.view_for(window.version)
+        for function_id, function in view.functions.items():
+            if function.path == path:
+                return function_id
+        return None
+
+    def line_text(self, function_id: str, line: int) -> str | None:
+        """The text of line ``line`` (1-based) of a function's file."""
+        path = self.function_path(function_id)
+        if path is None or line <= 0 or not path.is_file():
+            return None
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            return None
+        return lines[line - 1] if line <= len(lines) else None
+
+    def cursor_line(self) -> tuple[str, int]:
+        """The source view's current line and its number (1-based)."""
+        cursor = self.window.source_edit.textCursor()
+        return cursor.block().text(), cursor.blockNumber() + 1
+
+    def analyze(self, text: str, where: str = "") -> None:
+        """Explain one command line in the inspector."""
+        from datapack_emulator.emulator.analysis.explain import explain_line
+
+        window = self.window
+        view = window.datapack.view_for(window.version) if window.datapack else None
+        rows = explain_line(text, window.version, view=view, vanilla=window.vanilla)
+        if where:
+            rows.insert(0, ("from", where))
+        window.datapacks.fill_inspector(rows)
+        window.dock_inspector.show()
+        window.dock_inspector.raise_()
+        self.status(f"analyzed {where or 'the line'} for {window.version.id}")
+
+    def analyze_cursor_line(self) -> None:
+        if self.source_path is None:
+            self.status("open a function in the source view first")
+            return
+        text, number = self.cursor_line()
+        function_id = self.function_at(self.source_path)
+        self.analyze(text, f"{function_id or self.source_path.name}:{number}")
+
     # -- menus ------------------------------------------------------------
 
     def path_menu(self, path: Path | None, title: str = "") -> QMenu:
@@ -133,6 +188,18 @@ class NavigationController(Controller):
         menu.addAction("open in external file manager", lambda: self.open_in_file_manager(path))
         menu.addAction("copy path", lambda: self.copy_path(path))
         return menu
+
+    def source_menu(self, point: QPoint) -> None:
+        """The text editor's own menu, plus actions on the line under the cursor."""
+        edit = self.window.source_edit
+        cursor = edit.cursorForPosition(point)
+        if not edit.textCursor().hasSelection():
+            edit.setTextCursor(cursor)
+        menu = edit.createStandardContextMenu()
+        menu.addSeparator()
+        analyze = menu.addAction("analyze this line", self.analyze_cursor_line)
+        analyze.setEnabled(self.source_path is not None)
+        menu.exec(edit.viewport().mapToGlobal(point))
 
     def explorer_menu(self, point: QPoint) -> None:
         tree = self.window.tree

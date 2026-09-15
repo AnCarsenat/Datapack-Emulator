@@ -151,6 +151,7 @@ OURS: dict[str, str] = {
     "emulator.depth": "Function call depth limit (%s) reached in %s",
     "emulator.chain_length": "maxCommandChainLength (%s) reached, stopping the tick",
     "emulator.unimplemented": "'%s' exists in %s but this emulator does not run it",
+    "emulator.not_modelled": "'%s' runs, but %s",
     "emulator.unavailable": "'%s' does not exist in %s (added in %s)",
     "emulator.removed": "'%s' was removed in %s",
     "emulator.condition": "condition '%s' is not emulated, treated as false",

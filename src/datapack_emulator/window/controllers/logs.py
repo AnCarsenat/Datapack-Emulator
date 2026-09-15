@@ -95,6 +95,27 @@ class LogController(Controller):
             lines.append(f"version: {record.version}")
         self.window.navigation.copy_text("\n".join(lines), what="the record")
 
+    def command_of(self, record: LogRecord) -> str | None:
+        """The command a record is about: typed on the command line, or the
+        line of the function it came from."""
+        if record.source is LogSource.APP and record.message.startswith("> "):
+            return record.message[2:]
+        if record.command:
+            return record.command
+        source = self.source_of(record)
+        if source is not None and source[1]:
+            return self.window.navigation.line_text(*source)
+        return None
+
+    def analyze(self, record: LogRecord) -> None:
+        command = self.command_of(record)
+        if command is None:
+            self.status("this record is not about a command")
+            return
+        source = self.source_of(record)
+        where = f"{source[0]}:{source[1]}" if source else "the log"
+        self.window.navigation.analyze(command, where)
+
     def open_source(self, record: LogRecord) -> None:
         source = self.source_of(record)
         if source is None:
@@ -132,6 +153,8 @@ class LogController(Controller):
             label += f" ({function_id}:{line})" if line else f" ({function_id})"
         open_action = menu.addAction(label, lambda: self.open_source(record))
         open_action.setEnabled(source is not None)
+        analyze = menu.addAction("analyze the command", lambda: self.analyze(record))
+        analyze.setEnabled(self.command_of(record) is not None)
         return menu
 
     def clear(self) -> None:

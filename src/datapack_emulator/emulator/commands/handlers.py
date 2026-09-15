@@ -1411,6 +1411,51 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
 # the table
 # ---------------------------------------------------------------------------
 
+#: commands that run without changing the emulated world, and why — for the
+#: once-per-run emulator note and the line analysis
+UNMODELLED: dict[str, str] = {
+    "advancement": "advancements are not modelled",
+    "attribute": "attributes are not modelled (queries return 1)",
+    "bossbar": "boss bars are not modelled",
+    "clear": "inventories are not modelled (the item id is still checked)",
+    "clone": "blocks are not modelled",
+    "damage": "health and damage are not modelled",
+    "difficulty": "the difficulty is not modelled",
+    "effect": "status effects are not modelled (the effect id is still checked)",
+    "enchant": "items are not modelled",
+    "experience": "experience is not modelled",
+    "fill": "blocks are not modelled",
+    "fillbiome": "biomes are not modelled",
+    "forceload": "chunks are not modelled",
+    "gamemode": "game modes are not modelled (gamemode= in selectors is not checked)",
+    "give": "inventories are not modelled (the item id is still checked)",
+    "item": "items and inventories are not modelled",
+    "loot": "loot tables and inventories are not modelled",
+    "particle": "particles have no effect on the world",
+    "place": "blocks and structures are not modelled",
+    "playsound": "sounds have no effect on the world",
+    "random": "random draws are not modelled: the result is always 1",
+    "recipe": "recipes are not modelled",
+    "replaceitem": "items and inventories are not modelled",
+    "ride": "vehicles and passengers are not modelled",
+    "rotate": "use tp or data to turn entities: rotate is not modelled",
+    "setblock": "blocks are not modelled (the block id is still checked)",
+    "setworldspawn": "the world spawn is not modelled",
+    "spawnpoint": "spawn points are not modelled",
+    "spectate": "spectating is not modelled",
+    "spreadplayers": "spreadplayers does not move entities in the emulator",
+    "stopsound": "sounds have no effect on the world",
+    "team": "teams are not modelled (team= in selectors is not checked)",
+    "tick": "the tick rate is not modelled",
+    "time": "the time of day is not modelled (queries return 1)",
+    "weather": "the weather is not modelled",
+    "worldborder": "the world border is not modelled",
+    "xp": "experience is not modelled",
+}
+#: unmodelled commands that cannot change what a pack's logic sees: no note
+COSMETIC = frozenset({"particle", "playsound", "stopsound"})
+
+
 #: command name -> handler.  Anything vanilla knows but this table does not is
 #: reported as "exists in <version> but is not emulated".
 HANDLERS: dict[str, Handler] = {

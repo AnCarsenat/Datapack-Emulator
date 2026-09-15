@@ -518,3 +518,29 @@ def test_entity_selector_matches_exactly_that_entity(window):
     window.console.run(f"execute as {selector} at @s run tag @s add picked")
     assert [e.tags for e in world.entities if e.type == "minecraft:pig"] == [{"picked"}, set()]
     assert entity_selector(world.players[0]) == "Player1"
+
+
+def test_analyze_line_from_the_source_view_and_a_log_record(window):
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.navigation.open_function("hat:tick", line=2)
+    window.navigation.analyze_cursor_line()
+    rows = {
+        window.inspector.topLevelItem(i).text(0): window.inspector.topLevelItem(i).text(1)
+        for i in range(window.inspector.topLevelItemCount())
+    }
+    assert rows["from"] == "hat:tick:2" and rows["command"].startswith("execute")
+    assert "step 1: as @a" in rows
+
+    window.console.run("scoreboard players get Nobody hat")
+    window.log_view.flush()
+    model = window.log_view.model
+    record = next(
+        model.record_at(r)
+        for r in range(model.rowCount())
+        if model.record_at(r).message.startswith("> ")
+    )
+    assert window.log_view.command_of(record) == "scoreboard players get Nobody hat"
+    window.log_view.analyze(record)
+    assert window.inspector.topLevelItem(1).text(1).startswith("scoreboard")

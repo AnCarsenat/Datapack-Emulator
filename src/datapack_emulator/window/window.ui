@@ -549,6 +549,9 @@ QMenuBar::item:selected {
         </item>
         <item>
          <widget class="QPlainTextEdit" name="sourceEdit">
+          <property name="contextMenuPolicy">
+           <enum>Qt::CustomContextMenu</enum>
+          </property>
           <property name="readOnly">
            <bool>true</bool>
           </property>
@@ -702,6 +705,8 @@ QMenuBar::item:selected {
     <addaction name="actionopen_file_in_editor"/>
     <addaction name="actionopen_folder_in_explorer"/>
     <addaction name="actioncopy_path"/>
+    <addaction name="separator"/>
+    <addaction name="actionanalyze_line"/>
    </widget>
    <widget class="QMenu" name="menurun">
     <property name="title">
@@ -1306,6 +1311,17 @@ QMenuBar::item:selected {
    </property>
    <property name="checked">
     <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionanalyze_line">
+   <property name="text">
+    <string>analyze line at cursor</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+I</string>
+   </property>
+   <property name="statusTip">
+    <string>explain the source view's current line in the inspector: steps, selectors, references, version support, cost</string>
    </property>
   </action>
   <action name="actionworld">

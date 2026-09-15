@@ -17,6 +17,7 @@ from typing import Any
 from datapack_emulator.emulator import costs, versions
 from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.commands import Command, CommandResult, command_set
+from datapack_emulator.emulator.commands.handlers import COSMETIC, UNMODELLED
 from datapack_emulator.emulator.commands.registry import CommandSet
 from datapack_emulator.emulator.common import normalise_id
 from datapack_emulator.emulator.datapack import Datapack, PackView
@@ -272,6 +273,9 @@ class Emulator:
             )
             return CommandResult(success=True, value=1)
 
+        reason = UNMODELLED.get(command.name)
+        if reason and command.name not in COSMETIC:
+            inner.note_key_once("emulator.not_modelled", command.name, reason)
         try:
             return spec.handler(command, inner)
         except Exception as exc:  # a broken line must not kill the emulation
