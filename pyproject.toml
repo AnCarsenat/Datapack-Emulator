@@ -1,0 +1,52 @@
+# Metadata and tool configuration. The project is run from a checkout
+# (imports are `src.…`), so there is no build backend yet: install the
+# dependencies with `pip install -r requirements-dev.txt`.
+
+[project]
+name = "datapack-emulator"
+version = "0.1.0"
+description = "Run, profile and version-test Minecraft datapacks outside the game."
+readme = "readme.md"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Ancar" }]
+keywords = ["minecraft", "datapack", "mcfunction", "emulator", "profiler"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: X11 Applications :: Qt",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Testing",
+]
+# The emulator core (src/emulator) is pure standard library.
+dependencies = []
+
+[project.optional-dependencies]
+gui = ["PySide6>=6.6", "pyqtgraph>=0.13", "numpy>=1.26"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.urls]
+Repository = "https://github.com/AnCarsenat/Datapack-Emulator"
+Issues = "https://github.com/AnCarsenat/Datapack-Emulator/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["src/.venv", "src/emulator/version_data.py"]
+
+[tool.ruff.format]
+# keep hand-aligned examples in the docs as written
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "B008",   # QModelIndex() default arguments are the Qt model idiom
+    "SIM108", # ternaries are not always clearer
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]

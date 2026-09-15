@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1080</width>
-    <height>720</height>
+    <width>1280</width>
+    <height>800</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,7 +15,7 @@
   </property>
   <property name="styleSheet">
    <string notr="true">background-color: rgb(255, 255, 255);
-alternate-background-color: rgb(136, 136, 136);
+alternate-background-color: rgb(246, 246, 246);
 color: rgb(0, 0, 0);
 selection-color: rgb(0, 0, 255);
 selection-background-color: rgb(228, 251, 255);
@@ -35,53 +35,274 @@ QMenuBar::item:selected {
 }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="QTabWidget" name="tabWidget">
-    <property name="geometry">
-     <rect>
-      <x>0</x>
-      <y>-1</y>
-      <width>911</width>
-      <height>491</height>
-     </rect>
+   <layout class="QVBoxLayout" name="centralLayout">
+    <property name="leftMargin">
+     <number>4</number>
     </property>
-    <property name="currentIndex">
-     <number>1</number>
+    <property name="topMargin">
+     <number>4</number>
     </property>
-    <widget class="QWidget" name="profiler">
-     <property name="accessibleName">
-      <string/>
-     </property>
-     <attribute name="title">
-      <string>Tab 1</string>
-     </attribute>
-     <widget class="QWebEngineView" name="webEngineView">
-      <property name="geometry">
-       <rect>
-        <x>-1</x>
-        <y>-1</y>
-        <width>901</width>
-        <height>451</height>
-       </rect>
+    <property name="rightMargin">
+     <number>4</number>
+    </property>
+    <property name="bottomMargin">
+     <number>4</number>
+    </property>
+    <item>
+     <layout class="QHBoxLayout" name="controlLayout">
+      <item>
+       <widget class="QLabel" name="labelPack">
+        <property name="text">
+         <string>no datapack loaded</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-weight: bold;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelVanilla">
+        <property name="text">
+         <string>no client jar</string>
+        </property>
+        <property name="toolTip">
+         <string>base-game registries and messages read from a Minecraft client.jar</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">color: #7f8c8d;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="controlSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelVersion">
+        <property name="text">
+         <string>version</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="comboVersion">
+        <property name="minimumSize">
+         <size>
+          <width>110</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Minecraft version to emulate: decides the command set and which overlays apply</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelPlayers">
+        <property name="text">
+         <string>players</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="spinPlayers">
+        <property name="minimum">
+         <number>0</number>
+        </property>
+        <property name="maximum">
+         <number>200</number>
+        </property>
+        <property name="value">
+         <number>1</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelTicks">
+        <property name="text">
+         <string>ticks</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="spinTicks">
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>72000</number>
+        </property>
+        <property name="value">
+         <number>20</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonRunAll">
+        <property name="text">
+         <string>run all (F5)</string>
+        </property>
+        <property name="toolTip">
+         <string>emulate, refresh the profiler and rebuild the call graph</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonRun">
+        <property name="text">
+         <string>run emulator</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonEngine">
+        <property name="text">
+         <string>engine…</string>
+        </property>
+        <property name="toolTip">
+         <string>open the version test engine</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
       </property>
-      <property name="url">
-       <url>
-        <string>file:///home/ancar/Desktop/informatique/2026-2027/Minecraft/DatapackEmulator/generated/index.html</string>
-       </url>
-      </property>
+      <widget class="QWidget" name="profiler">
+       <attribute name="title">
+        <string>Profiler</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="profilerLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QWebEngineView" name="webEngineView"/>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="graph_view">
+       <attribute name="title">
+        <string>Call graph</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="graphViewLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="labelGraph">
+          <property name="text">
+           <string>function call DAG — load a datapack, then run graphview</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QWidget" name="graphContainer" native="true">
+          <layout class="QVBoxLayout" name="graphContainerLayout">
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="source_view">
+       <attribute name="title">
+        <string>Source</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="sourceLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="labelSource">
+          <property name="text">
+           <string>select a file in the explorer</string>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">font-family: monospace; color: #555;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPlainTextEdit" name="sourceEdit">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+          <property name="lineWrapMode">
+           <enum>QPlainTextEdit::NoWrap</enum>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QPlainTextEdit {
+    font-family: monospace;
+    font-size: 12px;
+    background-color: rgb(253, 253, 253);
+    border: 1px solid rgb(225, 225, 225);
+    selection-background-color: rgb(228, 251, 255);
+}</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
      </widget>
-    </widget>
-    <widget class="QWidget" name="graph_view">
-     <attribute name="title">
-      <string>Tab 2</string>
-     </attribute>
-    </widget>
-   </widget>
+    </item>
+   </layout>
   </widget>
   <widget class="QDockWidget" name="dockWidgetExplorer">
    <property name="minimumSize">
     <size>
-     <width>178</width>
-     <height>490</height>
+     <width>220</width>
+     <height>220</height>
     </size>
    </property>
    <property name="windowTitle">
@@ -91,16 +312,80 @@ QMenuBar::item:selected {
     <number>1</number>
    </attribute>
    <widget class="QWidget" name="dockWidgetContents_2">
-    <widget class="QTreeView" name="treeView">
-     <property name="geometry">
-      <rect>
-       <x>-5</x>
-       <y>-9</y>
-       <width>191</width>
-       <height>461</height>
-      </rect>
+    <layout class="QVBoxLayout" name="explorerLayout">
+     <property name="leftMargin">
+      <number>2</number>
      </property>
-    </widget>
+     <property name="topMargin">
+      <number>2</number>
+     </property>
+     <property name="rightMargin">
+      <number>2</number>
+     </property>
+     <property name="bottomMargin">
+      <number>2</number>
+     </property>
+     <item>
+      <widget class="QTreeView" name="treeView">
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+       <property name="contextMenuPolicy">
+        <enum>Qt::CustomContextMenu</enum>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
+  <widget class="QDockWidget" name="dockWidgetInspector">
+   <property name="minimumSize">
+    <size>
+     <width>260</width>
+     <height>220</height>
+    </size>
+   </property>
+   <property name="windowTitle">
+    <string>inspector</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>2</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContents_3">
+    <layout class="QVBoxLayout" name="inspectorLayout">
+     <property name="leftMargin">
+      <number>2</number>
+     </property>
+     <property name="topMargin">
+      <number>2</number>
+     </property>
+     <property name="rightMargin">
+      <number>2</number>
+     </property>
+     <property name="bottomMargin">
+      <number>2</number>
+     </property>
+     <item>
+      <widget class="QTreeWidget" name="inspectorTree">
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+       <property name="rootIsDecorated">
+        <bool>false</bool>
+       </property>
+       <column>
+        <property name="text">
+         <string>property</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>value</string>
+        </property>
+       </column>
+      </widget>
+     </item>
+    </layout>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -108,7 +393,7 @@ QMenuBar::item:selected {
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1080</width>
+     <width>1280</width>
      <height>30</height>
     </rect>
    </property>
@@ -124,31 +409,49 @@ QMenuBar::item:selected {
     </property>
     <addaction name="actionnew_project"/>
     <addaction name="actionopen_project"/>
+    <addaction name="actionsave_project"/>
+    <addaction name="actionsave_project_as"/>
     <addaction name="separator"/>
     <addaction name="actionimport_datapack"/>
+    <addaction name="actionreload_datapack"/>
     <addaction name="separator"/>
+    <addaction name="actionload_vanilla"/>
+    <addaction name="actiondownload_vanilla"/>
+    <addaction name="separator"/>
+    <addaction name="actionquit"/>
    </widget>
    <widget class="QMenu" name="menuedit">
     <property name="title">
      <string>edit</string>
     </property>
+    <addaction name="actionopen_in_source"/>
+    <addaction name="actionopen_file_in_editor"/>
+    <addaction name="actionopen_folder_in_explorer"/>
+    <addaction name="actioncopy_path"/>
    </widget>
    <widget class="QMenu" name="menurun">
     <property name="title">
      <string>run</string>
     </property>
-    <addaction name="actionrun_profiler"/>
+    <addaction name="actionrun_all"/>
     <addaction name="actionrun_emulator"/>
+    <addaction name="actionrun_profiler"/>
     <addaction name="actionrun_graphview"/>
+    <addaction name="separator"/>
+    <addaction name="actionopen_engine"/>
+    <addaction name="actionexport_dot"/>
    </widget>
    <widget class="QMenu" name="menuview">
     <property name="title">
      <string>view</string>
     </property>
     <addaction name="actionexplorer"/>
-    <addaction name="actiongraphview"/>
-    <addaction name="actionprofile"/>
+    <addaction name="actioninspector"/>
     <addaction name="actionlog"/>
+    <addaction name="separator"/>
+    <addaction name="actionprofile"/>
+    <addaction name="actiongraphview"/>
+    <addaction name="actionsource"/>
    </widget>
    <addaction name="menufile"/>
    <addaction name="menuedit"/>
@@ -159,51 +462,259 @@ QMenuBar::item:selected {
   <widget class="QDockWidget" name="dockWidgetLogs">
    <property name="minimumSize">
     <size>
-     <width>1080</width>
-     <height>176</height>
+     <width>400</width>
+     <height>190</height>
     </size>
    </property>
    <property name="windowTitle">
-    <string>Logs</string>
+    <string>logs</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>8</number>
    </attribute>
-   <widget class="QWidget" name="dockWidgetContents_11"/>
+   <widget class="QWidget" name="dockWidgetContents_11">
+    <layout class="QVBoxLayout" name="logsLayout">
+     <property name="leftMargin">
+      <number>2</number>
+     </property>
+     <property name="topMargin">
+      <number>2</number>
+     </property>
+     <property name="rightMargin">
+      <number>2</number>
+     </property>
+     <property name="bottomMargin">
+      <number>2</number>
+     </property>
+     <item>
+      <layout class="QHBoxLayout" name="logFilterLayout">
+       <item>
+        <widget class="QLabel" name="labelLogSources">
+         <property name="text">
+          <string>show</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="checkApp">
+         <property name="text">
+          <string>app</string>
+         </property>
+         <property name="toolTip">
+          <string>what this program does</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="checkEmulator">
+         <property name="text">
+          <string>emulator</string>
+         </property>
+         <property name="toolTip">
+          <string>what the emulation engine notices</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="checkGame">
+         <property name="text">
+          <string>game</string>
+         </property>
+         <property name="toolTip">
+          <string>what Minecraft itself would print</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="labelLogLevel">
+         <property name="text">
+          <string>level</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="comboLevel">
+         <property name="currentIndex">
+          <number>1</number>
+         </property>
+         <item>
+          <property name="text">
+           <string>debug</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>info</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>warning</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>error</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="editLogFilter">
+         <property name="placeholderText">
+          <string>filter text…</string>
+         </property>
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="labelLogCounts">
+         <property name="text">
+          <string>0 records</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #555;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonClearLogs">
+         <property name="text">
+          <string>clear</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QTableView" name="logTable">
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+       <property name="showGrid">
+        <bool>false</bool>
+       </property>
+       <property name="sortingEnabled">
+        <bool>false</bool>
+       </property>
+       <property name="selectionBehavior">
+        <enum>QAbstractItemView::SelectRows</enum>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QTableView { font-family: monospace; font-size: 11px; }</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
   </widget>
-  <action name="actionrun">
-   <property name="text">
-    <string>run</string>
-   </property>
-  </action>
-  <action name="actionload_datapack">
-   <property name="text">
-    <string>load datapack</string>
-   </property>
-  </action>
   <action name="actionnew_project">
    <property name="text">
     <string>new project</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
   </action>
   <action name="actionopen_project">
    <property name="text">
-    <string>open project</string>
+    <string>open project…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+O</string>
+   </property>
+  </action>
+  <action name="actionsave_project">
+   <property name="text">
+    <string>save project</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="actionsave_project_as">
+   <property name="text">
+    <string>save project as…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+S</string>
    </property>
   </action>
   <action name="actionimport_datapack">
    <property name="text">
     <string>import datapack</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
+   </property>
+  </action>
+  <action name="actionreload_datapack">
+   <property name="text">
+    <string>reload datapack</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+R</string>
+   </property>
+  </action>
+  <action name="actionload_vanilla">
+   <property name="text">
+    <string>load client jar…</string>
+   </property>
+   <property name="toolTip">
+    <string>read base-game registries and messages from a Minecraft client.jar</string>
+   </property>
+  </action>
+  <action name="actiondownload_vanilla">
+   <property name="text">
+    <string>download client jar for this version</string>
+   </property>
+   <property name="toolTip">
+    <string>fetch the jar from Mojang into .cache/vanilla</string>
+   </property>
+  </action>
+  <action name="actionquit">
+   <property name="text">
+    <string>quit</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
   </action>
   <action name="actionopen_file_in_editor">
    <property name="text">
-    <string>open file in editor</string>
+    <string>open in external editor</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Return</string>
    </property>
   </action>
   <action name="actionopen_folder_in_explorer">
    <property name="text">
-    <string>open folder in explorer</string>
+    <string>open in external file manager</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+Return</string>
+   </property>
+  </action>
+  <action name="actionopen_in_source">
+   <property name="text">
+    <string>open in source view</string>
+   </property>
+  </action>
+  <action name="actioncopy_path">
+   <property name="text">
+    <string>copy path</string>
    </property>
   </action>
   <action name="actionrun_profiler">
@@ -220,25 +731,80 @@ QMenuBar::item:selected {
    <property name="text">
     <string>run emulator</string>
    </property>
+   <property name="shortcut">
+    <string>F6</string>
+   </property>
+  </action>
+  <action name="actionrun_all">
+   <property name="text">
+    <string>run all</string>
+   </property>
+   <property name="toolTip">
+    <string>emulate, refresh the profiler and rebuild the call graph</string>
+   </property>
+   <property name="shortcut">
+    <string>F5</string>
+   </property>
+  </action>
+  <action name="actionopen_engine">
+   <property name="text">
+    <string>version engine…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
+   </property>
+  </action>
+  <action name="actionexport_dot">
+   <property name="text">
+    <string>export call graph (.dot)</string>
+   </property>
   </action>
   <action name="actionexplorer">
    <property name="text">
     <string>explorer</string>
    </property>
-  </action>
-  <action name="actiongraphview">
-   <property name="text">
-    <string>graphview</string>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
    </property>
   </action>
-  <action name="actionprofile">
+  <action name="actioninspector">
    <property name="text">
-    <string>profile</string>
+    <string>inspector</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
    </property>
   </action>
   <action name="actionlog">
    <property name="text">
-    <string>log</string>
+    <string>logs</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionprofile">
+   <property name="text">
+    <string>profiler tab</string>
+   </property>
+  </action>
+  <action name="actiongraphview">
+   <property name="text">
+    <string>call graph tab</string>
+   </property>
+  </action>
+  <action name="actionsource">
+   <property name="text">
+    <string>source tab</string>
    </property>
   </action>
  </widget>

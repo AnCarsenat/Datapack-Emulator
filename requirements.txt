@@ -1,0 +1,5 @@
+# Runtime dependencies for the window. The emulator core needs none.
+# Equivalent to: pip install -e ".[gui]"
+PySide6>=6.6
+pyqtgraph>=0.13
+numpy>=1.26
