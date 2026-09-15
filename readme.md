@@ -1,123 +1,126 @@
 # Datapack Emulator
 
-Loads a Minecraft datapack, runs its functions, estimates what each one costs,
-draws the call graph — and does all of that **for any Minecraft version you
-pick**, so you can see what your pack does on 1.16 and on 26.2 side by side.
+Load a Minecraft datapack, run its functions, see what they print, what they
+cost and how they call each other — for **any Minecraft version you pick**,
+checked against the real base game read out of a `client.jar`.
 
-UI: PySide6, laid out entirely in `src/window/*.ui` (edit those in Qt Designer).
-Graphs: pyqtgraph. No NetworkX — the DAG is in `src/emulator/analysis/graph.py`.
+* emulates `#minecraft:load` / `#minecraft:tick`, scoreboards, selectors,
+  `execute`, macros, schedules, storage
+* knows which commands exist in each release from 1.13 to 26.2, and which
+  `pack.mcmeta` overlays apply
+* prints Minecraft's own error messages, kept apart from the app's own logs
+* profiler with per-function estimated cost, call-graph DAG, version matrix
+* reads registries, tags and message strings straight from a `client.jar`
 
-```sh
-# the window, from the project root:
-python ./src/main.py
-
-# headless: one version
-python -m src.emulator run samples/hat --version 1.21.4 --ticks 20 --dot
-
-# headless: a version matrix
-python -m src.emulator matrix samples/hat --from 1.20.4 --to 26.2 --boundaries
-python -m src.emulator versions
-```
-
-## layout
-
-| path | holds |
-| --- | --- |
-| `src/emulator/versions.py` | version ordering, ranges, pack-format lookup, feature queries |
-| `src/emulator/version_data.py` | **generated** table of releases + per-version command availability |
-| `src/emulator/common.py` | tokenising, SNBT, NBT paths, text components, ranges |
-| `src/emulator/costs.py` | the cost model (tune it here) |
-| `src/emulator/resources.py` | `Resource`, `Function`, `Tag`, `Recipe`, … |
-| `src/emulator/namespace.py` | `Namespace`, `DirectoryNode`, singular/plural registry folders |
-| `src/emulator/datapack.py` | `Datapack`, `pack.mcmeta`, `pack.png`, overlays, `PackView` |
-| `src/emulator/commands/parser.py` | `Command`, `Selector`, `execute` chains, macros |
-| `src/emulator/commands/handlers.py` | what each command actually does |
-| `src/emulator/commands/registry.py` | which commands exist in which version |
-| `src/emulator/runtime/world.py` | entities, scoreboard, storage, selector resolution |
-| `src/emulator/runtime/output.py` | the log bus: app / emulator / game records |
-| `src/emulator/runtime/messages.py` | vanilla's own error strings, with their translation keys |
-| `src/emulator/runtime/emulator.py` | load/tick loop, dispatch, macros, schedules |
-| `src/emulator/analysis/` | profiler + HTML report, call graph + DOT |
-| `src/emulator/engine.py` | `TestEngine`: run the pack across versions, compare |
-| `src/window/window.ui`, `src/window/engine.ui` | **every** widget, dock, menu and action |
-| `src/window/main.py`, `src/window/engine_window.py` | wiring only: load the .ui, find widgets by name |
-| `src/window/panels/` | graph canvas, explorer model, inspector rows, log model, highlighters |
-| `tools/generate_version_data.py` | rebuilds `version_data.py` from mcmeta |
-| `generated/` | profiler report, matrix report, exported .dot files |
-
-## versions
-
-Everything version-dependent goes through `src/emulator/versions.py`. The data
-behind it is generated from [misode/mcmeta](https://github.com/misode/mcmeta) —
-the real command tree of every release from 1.14 to 26.2 — so "does this
-version have `/return run`" is answered from Mojang's own Brigadier export, not
-from memory:
+## Quick start
 
 ```sh
-python tools/generate_version_data.py      # run from tools/'s working copy of mcmeta data
+python -m venv src/.venv
+src/.venv/bin/pip install PySide6 pyqtgraph numpy
+
+src/.venv/bin/python ./src/main.py       # the window; press F5
 ```
 
-What the version decides:
+The first pack in `samples/` opens on startup. Headless:
 
-* **which commands exist** — a command the version lacks gets vanilla's
-  `Unknown or incomplete command. See below for error` with the `<--[HERE]`
-  marker, and the emulator notes which release added it
-* **sub-features** — `execute on`, `if items`, `return run`, `schedule clear`,
-  `store storage`, `function … with` (macros) all carry their own since-version
-* **folder names** — `functions/` before 1.21, `function/` from 1.21; files in
-  the wrong spelling are reported as ignored
-* **overlays** — read only from 1.20.2 on
-* **which overlay applies** — by pack format, so the same pack can run a
-  different body per version
+```sh
+src/.venv/bin/python -m src.emulator run    samples/hat --version 1.21.4 --vanilla
+src/.venv/bin/python -m src.emulator matrix samples/hat --declared --boundaries
+```
 
-## overlays
+## Documentation
 
-`pack.mcmeta`'s `overlays.entries` are loaded as separate layers.
-`Datapack.view_for(version)` merges the base pack with the overlays whose
-format range covers that version (later layers win) and hands back a
-`PackView`; the emulator, the explorer and the call graph all read that view,
-so switching the version in the toolbar switches the code that runs.
+Everything is in [`docs/`](docs/README.md):
 
-## output
+* [getting started](docs/getting-started.md) · [the window](docs/ui.md) ·
+  [projects](docs/projects.md) · [command line](docs/cli.md)
+* [versions & overlays](docs/versions.md) ·
+  [base game from client.jar](docs/vanilla-assets.md) ·
+  [what is emulated](docs/emulation.md) · [version engine](docs/engine.md) ·
+  [cost model](docs/costs.md)
+* [architecture](docs/architecture.md)
 
-Three separate sources, filterable in the logs dock and in the engine window:
+Timings are **estimates from a cost model**, not measurements — see
+[costs.md](docs/costs.md).
 
-* **app** — what this program does: loaded a pack, wrote a report, ran a matrix
-* **emulator** — what the engine notices: unimplemented command, macro without
-  an argument, tick over budget, a command that does not exist in this version
-* **game** — what Minecraft itself would print: `say`/`tellraw`/`title` chat,
-  command feedback, and the red errors (`No entity was found`,
-  `Unknown scoreboard objective 'x'`, `Target does not have this tag`, …).
-  Those strings are the real ones from `assets/minecraft/lang/en_us.json`, kept
-  with their translation keys in `src/emulator/runtime/messages.py`.
+## Layout
 
-The **Game chat** tab shows only the game side, as a player would have seen it.
+```
+src/emulator/   model, commands, runtime, analysis, version engine (no Qt)
+src/window/     window.ui + engine.ui, and the code that wires them
+src/project.py  projects/ files
+tools/          generate_version_data.py
+docs/           documentation
+samples/        example datapacks
+projects/       your saved projects      (git-ignored)
+generated/      reports and .dot files   (git-ignored)
+.cache/         downloaded client jars   (git-ignored)
+```
 
-## the emulator
+## Contributing
 
-`Emulator.run(ticks)` runs `#minecraft:load` once and `#minecraft:tick` every
-tick. Emulated with real state: scoreboards, tags, entities and selectors,
-`execute` (as / at / positioned / rotated / in / if / unless / store / run),
-`function` including `$` macros and `with storage|entity`, `schedule`,
-`return`, `data` on entities and storage, `summon`, `kill`, `teleport`,
-`trigger`. Everything else vanilla knows is dispatched and costed but changes
-no state. Recursion is capped by `MAX_DEPTH` and `maxCommandChainLength`.
+Contributions are welcome — bug reports, new command handlers, UI work, docs.
 
-## about the timings
+### Setup
 
-Mojang publishes no per-command execution times, and the community benchmark
-packs only produce relative numbers tied to one machine. So
-`src/emulator/costs.py` is a **model**, not measurements: base cost per command,
-plus per-`execute`-subcommand, per-condition and per-selector costs (an `@e`
-scan scales with the entity count, `type=` discounts it, `nbt=` is charged as an
-NBT read). The magnitudes follow the qualitative guidance in
-[Tutorial:Optimizing a data pack](https://minecraft.wiki/w/Tutorial:Optimizing_a_data_pack)
-and [datapack.wiki](https://datapack.wiki/guide/performance/how-to-measure).
+```sh
+git clone <this repository> && cd DatapackEmulator
+python -m venv src/.venv
+src/.venv/bin/pip install PySide6 pyqtgraph numpy pyflakes
+src/.venv/bin/python ./src/main.py
+```
 
-## the DAG
+Work from the project root: imports are `src.…` absolute.
 
-`CallGraph.from_pack(view)` walks every parsed command and records `function`,
-`schedule`, `execute if function` and tag edges. It gives you `cycles()`
-(recursion — the graph stops being a DAG), `topological_order()`, `depths()`,
-`unreachable()` (dead functions), `missing()` (calls to functions that do not
-exist), `layout()` (layered positions with a barycentre pass) and `to_dot()`.
+### Ground rules
+
+Read [docs/architecture.md](docs/architecture.md) first. In short:
+
+1. **Version logic goes through `src/emulator/versions.py`.** Don't compare
+   version strings or pack formats anywhere else.
+2. **Don't hardcode base-game facts.** Command availability comes from the
+   generated `version_data.py`; ids, tags and message strings come from a
+   client jar via `src/emulator/vanilla.py`.
+3. **Never edit `src/emulator/version_data.py` by hand.** Regenerate it with
+   `python tools/generate_version_data.py` and commit the result.
+4. **All layout lives in `src/window/*.ui`.** Add widgets and actions in Qt
+   Designer, then find them by object name in Python.
+5. **Keep `src/emulator` free of Qt.**
+6. **Keep game output and diagnostics apart.** A handler reports what
+   Minecraft would say with `context.game_error("<real.translation.key>", …)`;
+   what the emulator notices goes through `context.note(…)`.
+7. **Say when something is a model.** Cost numbers and anything approximated
+   must be labelled as such in code and docs.
+
+### Adding a command
+
+1. Write `cmd_<name>(command, context) -> CommandResult` in
+   `src/emulator/commands/handlers.py`; report failures with vanilla
+   translation keys (add missing ones to `runtime/messages.py`).
+2. Register it in `HANDLERS`. Availability per version is already known.
+3. Give it a cost in `src/emulator/costs.py` if the default does not fit.
+4. Document it in [docs/emulation.md](docs/emulation.md).
+
+### Before opening a pull request
+
+```sh
+src/.venv/bin/python -m pyflakes src/*.py src/emulator src/window src/settings tools
+src/.venv/bin/python -m src.emulator --quiet run samples/hat --ticks 5
+src/.venv/bin/python -m src.emulator --quiet matrix samples/hat --declared --boundaries --ticks 3
+```
+
+* lint clean, both commands run without a traceback
+* if you touched the window, launch it and exercise what you changed
+* update `docs/` when behaviour or options change
+* one topic per commit, messages in the `type(scope): summary` form used in
+  the history (`feat`, `fix`, `docs`, `refactor`, `chore`)
+
+### Reporting a bug
+
+Include the Minecraft version selected, whether a client jar was loaded, the
+smallest datapack that reproduces it, and the output of
+`python -m src.emulator run <pack> --version <v> --level debug`.
+
+## License
+
+GPL-3.0 — see [license](license).
