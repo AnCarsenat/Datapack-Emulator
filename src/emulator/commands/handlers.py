@@ -666,6 +666,10 @@ def cmd_execute(command: Command, context: ExecutionContext) -> CommandResult:
         total += result.value
         for subcommand in store_targets:
             _apply_store(subcommand, current, result)
+        if result.returned:
+            # `execute ... run return` leaves the function on the first context
+            # that reaches it; the remaining contexts never run.
+            return CommandResult(success=result.success, value=result.value, returned=True)
     return CommandResult(success=successes > 0, value=total if total else successes)
 
 

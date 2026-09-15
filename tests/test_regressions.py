@@ -24,3 +24,14 @@ def test_self_selector_applies_its_arguments(make_pack):
         "execute as @a if entity @s[type=minecraft:pig] run say wrongly a pig\n",
     )
     assert chat(emulator.output.records) == ["[Player1] matched"]
+
+
+def test_return_inside_execute_stops_the_function(make_pack):
+    emulator = run(make_pack, "execute if entity @a run return 0\nsay after\n")
+    assert "[Server] after" not in chat(emulator.output.records)
+
+
+def test_execute_if_blocks_keeps_its_run_child():
+    command = Command.parse("execute if blocks 0 0 0 1 1 1 5 5 5 all run say hi")
+    assert command.subcommands[0].arguments[-1] == "all"
+    assert command.child is not None and command.child.name == "say"

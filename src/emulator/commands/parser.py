@@ -102,7 +102,7 @@ SUBCOMMAND_ARITY: dict[str, int] = {
 CONDITION_ARITY: dict[str, int] = {
     "biome": 4,
     "block": 4,
-    "blocks": 11,
+    "blocks": 10,  # <start xyz> <end xyz> <destination xyz> all|masked
     "dimension": 1,
     "entity": 1,
     "function": 1,
