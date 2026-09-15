@@ -10,24 +10,33 @@ did; from 1.19.3 load comes first.
 
 Deliberately small: no blocks, chunks, inventories or physics.
 
-* **entities** — type, UUID, name, position, rotation, dimension, tags, NBT.
-  `players` fake players (`Player1`, …) exist from the start.
-* **scoreboard** — objectives with criteria, scores per holder (entities by
-  name/UUID, fake players by name), enabled triggers. Scores are 32-bit and
-  wrap like Java ints; `*` means every holder with any score.
+* **entities** — type, UUID, name, position, rotation, dimension, tags and
+  the rest of their NBT. `Entity.data()` is what `data get entity` shows:
+  `Pos`, `Motion`, `Rotation`, `UUID` (int array), the common defaults
+  (`Air`, `Fire`, `OnGround`, …), `id`, `Tags`, player fields for players
+  (`Health`, `foodLevel`, `Inventory` — always empty, …) and everything that
+  was summoned, merged, modified or stored onto the entity. Writing `Pos`,
+  `Rotation` or `Tags` moves, turns or retags the entity; the UUID never
+  changes. `players` fake players (`Player1`, …) exist from the start;
+  killed players stay (they respawn), other killed entities are removed.
+* **scoreboard** — objectives with criteria, display names and display
+  slots, scores per holder (players by name, other entities by UUID, fake
+  players by name), enabled triggers, and the last 64 changes of every score
+  with their game time (the world dock's grid shows them). Scores are 32-bit
+  and wrap like Java ints; `*` means every holder with any score.
 * **storage** — `data … storage` compounds.
 * **gamerules** — stored; `maxCommandChainLength` is enforced.
 
 Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
 `#tags`), `tag` (including `tag=` and `!`), `name`, `scores`, `distance`,
 `x`/`y`/`z` (move the origin), `dx`/`dy`/`dz` (box from the origin),
-`nbt` (vanilla subset matching against summoned/set NBT plus the entity's
-tags), `limit`/`c`, `sort`. `@s[...]` applies its arguments to the executor.
+`nbt` (vanilla subset matching against `Entity.data()`), `limit`/`c`, `sort`.
+`@s[...]` applies its arguments to the executor.
 
 Not evaluated: `team`, `gamemode`, `level`, `advancements`, `predicate`,
 `x_rotation`, `y_rotation` match every entity, and `nbt` keys the emulator does
-not store (player `Health`, `SelectedItem`, `Inventory`, …) fail the check.
-Both produce one emulator note per run.
+not store (`SelectedItem`, armour and hand items, …) fail the check. Both
+produce one emulator note per run.
 
 ## Commands
 
@@ -40,11 +49,12 @@ Both produce one emulator note per run.
 | `function` | tags, `$` macros with inline SNBT or `with storage|entity [path]` |
 | `schedule` | `function <id> <time> [append|replace]`, `clear`; `t`/`s`/`d` units |
 | `return` | value, `run`, `fail` |
-| `scoreboard` | objectives add/remove; players set/add/remove/reset/get/enable/operation (`/=` and `%=` by zero fail), `display` accepted |
-| `trigger` | `set`/`add`, enablement and objective type checked |
+| `scoreboard` | every subcommand: objectives `list`, `add` (criteria checked, display name), `remove`, `setdisplay`, `modify`; players `list`, `get`, `set`, `add`, `remove`, `reset`, `enable` (trigger objectives only), `operation`, `display`. Vanilla feedback and errors: read-only criteria (`health`, `food`, …), invalid integers, negative `add` amounts, one holder for `get`. `operation` combines every target with every source, creates missing scores as 0, and divides with `floorDiv` / `floorMod` (`/=` and `%=` by zero fail) |
+| `trigger` | only a player can trigger ("A player is required to run this command here" otherwise); the objective must be a trigger and enabled for that player, and using it locks it again until the next `scoreboard players enable`; `set`/`add` with vanilla feedback |
 | `tag` | add/remove |
-| `summon`, `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z>` |
-| `data` | on entities and storage: `get [scale]` (floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced) |
+| `summon` | keeps the NBT (a `UUID` is used, duplicates refused); the position argument wins over `Pos` |
+| `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z> [<yaw> <pitch>]` |
+| `data` | on one entity or a storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data") |
 | `say me msg tell w tellraw title teammsg` | logged as `game` output; text components in JSON or (1.21.5+) SNBT, with `score` and `selector` parts resolved per recipient |
 | `gamerule` | |
 
@@ -78,17 +88,22 @@ vanilla string — the translation key.
 | --- | --- | --- |
 | `app` | this program | loaded a pack, wrote a report, which overlays are active |
 | `emulator` | the emulation engine | command not in this version, unemulated condition, tick over budget, folders this version ignores |
-| `game` | Minecraft | chat (`[Player1] hello`), command feedback (debug level), red errors |
+| `game` | Minecraft | chat (`[Player1] hello`), command feedback, red errors |
 
 Game strings are vanilla's own (`runtime/messages.py`, or the loaded jar's
 `en_us.json`): `No entity was found`, `Unknown scoreboard objective 'x'`,
 `Target does not have this tag`, `Can't get value of hat for Player1; none is
 set`, `Missing argument name to function test:helper`, …
 
+Command feedback (`Set [kills] for Player1 to 3`) is shown to whoever typed
+the command, so a typed or test command logs it at `info`; functions send
+their feedback nowhere, so there it is `debug`.
+
 A command that fails **inside a function** fails silently in vanilla: nobody
 sees an error and the function carries on with its next line. Those failures
 are recorded at `debug` level (set the logs dock to *debug* to see them, shown
-in a muted red); only commands run directly — typed, or run by a test — produce
+in a muted red); only commands run directly — typed in the logs dock's
+command line, or run by a test — produce
 `error`-level game records. Every failure record has `failure=True` either way.
 
 Limitations of the emulator itself (a condition or `data … block` it cannot

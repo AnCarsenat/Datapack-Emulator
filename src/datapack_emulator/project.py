@@ -96,6 +96,8 @@ class Project:
     speed: str = "fast"
     #: CommandTest.to_dict() entries from the environment tab
     tests: list[dict[str, Any]] = field(default_factory=list)
+    #: run the tests during run all / run emulator / step
+    tests_during_runs: bool = False
     #: where it was saved; ``None`` until the first save
     path: Path | None = None
 
@@ -113,6 +115,7 @@ class Project:
             "vanilla_jar": self.vanilla_jar,
             "speed": self.speed,
             "tests": [dict(test) for test in self.tests],
+            "tests_during_runs": self.tests_during_runs,
         }
 
     @classmethod
@@ -128,6 +131,7 @@ class Project:
             vanilla_jar=str(data.get("vanilla_jar", "")),
             speed=str(data.get("speed", "fast")),
             tests=[dict(test) for test in data.get("tests", []) if isinstance(test, dict)],
+            tests_during_runs=bool(data.get("tests_during_runs", False)),
             path=path,
         )
 

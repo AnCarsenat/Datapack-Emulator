@@ -32,7 +32,7 @@ src/datapack_emulator/     the package (standard src layout)
       profiler.py          Profiler and its HTML report
       graph.py             CallGraph
     engine.py              TestEngine, VersionRun
-    testing.py             CommandTest, run_tests (the environment tab's tests)
+    testing.py             CommandTest, TestSchedule, run_tests (the environment tab's tests)
     __main__.py            CLI: datapack-emulator-cli
   window/                  Qt only
     window.ui, engine.ui,  ALL layout
@@ -44,12 +44,15 @@ src/datapack_emulator/     the package (standard src layout)
       jars.py              client jars: auto-pick, load by hand, download
       runs.py              timer-driven runs (finite, endless, step, stop), profiler, graph
       environment.py       the environment tab's tests table
+      world.py             world dock: scoreboard grid, entities, storage
+      console.py           the logs dock's command line
       navigation.py        source view, external editor / file manager, right-click menus
       logs.py              logs dock: buffered model, filters, record menu
     engine_window.py       EngineWindow
     download_dialog.py     DownloadDialog + DownloadWorker (QThread)
     panels/                models and widgets the controllers fill
-      uiloader.py, explorer.py, inspector.py, logs.py, results.py, graph.py, highlight.py
+      uiloader.py, explorer.py, inspector.py, logs.py, results.py, graph.py, highlight.py,
+      world.py
 tools/generate_version_data.py
 tests/       pytest suite; conftest.py builds synthetic packs and client jars
 .github/     CI workflow, Dependabot, issue and pull request templates

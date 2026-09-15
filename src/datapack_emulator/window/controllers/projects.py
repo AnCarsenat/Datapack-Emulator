@@ -28,6 +28,7 @@ class ProjectController(Controller):
             spin.valueChanged.connect(self.mark_modified)
         for combo in (window.combo_speed, window.combo_version):
             combo.currentIndexChanged.connect(self.mark_modified)
+        window.check_tests_during_runs.toggled.connect(self.mark_modified)
         table = window.table_tests
         table.itemChanged.connect(self._on_test_item_changed)
         table.model().rowsInserted.connect(self.mark_modified)
@@ -90,6 +91,7 @@ class ProjectController(Controller):
         window.spin_players.setValue(project.players)
         window.spin_seed.setValue(project.seed)
         window.runs.speed = project.speed
+        window.check_tests_during_runs.setChecked(project.tests_during_runs)
         window.environment.set_tests([CommandTest.from_dict(test) for test in project.tests])
         if project.vanilla_jar and Path(project.vanilla_jar).is_file():
             try:
@@ -113,6 +115,7 @@ class ProjectController(Controller):
         project.players = window.spin_players.value()
         project.seed = window.spin_seed.value()
         project.speed = window.runs.speed
+        project.tests_during_runs = window.check_tests_during_runs.isChecked()
         window.environment.commit_edits()  # a cell still being typed in counts
         project.tests = [test.to_dict() for test in window.environment.tests()]
         project.vanilla_jar = str(window.vanilla.jar_path) if window.vanilla else ""

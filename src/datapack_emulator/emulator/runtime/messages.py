@@ -33,6 +33,9 @@ VANILLA: dict[str, str] = {
     "argument.entity.options.unknown": "Unknown option '%s'",
     "argument.entity.selector.unknown": "Unknown selector type '%s'",
     "argument.scoreHolder.empty": "No relevant score holders could be found",
+    "argument.entity.toomany": (
+        "Only one entity is allowed, but the provided selector allows more than one"
+    ),
     "arguments.objective.notFound": "Unknown scoreboard objective '%s'",
     "arguments.operation.div0": "Cannot divide by zero",
     # registry ids (checked against the client jar, when one is loaded)
@@ -53,14 +56,54 @@ VANILLA: dict[str, str] = {
     # scoreboard
     "commands.scoreboard.objectives.add.success": "Created new objective %s",
     "commands.scoreboard.objectives.add.duplicate": "An objective already exists by that name",
+    "commands.scoreboard.objectives.remove.success": "Removed objective %s",
+    "commands.scoreboard.objectives.list.empty": "There are no objectives",
+    "commands.scoreboard.objectives.list.success": "There are %s objective(s): %s",
+    "commands.scoreboard.objectives.display.set": "Set display slot %s to show objective %s",
+    "commands.scoreboard.objectives.display.cleared": "Cleared any objectives in display slot %s",
+    "commands.scoreboard.objectives.display.alreadySet": (
+        "Nothing changed. That display slot is already showing that objective"
+    ),
+    "commands.scoreboard.objectives.display.alreadyEmpty": (
+        "Nothing changed. That display slot is already empty"
+    ),
+    "commands.scoreboard.objectives.modify.displayname": "Changed the display name of %s to %s",
+    "commands.scoreboard.objectives.modify.rendertype": "Changed the render type of objective %s",
     "commands.scoreboard.players.get.null": "Can't get value of %s for %s; none is set",
     "commands.scoreboard.players.get.success": "%s has %s %s",
     "commands.scoreboard.players.set.success.single": "Set %s for %s to %s",
+    "commands.scoreboard.players.set.success.multiple": "Set %s for %s entities to %s",
     "commands.scoreboard.players.add.success.single": "Added %s to %s for %s (now %s)",
+    "commands.scoreboard.players.add.success.multiple": "Added %s to %s for %s entities",
+    "commands.scoreboard.players.remove.success.single": "Removed %s from %s for %s (now %s)",
+    "commands.scoreboard.players.remove.success.multiple": "Removed %s from %s for %s entities",
+    "commands.scoreboard.players.reset.all.single": "Reset scores for %s",
+    "commands.scoreboard.players.reset.all.multiple": "Reset scores for %s entities",
+    "commands.scoreboard.players.reset.specific.single": "Reset %s for %s",
+    "commands.scoreboard.players.reset.specific.multiple": "Reset %s for %s entities",
+    "commands.scoreboard.players.enable.success.single": "Enabled trigger %s for %s",
+    "commands.scoreboard.players.enable.success.multiple": "Enabled trigger %s for %s entities",
+    "commands.scoreboard.players.enable.failed": "Nothing changed. That trigger is already enabled",
+    "commands.scoreboard.players.enable.invalid": "Enable only works on trigger-objectives",
+    "commands.scoreboard.players.operation.success.single": "Set %s for %s to %s",
+    "commands.scoreboard.players.operation.success.multiple": "Updated %s for %s entities",
+    "commands.scoreboard.players.list.empty": "There are no tracked entities",
+    "commands.scoreboard.players.list.success": "There are %s tracked entity/entities: %s",
+    "commands.scoreboard.players.list.entity.empty": "%s has no scores to show",
+    "commands.scoreboard.players.list.entity.success": "%s has %s score(s):",
+    "commands.scoreboard.players.list.entity.entry": "%s: %s",
+    "arguments.objective.readonly": "Scoreboard objective '%s' is read-only",
+    "arguments.operation.invalid": "Invalid operation",
+    "argument.criteria.invalid": "Unknown criterion '%s'",
+    "argument.integer.low": "Integer must not be less than %s, found %s",
     # trigger
     "commands.trigger.failed.unprimed": "You cannot trigger this objective yet",
     "commands.trigger.failed.invalid": "You can only trigger objectives that are 'trigger' type",
     "commands.trigger.simple.success": "Triggered %s",
+    "commands.trigger.set.success": "Triggered %s (set value to %s)",
+    "commands.trigger.add.success": "Triggered %s (added %s to value)",
+    "permissions.requires.player": "A player is required to run this command here",
+    "parsing.int.invalid": "Invalid integer '%s'",
     # tags
     "commands.tag.add.success.single": "Added tag '%s' to %s",
     "commands.tag.add.failed": "Target either already has the tag or has too many tags",
@@ -69,11 +112,21 @@ VANILLA: dict[str, str] = {
     # entities
     "commands.summon.success": "Summoned new %s",
     "commands.summon.failed": "Unable to summon entity",
+    "commands.summon.failed.uuid": "Unable to summon entity due to duplicate UUIDs",
     "commands.kill.success.single": "Killed %s",
     "commands.kill.success.multiple": "Killed %s entities",
     "commands.teleport.success.entity.single": "Teleported %s to %s",
     # data
     "commands.data.get.unknown": "Can't get %s; tag doesn't exist",
+    "arguments.nbtpath.nothing_found": "Found no elements matching %s",
+    "argument.scoreboardDisplaySlot.invalid": "Unknown display slot '%s'",
+    "commands.data.entity.query": "%s has the following entity data: %s",
+    "commands.data.entity.get": "%s on %s after scale factor of %s is %s",
+    "commands.data.entity.modified": "Modified entity data of %s",
+    "commands.data.entity.invalid": "Unable to modify player data",
+    "commands.data.storage.query": "Storage %s has the following contents: %s",
+    "commands.data.storage.get": "%s in storage %s after scale factor of %s is %s",
+    "commands.data.storage.modified": "Modified storage %s",
     "commands.data.get.invalid": "Can't get %s; only numeric tags are allowed",
     "commands.data.merge.failed": (
         "Nothing changed. The specified properties already have these values"

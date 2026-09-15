@@ -40,6 +40,7 @@ from datapack_emulator.emulator.vanilla import VanillaAssets, default_library
 from datapack_emulator.project import Project
 from datapack_emulator.settings import EMULATION, WINDOW
 from datapack_emulator.window.controllers import (
+    ConsoleController,
     DatapackController,
     EnvironmentController,
     JarController,
@@ -47,6 +48,7 @@ from datapack_emulator.window.controllers import (
     NavigationController,
     ProjectController,
     RunController,
+    WorldController,
 )
 from datapack_emulator.window.controllers.base import (
     TAB_ENVIRONMENT,
@@ -86,6 +88,8 @@ class MainWindow(QMainWindow):
         self.runs = RunController(self)
         self.navigation = NavigationController(self)
         self.environment = EnvironmentController(self)
+        self.world_view = WorldController(self)
+        self.console = ConsoleController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -93,6 +97,8 @@ class MainWindow(QMainWindow):
             self.runs,
             self.navigation,
             self.environment,
+            self.world_view,
+            self.console,
         ):
             controller.connect()
         self._wire_actions()
@@ -133,6 +139,7 @@ class MainWindow(QMainWindow):
         self.spin_players: QSpinBox = find(QSpinBox, "spinPlayers")
         self.spin_seed: QSpinBox = find(QSpinBox, "spinSeed")
         self.combo_speed: QComboBox = find(QComboBox, "comboSpeed")
+        self.check_tests_during_runs: QCheckBox = find(QCheckBox, "checkTestsDuringRuns")
         self.tick_label: QLabel = find(QLabel, "labelTickStatus")
         self.table_tests: QTableWidget = find(QTableWidget, "tableTests")
         self.add_test_button: QPushButton = find(QPushButton, "buttonAddTest")
@@ -151,6 +158,15 @@ class MainWindow(QMainWindow):
         self.dock_explorer: QDockWidget = find(QDockWidget, "dockWidgetExplorer")
         self.dock_inspector: QDockWidget = find(QDockWidget, "dockWidgetInspector")
         self.dock_logs: QDockWidget = find(QDockWidget, "dockWidgetLogs")
+        self.dock_world: QDockWidget = find(QDockWidget, "dockWidgetWorld")
+        self.world_label: QLabel = find(QLabel, "labelWorld")
+        self.edit_world_filter: QLineEdit = find(QLineEdit, "editWorldFilter")
+        self.tabs_world: QTabWidget = find(QTabWidget, "tabsWorld")
+        self.table_scores: QTableWidget = find(QTableWidget, "tableScores")
+        self.tree_entities: QTreeWidget = find(QTreeWidget, "treeEntities")
+        self.tree_storage: QTreeWidget = find(QTreeWidget, "treeStorage")
+        self.edit_console: QLineEdit = find(QLineEdit, "editConsole")
+        self.console_run_button: QPushButton = find(QPushButton, "buttonConsoleRun")
 
         # the only widget the .ui cannot describe: the pyqtgraph canvas
         container: QWidget = find(QWidget, "graphContainer")
@@ -226,6 +242,7 @@ class MainWindow(QMainWindow):
             ("actionexplorer", self.dock_explorer),
             ("actioninspector", self.dock_inspector),
             ("actionlog", self.dock_logs),
+            ("actionworld", self.dock_world),
         ):
             action = self._action(name)
             if action is None or dock is None:
@@ -258,14 +275,14 @@ class MainWindow(QMainWindow):
 
     @property
     def docks(self) -> tuple[QDockWidget, ...]:
-        return (self.dock_explorer, self.dock_inspector, self.dock_logs)
+        return (self.dock_explorer, self.dock_inspector, self.dock_logs, self.dock_world)
 
     def show_all_docks(self) -> None:
         """Every panel open and docked — the default layout."""
         for dock in self.docks:
             dock.setFloating(False)
             dock.show()
-        for name in ("actionexplorer", "actioninspector", "actionlog"):
+        for name in ("actionexplorer", "actioninspector", "actionlog", "actionworld"):
             action = self._action(name)
             if action is not None:
                 action.setChecked(True)

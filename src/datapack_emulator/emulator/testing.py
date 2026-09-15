@@ -1,8 +1,14 @@
 """Command tests: run a command in a fresh world and check what happened.
 
-A test is what you would type into a server console after the pack loaded —
-``function hat:tick``, ``say hi``, ``scoreboard players get #global counter`` —
-optionally at a later tick and with text the game output must contain.
+A test is what you would type into a server console once the pack is running —
+``function hat:tick``, ``say hi``, ``execute as Player1 run trigger hat``,
+``scoreboard players get #global counter`` — optionally at a later tick and
+with text the game output must contain.
+
+Timing follows the game: commands typed by a player or on the console are
+handled *after* the functions of the server tick they arrive in. A test at tick
+N therefore runs in server tick N once ``#minecraft:tick`` (and, in tick 0,
+``#minecraft:load``) has run — tick functions have run N + 1 times.
 
 It passes when:
 
@@ -38,7 +44,7 @@ def _as_int(value: Any, default: int = 0) -> int:
 @dataclass
 class CommandTest:
     command: str
-    #: 0 runs right after #minecraft:load; N runs after N ticks
+    #: the server tick it runs in, after that tick's functions (0 = the first tick)
     at_tick: int = 0
     #: text the game output of the command must contain ("" = no check)
     expect: str = ""
@@ -78,39 +84,93 @@ def run_tests(
     seed: int = 0,
     vanilla: VanillaAssets | None = None,
     output: OutputBus | None = None,
+    emulator: Emulator | None = None,
 ) -> list[TestResult]:
-    """Run ``tests`` in one fresh world, in tick order."""
-    bus = output or OutputBus()
-    emulator = Emulator(
-        datapack,
-        version=versions.parse(version),
-        players=players,
-        output=bus,
-        seed=seed,
-        vanilla=vanilla,
-    )
-    emulator.run(ticks=0)  # start the server and run #minecraft:load
+    """Run ``tests`` in one fresh world, in tick order.
 
-    results: dict[int, TestResult] = {}
-    ordered = sorted(
-        ((index, test) for index, test in enumerate(tests) if test.enabled),
-        key=lambda pair: pair[1].at_tick,
-    )
-    for index, test in ordered:
-        while emulator.world.tick < test.at_tick:
-            emulator.run_tick()
-        results[index] = run_one(emulator, test)
-    return [results[index] for index in sorted(results)]
+    Pass ``emulator`` (a new one, not yet started) to keep the world afterwards;
+    the other settings are then taken from it.
+    """
+    if emulator is None:
+        emulator = Emulator(
+            datapack,
+            version=versions.parse(version),
+            players=players,
+            output=output or OutputBus(),
+            seed=seed,
+            vanilla=vanilla,
+        )
+    emulator.start()
+    schedule = TestSchedule(tests)
+    while not schedule.done:
+        tick = emulator.world.tick
+        emulator.run_tick()
+        schedule.after_tick(emulator, tick)
+    return schedule.results()
+
+
+class TestSchedule:
+    """Tests waiting for their tick while something else drives the ticks — a
+    run in the window, a version in the engine, or :func:`run_tests`.
+
+    Call :meth:`after_tick` once server tick N has run (the game time was N when
+    it started): every enabled test at tick N, or an earlier one not run yet,
+    runs then.
+    """
+
+    #: not a pytest test class, despite the name
+    __test__ = False
+
+    def __init__(self, tests: list[CommandTest]):
+        self.tests = list(tests)
+        self._pending = sorted(
+            ((index, test) for index, test in enumerate(self.tests) if test.enabled),
+            key=lambda pair: pair[1].at_tick,
+        )
+        self._results: dict[int, TestResult] = {}
+
+    @property
+    def done(self) -> bool:
+        return not self._pending
+
+    def after_tick(self, emulator: Emulator, tick: int) -> list[int]:
+        """Run the tests due after server tick ``tick``; their indexes in ``tests``."""
+        ran = []
+        while self._pending and self._pending[0][1].at_tick <= tick:
+            index, test = self._pending.pop(0)
+            self._results[index] = run_one(emulator, test)
+            ran.append(index)
+        return ran
+
+    def by_index(self, include_unreached: bool = True) -> dict[int, TestResult]:
+        """Results keyed by position in ``tests``; tests the run never reached
+        fail with "not reached" (disabled tests have no entry)."""
+        results = dict(self._results)
+        if include_unreached:
+            for index, test in self._pending:
+                results[index] = TestResult(
+                    test, False, f"not reached: the run ended before tick {test.at_tick}"
+                )
+        return results
+
+    def results(self) -> list[TestResult]:
+        """One result per enabled test, in input order."""
+        results = self.by_index()
+        return [results[index] for index in sorted(results)]
 
 
 def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
     command = Command.parse(test.command, source="<test>")
     if command is None:
         return TestResult(test, False, "nothing to run: the command is empty or a comment")
-    first = len(emulator.output.records)
-    emulator.output.app(f"test: {test.command} (tick {emulator.world.tick})")
-    result = emulator.run_command(command, emulator.root_context())
-    records = emulator.output.records[first:]
+    # listen rather than slice the bus: a full bus drops its oldest records
+    records: list[LogRecord] = []
+    emulator.output.listeners.append(records.append)
+    try:
+        emulator.output.app(f"test: {test.command} (tick {test.at_tick})")
+        result = emulator.run_command(command, emulator.root_context())
+    finally:
+        emulator.output.listeners.remove(records.append)
 
     visible = [r for r in records if r.failure and r.level >= LogLevel.ERROR]
     crashed = [r for r in records if r.source is LogSource.EMULATOR and r.level >= LogLevel.ERROR]

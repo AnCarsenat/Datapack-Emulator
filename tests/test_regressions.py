@@ -621,3 +621,79 @@ def test_hand_edited_tests_do_not_break_the_project():
     assert CommandTest.from_dict({"command": "say hi", "at_tick": "soon"}).at_tick == 0
     assert CommandTest.from_dict({"command": "say hi", "at_tick": None}).at_tick == 0
     assert CommandTest.from_dict({"at_tick": "5"}).at_tick == 5
+
+
+# -- world-state review ----------------------------------------------------------
+
+
+def _world(make_pack, body: str, ticks: int = 1, **kwargs):
+    from datapack_emulator.emulator import Datapack, Emulator
+
+    pack = Datapack.load(make_pack({"data/test/function/tick.mcfunction": body}))
+    emulator = Emulator(pack, version="1.21.4", **kwargs)
+    emulator.run(ticks=ticks)
+    return emulator
+
+
+def test_tests_keep_their_records_when_the_bus_rotates(make_pack):
+    from datapack_emulator.emulator import Datapack, Emulator
+    from datapack_emulator.emulator.runtime.output import OutputBus
+    from datapack_emulator.emulator.testing import CommandTest, run_tests
+
+    pack = Datapack.load(make_pack({"data/test/function/tick.mcfunction": "say tick\n"}))
+    emulator = Emulator(pack, version="1.21.4", output=OutputBus(limit=40))
+    tests = [CommandTest("say hello", at_tick=t, expect="hello") for t in range(50, 70)]
+    results = run_tests(pack, tests, emulator=emulator)
+    assert all(result.passed for result in results), [r.reason for r in results if not r.passed]
+
+
+def test_data_modify_reaches_into_lists(make_pack):
+    emulator = _world(
+        make_pack,
+        "summon minecraft:marker 1 2 3\n"
+        "data modify entity @e[type=minecraft:marker,limit=1] Pos[0] set value 5.0d\n"
+        "data modify storage t:m list set value [1, 2, 3]\n"
+        "data modify storage t:m list[-1] set value 9\n"
+        "data remove storage t:m list[0]\n"
+        "data modify storage t:m list[7] set value 1\n"
+        "execute store result entity @e[type=minecraft:marker,limit=1] Pos[1] double 1 run "
+        "data get storage t:m list[1]\n",
+    )
+    (marker,) = [entity for entity in emulator.world.entities if not entity.is_player]
+    assert marker.position == [5.0, 9.0, 3.0]
+    assert emulator.world.storage["t:m"]["list"] == [2, 9]
+    errors = [r.message for r in emulator.output.records if r.failure]
+    assert "Found no elements matching list[7]" in errors
+
+
+def test_tags_survive_removing_the_tags_key_and_rotation_is_normalised(make_pack):
+    emulator = _world(
+        make_pack,
+        'summon minecraft:marker 1 2 3 {Tags:["a"]}\n'
+        "data remove entity @e[type=minecraft:marker,limit=1] Tags\n"
+        "tp @e[type=minecraft:marker] ~ ~ ~ 400 100\n",
+    )
+    (marker,) = [entity for entity in emulator.world.entities if not entity.is_player]
+    assert marker.tags == {"a"}
+    assert marker.rotation == [40.0, 90.0]
+
+
+def test_reset_locks_a_trigger_and_killed_entities_lose_their_scores(make_pack):
+    from datapack_emulator.emulator.commands.parser import Command
+
+    emulator = _world(
+        make_pack,
+        "scoreboard objectives add t trigger\n"
+        "scoreboard players enable Player1 t\n"
+        "scoreboard players reset Player1 t\n"
+        "summon minecraft:marker\n"
+        "scoreboard players set @e[type=minecraft:marker] t 3\n"
+        "kill @e[type=minecraft:marker]\n"
+        "scoreboard objectives setdisplay bogus t\n",
+    )
+    board = emulator.world.scoreboard
+    trigger = Command.parse("execute as Player1 run trigger t")
+    assert not emulator.run_command(trigger, emulator.root_context()).success
+    assert board.tracked() == [] and not any(key[0] != "Player1" for key in board.history)
+    errors = [r.message for r in emulator.output.records if r.failure]
+    assert "Unknown display slot 'bogus'" in errors

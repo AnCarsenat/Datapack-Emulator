@@ -33,8 +33,9 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
   "vanilla_jar": "",
   "speed": "fast",
   "tests": [
-    {"command": "function hat:tick", "at_tick": 5, "expect": "", "enabled": true}
+    {"command": "execute as Player1 run trigger hat", "at_tick": 5, "expect": "", "enabled": true}
   ],
+  "tests_during_runs": false,
   "archive_format": 1
 }
 ```
@@ -46,7 +47,8 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 | `version` | the version selected in the environment tab |
 | `ticks`, `players`, `seed` | run settings |
 | `speed` | `fast` or `realtime` |
-| `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `enabled` (results are not saved) |
+| `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `enabled` — results are not saved |
+| `tests_during_runs` | whether runs and steps also run the tests |
 | `engine_versions` | versions ticked in the engine window when the project was saved; ticked again when it is opened |
 | `vanilla_jar` | the client jar in use when the project was saved (picked by hand or found automatically); loaded again on open if the file still exists. Jars are never put in the archive |
 | `archive_format` | layout version; archives from a newer emulator are refused rather than misread |

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from datapack_emulator.emulator.commands.parser import (
@@ -35,9 +36,15 @@ from datapack_emulator.emulator.common import (
     normalise_tagged_id,
     parse_snbt,
     parse_value,
+    to_snbt,
 )
 from datapack_emulator.emulator.runtime.context import ExecutionContext
-from datapack_emulator.emulator.runtime.world import Entity
+from datapack_emulator.emulator.runtime.world import (
+    Entity,
+    ints_to_uuid,
+    normalise_rotation,
+    wrap_int,
+)
 
 Handler = Callable[[Command, ExecutionContext], CommandResult]
 
@@ -183,129 +190,471 @@ def cmd_title(command: Command, context: ExecutionContext) -> CommandResult:
 # ---------------------------------------------------------------------------
 
 
+#: criteria accepted by `scoreboard objectives add` besides the prefixed families
+CRITERIA = frozenset(
+    {
+        "dummy",
+        "trigger",
+        "deathCount",
+        "playerKillCount",
+        "totalKillCount",
+        "health",
+        "xp",
+        "level",
+        "food",
+        "air",
+        "armor",
+    }
+)
+#: display slots, with both spellings of the one under player names
+_COLOURS = [
+    "black",
+    "dark_blue",
+    "dark_green",
+    "dark_aqua",
+    "dark_red",
+    "dark_purple",
+    "gold",
+    "gray",
+    "dark_gray",
+    "blue",
+    "green",
+    "aqua",
+    "red",
+    "light_purple",
+    "yellow",
+    "white",
+]
+DISPLAY_SLOTS = frozenset(
+    {"list", "sidebar", "belowName", "below_name", *(f"sidebar.team.{c}" for c in _COLOURS)}
+)
+#: teamkill.<colour>, killedByTeam.<colour>, minecraft.<stat type>:<id>
+CRITERIA_PREFIXES = ("teamkill.", "killedByTeam.", "minecraft.")
+
+
 def cmd_scoreboard(command: Command, context: ExecutionContext) -> CommandResult:
-    board = context.world.scoreboard
     arguments = command.arguments
-    if not arguments:
+    if len(arguments) < 2:
+        context.game_error("command.unknown.command")
         return CommandResult.failure()
+    group, action, rest = arguments[0], arguments[1], arguments[2:]
+    handler = (_SCOREBOARD_OBJECTIVES if group == "objectives" else _SCOREBOARD_PLAYERS).get(action)
+    if group not in ("objectives", "players") or handler is None:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    return handler(rest, context)
 
-    if arguments[0] == "objectives":
-        action = arguments[1] if len(arguments) > 1 else ""
-        if action == "add" and len(arguments) >= 3:
-            criterion = arguments[3] if len(arguments) > 3 else "dummy"
-            if board.add_objective(arguments[2], criterion):
-                context.feedback("commands.scoreboard.objectives.add.success", arguments[2])
-                return CommandResult(success=True, value=1)
-            context.game_error("commands.scoreboard.objectives.add.duplicate")
+
+# -- scoreboard objectives ----------------------------------------------------
+
+
+def _objectives_list(rest: list[str], context: ExecutionContext) -> CommandResult:
+    names = list(context.world.scoreboard.objectives)
+    if not names:
+        context.feedback("commands.scoreboard.objectives.list.empty")
+    else:
+        listed = ", ".join(f"[{name}]" for name in names)
+        context.feedback("commands.scoreboard.objectives.list.success", len(names), listed)
+    return CommandResult(success=True, value=len(names))
+
+
+def _objectives_add(rest: list[str], context: ExecutionContext) -> CommandResult:
+    if len(rest) < 2:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    name, criterion = rest[0], rest[1]
+    if criterion not in CRITERIA and not criterion.startswith(CRITERIA_PREFIXES):
+        context.game_error("argument.criteria.invalid", criterion)
+        return CommandResult.failure()
+    board = context.world.scoreboard
+    display = _display_text(" ".join(rest[2:])) if len(rest) > 2 else name
+    if not board.add_objective(name, criterion, display):
+        context.game_error("commands.scoreboard.objectives.add.duplicate")
+        return CommandResult.failure()
+    context.feedback("commands.scoreboard.objectives.add.success", f"[{display}]")
+    return CommandResult(success=True, value=len(board.objectives))
+
+
+def _objectives_remove(rest: list[str], context: ExecutionContext) -> CommandResult:
+    name = _objective(context, rest[0] if rest else "")
+    if name is None:
+        return CommandResult.failure()
+    board = context.world.scoreboard
+    display = board.display_names.get(name, name)
+    board.remove_objective(name)
+    context.feedback("commands.scoreboard.objectives.remove.success", f"[{display}]")
+    return CommandResult(success=True, value=len(board.objectives))
+
+
+def _objectives_setdisplay(rest: list[str], context: ExecutionContext) -> CommandResult:
+    if not rest:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    slot, board = rest[0], context.world.scoreboard
+    if slot not in DISPLAY_SLOTS:
+        context.game_error("argument.scoreboardDisplaySlot.invalid", slot)
+        return CommandResult.failure()
+    if len(rest) < 2:
+        if board.display_slots.pop(slot, None) is None:
+            context.game_error("commands.scoreboard.objectives.display.alreadyEmpty")
             return CommandResult.failure()
-        if action == "remove" and len(arguments) >= 3:
-            return CommandResult(success=board.remove_objective(arguments[2]), value=1)
-        return CommandResult(success=True, value=len(board.objectives))
+        context.feedback("commands.scoreboard.objectives.display.cleared", slot)
+        return CommandResult(success=True, value=0)
+    name = _objective(context, rest[1])
+    if name is None:
+        return CommandResult.failure()
+    if board.display_slots.get(slot) == name:
+        context.game_error("commands.scoreboard.objectives.display.alreadySet")
+        return CommandResult.failure()
+    board.display_slots[slot] = name
+    context.feedback("commands.scoreboard.objectives.display.set", slot, _shown(context, name))
+    return CommandResult(success=True, value=0)
 
-    if arguments[0] == "players":
-        action = arguments[1] if len(arguments) > 1 else ""
-        if action == "display":
-            # players display (name|numberformat) <targets> <objective> [...]
-            objective = arguments[4] if len(arguments) > 4 else ""
-            if objective not in board.objectives:
-                context.game_error("arguments.objective.notFound", objective)
-                return CommandResult.failure()
-            return CommandResult(success=True, value=1)  # display is not modelled
-        target = arguments[2] if len(arguments) > 2 else "@s"
-        objective = arguments[3] if len(arguments) > 3 else ""
-        if objective and objective not in board.objectives and action != "reset":
-            context.game_error("arguments.objective.notFound", objective)
+
+def _objectives_modify(rest: list[str], context: ExecutionContext) -> CommandResult:
+    name = _objective(context, rest[0] if rest else "")
+    if name is None or len(rest) < 2:
+        return CommandResult.failure()
+    board = context.world.scoreboard
+    if rest[1] == "displayname" and len(rest) > 2:
+        board.display_names[name] = _display_text(" ".join(rest[2:]))
+        context.feedback(
+            "commands.scoreboard.objectives.modify.displayname", name, board.display_names[name]
+        )
+    elif rest[1] == "rendertype":
+        context.feedback("commands.scoreboard.objectives.modify.rendertype", name)
+    # displayautoupdate and numberformat only change how the sidebar looks
+    return CommandResult(success=True, value=0)
+
+
+_SCOREBOARD_OBJECTIVES = {
+    "list": _objectives_list,
+    "add": _objectives_add,
+    "remove": _objectives_remove,
+    "setdisplay": _objectives_setdisplay,
+    "modify": _objectives_modify,
+}
+
+
+def _display_text(payload: str) -> str:
+    component = load_text_component(payload)
+    return payload.strip('"') if component is None else flatten_text_component(component)
+
+
+def _objective(context: ExecutionContext, name: str, writable: bool = False) -> str | None:
+    """An existing objective (and, for writes, one commands may change)."""
+    board = context.world.scoreboard
+    if name not in board.objectives:
+        context.game_error("arguments.objective.notFound", name)
+        return None
+    if writable and board.is_read_only(name):
+        context.game_error("arguments.objective.readonly", name)
+        return None
+    return name
+
+
+def _score_holders(context: ExecutionContext, token: str) -> list[str]:
+    """Holders for a command that needs at least one; reports vanilla's error."""
+    if token.startswith("@"):
+        return [entity.id for entity in _require_targets(context, token)]
+    holders = _holders(context, token)
+    if not holders:
+        context.game_error("argument.scoreHolder.empty")
+    return holders
+
+
+def _shown(context: ExecutionContext, objective: str) -> str:
+    """An objective as feedback shows it: its display name in brackets."""
+    return f"[{context.world.scoreboard.display_names.get(objective, objective)}]"
+
+
+def _holder_name(context: ExecutionContext, holder: str) -> str:
+    """How feedback names a holder: an entity's display name, else the holder itself."""
+    for entity in context.world.entities:
+        if entity.id == holder:
+            return entity.display
+    return holder
+
+
+# -- scoreboard players ---------------------------------------------------------
+
+
+def _players_list(rest: list[str], context: ExecutionContext) -> CommandResult:
+    board = context.world.scoreboard
+    if not rest:
+        holders = board.tracked()
+        if not holders:
+            context.feedback("commands.scoreboard.players.list.empty")
+        else:
+            names = ", ".join(_holder_name(context, holder) for holder in holders)
+            context.feedback("commands.scoreboard.players.list.success", len(holders), names)
+        return CommandResult(success=True, value=len(holders))
+    holders = _score_holders(context, rest[0])
+    if not holders:
+        return CommandResult.failure()
+    holder = holders[0]
+    scores = board.scores.get(holder, {})
+    name = _holder_name(context, holder)
+    if not scores:
+        context.feedback("commands.scoreboard.players.list.entity.empty", name)
+    else:
+        context.feedback("commands.scoreboard.players.list.entity.success", name, len(scores))
+        for objective, value in scores.items():
+            display = board.display_names.get(objective, objective)
+            context.feedback("commands.scoreboard.players.list.entity.entry", f"[{display}]", value)
+    return CommandResult(success=True, value=len(scores))
+
+
+def _players_get(rest: list[str], context: ExecutionContext) -> CommandResult:
+    if len(rest) < 2:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    holders = _score_holders(context, rest[0])
+    objective = _objective(context, rest[1]) if holders else None
+    if not holders or objective is None:
+        return CommandResult.failure()
+    if len(holders) > 1:
+        context.game_error("argument.entity.toomany")
+        return CommandResult.failure()
+    value = context.world.scoreboard.get(holders[0], objective)
+    name = _holder_name(context, holders[0])
+    if value is None:
+        context.game_error("commands.scoreboard.players.get.null", objective, name)
+        return CommandResult.failure()
+    context.feedback(
+        "commands.scoreboard.players.get.success", name, value, _shown(context, objective)
+    )
+    return CommandResult(success=True, value=value)
+
+
+def _players_set(rest: list[str], context: ExecutionContext) -> CommandResult:
+    if len(rest) < 3:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    value = _integer(context, rest[2])
+    holders = _score_holders(context, rest[0]) if value is not None else []
+    objective = _objective(context, rest[1], writable=True) if holders else None
+    if value is None or objective is None:
+        return CommandResult.failure()
+    board = context.world.scoreboard
+    for holder in holders:
+        board.set(holder, objective, value)
+    if len(holders) == 1:
+        name = _holder_name(context, holders[0])
+        context.feedback(
+            "commands.scoreboard.players.set.success.single",
+            _shown(context, objective),
+            name,
+            value,
+        )
+    else:
+        context.feedback(
+            "commands.scoreboard.players.set.success.multiple",
+            _shown(context, objective),
+            len(holders),
+            value,
+        )
+    return CommandResult(success=True, value=wrap_int(value * len(holders)))
+
+
+def _players_add_or_remove(sign: int) -> Callable[[list[str], ExecutionContext], CommandResult]:
+    verb = "add" if sign > 0 else "remove"
+
+    def handler(rest: list[str], context: ExecutionContext) -> CommandResult:
+        if len(rest) < 3:
+            context.game_error("command.unknown.command")
             return CommandResult.failure()
-        holders = _holders(context, target)
-
-        if action == "set" and len(arguments) >= 5:
-            value = int(arguments[4])
-            for holder in holders:
-                board.set(holder, objective, value)
-            if holders:
-                context.feedback(
-                    "commands.scoreboard.players.set.success.single",
-                    objective,
-                    holders[0],
-                    value,
-                )
-            return CommandResult(success=bool(holders), value=value)
-
-        if action in ("add", "remove") and len(arguments) >= 5:
-            delta = int(arguments[4]) * (1 if action == "add" else -1)
-            last = 0
-            for holder in holders:
-                last = board.add(holder, objective, delta)
-            if holders:
-                context.feedback(
-                    "commands.scoreboard.players.add.success.single",
-                    abs(delta),
-                    objective,
-                    holders[0],
-                    last,
-                )
-            return CommandResult(success=bool(holders), value=last)
-
-        if action == "reset":
-            for holder in holders:
-                board.reset(holder, objective or None)
-            return CommandResult(success=bool(holders), value=len(holders))
-
-        if action == "get":
-            if not holders:
-                context.game_error("argument.scoreHolder.empty")
-                return CommandResult.failure()
-            value = board.get(holders[0], objective)
-            if value is None:
-                context.game_error("commands.scoreboard.players.get.null", objective, holders[0])
-                return CommandResult.failure()
+        amount = _integer(context, rest[2])
+        if amount is not None and amount < 0:
+            context.game_error("argument.integer.low", 0, amount)
+            return CommandResult.failure()
+        holders = _score_holders(context, rest[0]) if amount is not None else []
+        objective = _objective(context, rest[1], writable=True) if holders else None
+        if amount is None or objective is None:
+            return CommandResult.failure()
+        board = context.world.scoreboard
+        total = 0
+        for holder in holders:
+            total += board.add(holder, objective, sign * amount)
+        if len(holders) == 1:
             context.feedback(
-                "commands.scoreboard.players.get.success", holders[0], value, objective
+                f"commands.scoreboard.players.{verb}.success.single",
+                amount,
+                _shown(context, objective),
+                _holder_name(context, holders[0]),
+                board.get(holders[0], objective),
             )
-            return CommandResult(success=True, value=value)
+        else:
+            context.feedback(
+                f"commands.scoreboard.players.{verb}.success.multiple",
+                amount,
+                _shown(context, objective),
+                len(holders),
+            )
+        return CommandResult(success=True, value=wrap_int(total))
 
-        if action == "enable":
-            for holder in holders:
-                board.enabled_triggers.add((holder, objective))
-                if board.get(holder, objective) is None:
-                    board.set(holder, objective, 0)
-            return CommandResult(success=bool(holders), value=len(holders))
-
-        if action == "operation" and len(arguments) >= 7:
-            operator = arguments[4]
-            sources = _holders(context, arguments[5])
-            source_objective = arguments[6]
-            last = 0
-            for holder in holders:
-                left = board.get(holder, objective) or 0
-                right = (board.get(sources[0], source_objective) or 0) if sources else 0
-                if operator in ("/=", "%=") and right == 0:
-                    context.game_error("arguments.operation.div0")
-                    return CommandResult.failure()
-                if operator == "><" and sources:
-                    board.set(sources[0], source_objective, left)  # swap both sides
-                last = _apply_operation(operator, left, right)
-                board.set(holder, objective, last)
-            return CommandResult(success=bool(holders), value=last)
-    return CommandResult.failure()
+    return handler
 
 
-def _apply_operation(operator: str, left: int, right: int) -> int:
-    return {
-        "=": right,
-        "+=": left + right,
-        "-=": left - right,
-        "*=": left * right,
-        "/=": left // right if right else left,
-        "%=": left % right if right else left,
-        "<": min(left, right),
-        ">": max(left, right),
-        "><": right,  # swap: the caller writes the other side
-    }.get(operator, left)
+def _players_reset(rest: list[str], context: ExecutionContext) -> CommandResult:
+    if not rest:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    holders = _score_holders(context, rest[0])
+    objective = None
+    if holders and len(rest) > 1:
+        objective = _objective(context, rest[1])
+        if objective is None:
+            return CommandResult.failure()
+    if not holders:
+        return CommandResult.failure()
+    board = context.world.scoreboard
+    for holder in holders:
+        board.reset(holder, objective)
+    single = len(holders) == 1
+    target = _holder_name(context, holders[0]) if single else len(holders)
+    amount = "single" if single else "multiple"
+    if objective is None:
+        context.feedback(f"commands.scoreboard.players.reset.all.{amount}", target)
+    else:
+        context.feedback(
+            f"commands.scoreboard.players.reset.specific.{amount}",
+            _shown(context, objective),
+            target,
+        )
+    return CommandResult(success=True, value=len(holders))
+
+
+def _players_enable(rest: list[str], context: ExecutionContext) -> CommandResult:
+    if len(rest) < 2:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    holders = _score_holders(context, rest[0])
+    objective = _objective(context, rest[1]) if holders else None
+    if objective is None:
+        return CommandResult.failure()
+    board = context.world.scoreboard
+    if board.objectives[objective] != "trigger":
+        context.game_error("commands.scoreboard.players.enable.invalid")
+        return CommandResult.failure()
+    changed = 0
+    for holder in holders:
+        if (holder, objective) not in board.enabled_triggers:
+            board.enabled_triggers.add((holder, objective))
+            changed += 1
+        if board.get(holder, objective) is None:
+            board.set(holder, objective, 0)
+    if not changed:
+        context.game_error("commands.scoreboard.players.enable.failed")
+        return CommandResult.failure()
+    if len(holders) == 1:
+        context.feedback(
+            "commands.scoreboard.players.enable.success.single",
+            _shown(context, objective),
+            _holder_name(context, holders[0]),
+        )
+    else:
+        context.feedback(
+            "commands.scoreboard.players.enable.success.multiple",
+            _shown(context, objective),
+            len(holders),
+        )
+    return CommandResult(success=True, value=changed)
+
+
+def _players_operation(rest: list[str], context: ExecutionContext) -> CommandResult:
+    """``operation <targets> <objective> <op> <sources> <objective>``: every target
+    is combined with every source in turn; missing scores count as 0 and are created."""
+    if len(rest) < 5:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    target_token, target_objective, operator, source_token, source_objective = rest[:5]
+    if operator not in _OPERATIONS:
+        context.game_error("arguments.operation.invalid")
+        return CommandResult.failure()
+    targets = _score_holders(context, target_token)
+    objective = _objective(context, target_objective, writable=True) if targets else None
+    sources = _score_holders(context, source_token) if objective is not None else []
+    other = _objective(context, source_objective) if sources else None
+    if other is None or objective is None:
+        return CommandResult.failure()
+    board = context.world.scoreboard
+    total = 0
+    for target in targets:
+        for source in sources:
+            # vanilla reads both through getOrCreatePlayerScore: missing ones become 0
+            for holder, name in ((target, objective), (source, other)):
+                if board.get(holder, name) is None:
+                    board.set(holder, name, 0)
+            left = board.get(target, objective) or 0
+            right = board.get(source, other) or 0
+            if operator in ("/=", "%=") and right == 0:
+                context.game_error("arguments.operation.div0")
+                return CommandResult.failure()
+            if operator == "><":
+                board.set(source, other, left)
+            board.set(target, objective, _OPERATIONS[operator](left, right))
+        total += board.get(target, objective) or 0
+    if len(targets) == 1:
+        context.feedback(
+            "commands.scoreboard.players.operation.success.single",
+            _shown(context, objective),
+            _holder_name(context, targets[0]),
+            board.get(targets[0], objective),
+        )
+    else:
+        context.feedback(
+            "commands.scoreboard.players.operation.success.multiple",
+            _shown(context, objective),
+            len(targets),
+        )
+    return CommandResult(success=True, value=wrap_int(total))
+
+
+#: Java int arithmetic: floorDiv / floorMod, which Python's // and % already are
+_OPERATIONS: dict[str, Callable[[int, int], int]] = {
+    "=": lambda left, right: right,
+    "+=": lambda left, right: left + right,
+    "-=": lambda left, right: left - right,
+    "*=": lambda left, right: left * right,
+    "/=": lambda left, right: left // right,
+    "%=": lambda left, right: left % right,
+    "<": min,
+    ">": max,
+    "><": lambda left, right: right,  # the source gets the old target value
+}
+
+
+def _players_display(rest: list[str], context: ExecutionContext) -> CommandResult:
+    """``players display name|numberformat <targets> <objective> ...``: sidebar looks only."""
+    if len(rest) < 3:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    holders = _score_holders(context, rest[1])
+    if not holders or _objective(context, rest[2]) is None:
+        return CommandResult.failure()
+    return CommandResult(success=True, value=len(holders))
+
+
+_SCOREBOARD_PLAYERS = {
+    "list": _players_list,
+    "get": _players_get,
+    "set": _players_set,
+    "add": _players_add_or_remove(1),
+    "remove": _players_add_or_remove(-1),
+    "reset": _players_reset,
+    "enable": _players_enable,
+    "operation": _players_operation,
+    "display": _players_display,
+}
 
 
 def cmd_trigger(command: Command, context: ExecutionContext) -> CommandResult:
-    if not command.arguments or context.executor is None:
+    if not command.arguments:
+        return CommandResult.failure()
+    if context.executor is None or not context.executor.is_player:
+        # the console, a command block or a non-player entity cannot trigger
+        context.game_error("permissions.requires.player")
         return CommandResult.failure()
     objective = command.arguments[0]
     board = context.world.scoreboard
@@ -320,15 +669,34 @@ def cmd_trigger(command: Command, context: ExecutionContext) -> CommandResult:
     if (holder, objective) not in board.enabled_triggers:
         context.game_error("commands.trigger.failed.unprimed")
         return CommandResult.failure()
-    if len(command.arguments) >= 3 and command.arguments[1] == "set":
-        board.set(holder, objective, int(command.arguments[2]))
-    elif len(command.arguments) >= 3 and command.arguments[1] == "add":
-        board.add(holder, objective, int(command.arguments[2]))
+    mode = command.arguments[1] if len(command.arguments) >= 3 else ""
+    amount = _integer(context, command.arguments[2]) if mode in ("set", "add") else 1
+    if amount is None:
+        return CommandResult.failure()
+    board.enabled_triggers.discard((holder, objective))
+    if mode == "set":
+        board.set(holder, objective, amount)
+        context.feedback("commands.trigger.set.success", _shown(context, objective), amount)
+    elif mode == "add":
+        board.add(holder, objective, amount)
+        context.feedback("commands.trigger.add.success", _shown(context, objective), amount)
     else:
         board.add(holder, objective, 1)
-    board.enabled_triggers.discard((holder, objective))
-    context.feedback("commands.trigger.simple.success", objective)
+        context.feedback("commands.trigger.simple.success", _shown(context, objective))
     return CommandResult(success=True, value=1)
+
+
+def _integer(context: ExecutionContext, token: str) -> int | None:
+    """A Java int argument; vanilla rejects anything else before running."""
+    try:
+        value = int(token)
+    except ValueError:
+        context.game_error("parsing.int.invalid", token)
+        return None
+    if not -(2**31) <= value < 2**31:
+        context.game_error("parsing.int.invalid", token)
+        return None
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -358,20 +726,23 @@ def cmd_tag(command: Command, context: ExecutionContext) -> CommandResult:
 
 def cmd_summon(command: Command, context: ExecutionContext) -> CommandResult:
     if not command.arguments:
+        context.game_error("command.unknown.command")
         return CommandResult.failure()
     entity_type = normalise_id(command.arguments[0])
     if not _require_id(context, "entity_type", entity_type):
         return CommandResult.failure()
     position = resolve_position(command.arguments[1:4], context.position)
-    nbt: dict[str, Any] = {}
-    tags: set[str] = set()
-    for argument in command.arguments[1:]:
-        if argument.startswith("{"):
-            nbt = parse_snbt(argument)
-            for tag in nbt.get("Tags", []) or []:
-                tags.add(str(tag))
-            break
-    entity = Entity(type=entity_type, position=position, nbt=nbt, tags=tags)
+    payload = next((a for a in command.arguments[1:] if a.startswith("{")), "")
+    data = parse_snbt(payload) if payload else {}
+    entity = Entity(type=entity_type)
+    uuid = ints_to_uuid(data.get("UUID"))
+    if uuid is not None:
+        if any(other.uuid == uuid for other in context.world.entities):
+            context.game_error("commands.summon.failed.uuid")
+            return CommandResult.failure()
+        entity.uuid = uuid
+    data["Pos"] = position  # the position argument wins over Pos in the NBT
+    entity.apply_data(data)
     context.world.spawn(entity)
     context.feedback("commands.summon.success", entity.display)
     return CommandResult(success=True, value=1)
@@ -393,9 +764,15 @@ def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
     if not command.arguments:
         return CommandResult.failure()
     arguments = command.arguments
-    if len(arguments) >= 4:  # tp <targets> <x y z> [rotation|facing ...]
+    rotation: list[float] | None = None
+    if len(arguments) >= 4:  # tp <targets> <x y z> [<yaw> <pitch> | facing ...]
         targets = _require_targets(context, arguments[0])
         destination = resolve_position(arguments[1:4], context.position)
+        if len(arguments) >= 6 and arguments[4] != "facing":
+            # relative rotation is relative to the command source, like positions
+            rotation = normalise_rotation(
+                resolve_position([*arguments[4:6], "0"], [*context.rotation, 0.0])[:2]
+            )
     elif len(arguments) == 3:  # tp <x y z>
         targets = [context.executor] if context.executor else []
         destination = resolve_position(arguments, context.position)
@@ -412,6 +789,8 @@ def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
     for entity in targets:
         if entity is not None:
             entity.position = list(destination)
+            if rotation is not None:
+                entity.rotation = list(rotation)
     if len(targets) == 1 and targets[0] is not None:
         context.feedback(
             "commands.teleport.success.entity.single",
@@ -457,7 +836,7 @@ def _macro_arguments(rest: list[str], context: ExecutionContext) -> dict[str, An
         store: Any = context.world.storage.get(normalise_id(target), {})
     elif source == "entity":
         entities = _targets(context, target)
-        store = entities[0].nbt if entities else {}
+        store = entities[0].data() if entities else {}
     else:
         context.note_key_once(
             "emulator.unimplemented", f"function ... with {source}", context.emulator.version.id
@@ -513,55 +892,111 @@ def cmd_return(command: Command, context: ExecutionContext) -> CommandResult:
 # ---------------------------------------------------------------------------
 
 
+@dataclass
+class _DataTarget:
+    """What ``data`` reads and writes: a working copy of an entity's NBT or a storage."""
+
+    data: dict[str, Any]
+    entity: Entity | None = None
+    storage: str = ""
+
+    def describe(self) -> str:
+        return self.entity.display if self.entity is not None else self.storage
+
+    def commit(self, context: ExecutionContext) -> None:
+        if self.entity is not None:
+            self.entity.apply_data(self.data)
+        else:
+            context.world.storage[self.storage] = self.data
+
+    @property
+    def feedback_kind(self) -> str:
+        return "entity" if self.entity is not None else "storage"
+
+
+def _data_target(
+    context: ExecutionContext, kind: str, token: str, action: str
+) -> _DataTarget | None:
+    if kind == "storage":
+        storage = normalise_id(token)
+        return _DataTarget(copy.deepcopy(context.world.storage.get(storage, {})), storage=storage)
+    if kind == "entity":
+        found = _require_targets(context, token)
+        if not found:
+            return None
+        if len(found) > 1:
+            context.game_error("argument.entity.toomany")
+            return None
+        entity = found[0]
+        if action != "get" and entity.is_player:
+            context.game_error("commands.data.entity.invalid")
+            return None
+        return _DataTarget(entity.data(), entity=entity)
+    # block NBT is not modelled
+    context.note_key_once(
+        "emulator.unimplemented", f"data {action} block", context.emulator.version.id
+    )
+    return None
+
+
 def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
     """``data get|merge|modify|remove`` on entities and storage."""
     arguments = command.arguments
     if len(arguments) < 3:
+        context.game_error("command.unknown.command")
         return CommandResult.failure()
-    action, holder_kind, target_token = arguments[0], arguments[1], arguments[2]
-
-    if holder_kind == "storage":
-        stores: list[dict[str, Any]] = [
-            context.world.storage.setdefault(normalise_id(target_token), {})
-        ]
-    elif holder_kind == "entity":
-        stores = [entity.nbt for entity in _require_targets(context, target_token)]
-    else:  # block NBT is not modelled
-        context.note_key_once(
-            "emulator.unimplemented", f"data {action} block", context.emulator.version.id
-        )
+    action, kind, token = arguments[0], arguments[1], arguments[2]
+    target = _data_target(context, kind, token, action)
+    if target is None:
         return CommandResult.failure()
-
-    if not stores:
-        return CommandResult.failure()
+    where = target.feedback_kind
 
     if action == "get":
         path = arguments[3] if len(arguments) > 3 else ""
-        value = nbt_get(stores[0], path) if path else stores[0]
+        if not path:
+            context.feedback(
+                f"commands.data.{where}.query", target.describe(), to_snbt(target.data)
+            )
+            return CommandResult(success=True, value=1)
+        value = nbt_get(target.data, path)
         if value is None:
             context.game_error("commands.data.get.unknown", path)
             return CommandResult.failure()
         scale = _float_or_none(arguments[4]) if len(arguments) > 4 else None
-        if scale is not None and not isinstance(value, (int, float)):
-            context.game_error("commands.data.get.invalid", path)
-            return CommandResult.failure()
-        return CommandResult(success=True, value=as_int(value, scale))
+        if scale is not None:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                context.game_error("commands.data.get.invalid", path)
+                return CommandResult.failure()
+            result = as_int(value, scale)
+            context.feedback(
+                f"commands.data.{where}.get", path, target.describe(), _number(scale), result
+            )
+            return CommandResult(success=True, value=result)
+        context.feedback(f"commands.data.{where}.query", target.describe(), to_snbt(value))
+        return CommandResult(success=True, value=as_int(value))
 
     if action == "merge" and len(arguments) >= 4:
-        payload = parse_snbt(" ".join(arguments[3:]))
-        changed = sum(1 for store in stores if merge_compound(store, payload))
-        if not changed:
-            context.game_error("commands.data.merge.failed")
+        changed = merge_compound(target.data, parse_snbt(" ".join(arguments[3:])))
+    elif action == "remove" and len(arguments) >= 4:
+        changed = nbt_remove(target.data, arguments[3])
+    elif action == "modify" and len(arguments) >= 6:
+        modified = _data_modify(context, [target.data], arguments[3], arguments[4], arguments[5:])
+        if modified is None:
             return CommandResult.failure()
-        return CommandResult(success=True, value=changed)
+        changed = modified > 0
+    else:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    if not changed:
+        context.game_error("commands.data.merge.failed")
+        return CommandResult.failure()
+    target.commit(context)
+    context.feedback(f"commands.data.{where}.modified", target.describe())
+    return CommandResult(success=True, value=1)
 
-    if action == "remove" and len(arguments) >= 4:
-        removed = sum(1 for store in stores if nbt_remove(store, arguments[3]))
-        return CommandResult(success=removed > 0, value=removed)
 
-    if action == "modify" and len(arguments) >= 6:
-        return _data_modify(context, stores, arguments[3], arguments[4], arguments[5:])
-    return CommandResult.failure()
+def _number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else str(value)
 
 
 def _data_modify(
@@ -570,8 +1005,11 @@ def _data_modify(
     path: str,
     operation: str,
     source: list[str],
-) -> CommandResult:
-    """``data modify <target> <path> <operation> (value|from|string) ...``"""
+) -> int | None:
+    """``data modify <target> <path> <operation> (value|from|string) ...``
+
+    Returns how many elements changed, or None once an error was reported.
+    """
     index = 0
     if operation == "insert" and source:
         index = int(source[0]) if source[0].lstrip("-").isdigit() else 0
@@ -582,44 +1020,52 @@ def _data_modify(
     elif source and source[0] in ("from", "string"):
         found, value = _data_source(context, source[1:])
         if not found:
-            return CommandResult.failure()
+            return None
         if source[0] == "string":  # 1.19.4+: set string <source> [path] [start] [end]
             if isinstance(value, (dict, list)):
                 context.game_error("commands.data.modify.expected_value", value)
-                return CommandResult.failure()
+                return None
             value = _substring(value, source[4:6] if len(source) > 3 else [])
     else:
-        return CommandResult.failure()
+        return None
 
     changed = 0
     for store in stores:
         current = nbt_get(store, path)
         if operation == "set":
-            nbt_set(store, path, copy.deepcopy(value))
+            if current == value:
+                continue  # vanilla counts only elements that actually change
+            if not nbt_set(store, path, copy.deepcopy(value)):
+                context.game_error("arguments.nbtpath.nothing_found", path)
+                return None
             changed += 1
         elif operation == "merge":
             if not isinstance(value, dict):
                 context.game_error("commands.data.modify.expected_object", value)
-                return CommandResult.failure()
+                return None
             if current is None:
-                nbt_set(store, path, copy.deepcopy(value))
+                if not nbt_set(store, path, copy.deepcopy(value)):
+                    context.game_error("arguments.nbtpath.nothing_found", path)
+                    return None
                 changed += 1
             elif not isinstance(current, dict):
                 context.game_error("commands.data.modify.expected_object", current)
-                return CommandResult.failure()
+                return None
             elif merge_compound(current, value):
                 changed += 1
         elif operation in ("append", "prepend", "insert"):
             if current is None:
                 current = []
-                nbt_set(store, path, current)
+                if not nbt_set(store, path, current):
+                    context.game_error("arguments.nbtpath.nothing_found", path)
+                    return None
             elif not isinstance(current, list):
                 context.game_error("commands.data.modify.expected_list", current)
-                return CommandResult.failure()
+                return None
             position = {"append": len(current), "prepend": 0}.get(operation, index)
             current.insert(position, copy.deepcopy(value))
             changed += 1
-    return CommandResult(success=changed > 0, value=changed)
+    return changed
 
 
 def _float_or_none(token: str) -> float | None:
@@ -650,7 +1096,7 @@ def _data_source(context: ExecutionContext, source: list[str]) -> tuple[bool, An
         entities = _require_targets(context, target)
         if not entities:
             return (False, None)
-        store = entities[0].nbt
+        store = entities[0].data()
     else:  # block NBT is not modelled
         context.note_key_once(
             "emulator.unimplemented", "data modify ... from block", context.emulator.version.id
@@ -865,7 +1311,11 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
         nbt_set(store, arguments[3], _stored_number(value, arguments[4:6]))
     elif target == "entity":
         for entity in _targets(context, arguments[2]):
-            nbt_set(entity.nbt, arguments[3], _stored_number(value, arguments[4:6]))
+            if entity.is_player:  # player data cannot be modified
+                continue
+            data = entity.data()
+            nbt_set(data, arguments[3], _stored_number(value, arguments[4:6]))
+            entity.apply_data(data)
 
 
 def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
@@ -931,7 +1381,7 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
             return nbt_get(store, arguments[3]) is not None
         if arguments[1] == "entity":
             return any(
-                nbt_get(entity.nbt, arguments[3]) is not None
+                nbt_get(entity.data(), arguments[3]) is not None
                 for entity in _targets(context, arguments[2])
             )
         return False

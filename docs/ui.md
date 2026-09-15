@@ -27,7 +27,7 @@ layout changes are made in Qt Designer, never in code.
 | file | new / open / save / save as project ([projects](projects.md)) · import datapack · reload datapack · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · version engine… · export call graph (.dot) |
-| view | explorer · inspector · logs (show or hide each dock) · environment / profiler / call graph / source tab |
+| view | explorer · inspector · logs · world (show or hide each dock) · environment / profiler / call graph / source tab |
 
 *export call graph (.dot)* writes `generated/<pack>-<version>.dot` for
 Graphviz, from the graph on screen or, if none was built yet, from the
@@ -44,13 +44,25 @@ current version.
   * *run*: ticks (`-1` = until stopped; 20 ticks are one second) and speed —
     as fast as possible, or real time at 20 ticks per second (switchable
     while running). Runs tick in small batches, so the window stays
-    responsive and logs keep flowing.
-  * *tests*: commands run as the server in a fresh world after
-    `#minecraft:load` (tick 0) or at a later tick — `function hat:tick`,
-    `say hi`, `scoreboard players get …`. A test passes when the command
-    succeeds without a visible error and, if *expect output* is set, that
-    text appears in the game output. Untick a row to skip it; hover a result
-    for the records it produced. Tests and every setting here are saved in
+    responsive and logs keep flowing. *run tests during runs* makes run all,
+    run emulator and step also run the tests below, each in its tick and in
+    the run's world, filling the result column as ticks pass (tests a run
+    does not reach say so).
+  * *tests*: commands run on the server console in a fresh world —
+    `function hat:tick`, `say hi`, `scoreboard players get …`, or
+    `execute as Player1 run trigger hat` for what a player would type.
+    Columns:
+    * *tick*: the server tick it runs in. As in game, a command arrives after
+      that tick's functions: tick 0 is the first tick, where
+      `#minecraft:load` and `#minecraft:tick` have both run. Untick the box to
+      skip the test.
+    * *command*, *expect output* (text the game output must contain), and
+      the *result*; hover a result for the records it produced.
+
+    A test passes when the command succeeds without a visible error and, if
+    *expect output* is set, that text appears. *run tests* (F8) runs them in
+    the window's world, so the world dock shows what they did. Tests and
+    every setting here are saved in
     the project's `.dpemu` file (Ctrl+S); the title shows `*` while there
     are unsaved changes, and closing asks to save them. See
     [projects](projects.md).
@@ -66,7 +78,7 @@ current version.
 
 ### Docks
 
-All three are open by default and can be toggled from *view*.
+All four are open by default and can be toggled from *view*.
 
 * **explorer** — the pack as it sits on disk: `pack.mcmeta`, `pack.png`,
   `data/`, and one subtree per overlay directory with its format range.
@@ -85,6 +97,21 @@ All three are open by default and can be toggled from *view*.
   * a text filter matched against the message;
   * the record counts, and *clear*, which empties the log.
 
+  Below the table, a **command line** runs any command in the current world,
+  as the server console would (`execute as Player1 run trigger hat` to act as
+  a player). Enter runs it, ↑/↓ walk the history, a leading `/` is optional. A world that has not ticked yet runs its first
+  tick first, like a server that is up. The command's feedback and errors
+  appear in the logs, and the world dock updates.
+* **world** — the current world, refreshed after runs, steps, tests and typed
+  commands (a few times a second during a run), with a filter:
+  * *scoreboard*: a grid with one row per score holder and one column per
+    objective (criterion and display slot in the header). Cells that changed
+    since the last refresh are highlighted, enabled triggers are blue, and
+    hovering a value lists the values the score took and at which game time.
+  * *entities*: every entity — type, position and tags — with its full NBT
+    as a tree (what `data get entity` shows).
+  * *storage*: every command storage and its contents.
+
 ### Right-click
 
 | where | menu |
@@ -93,6 +120,7 @@ All three are open by default and can be toggled from *view*.
 | call-graph node | same, plus *show in inspector*; tags open their `.json` |
 | profiler row | same as a graph node |
 | log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from; double-click opens the file too |
+| world › entity | run a command as this entity (starts `execute as <uuid> at @s run ` in the command line) · copy UUID · copy data (SNBT) |
 
 "External editor" and "external file manager" use the desktop's default handler
 (`QDesktopServices`), so they open whatever your system associates with the
@@ -130,11 +158,12 @@ installed, it is loaded without downloading.
 Left: version selection — a *from/to* range, the range `pack.mcmeta`
 declares, *one per format* (the first release of each `pack_format`, a cheap
 way to cover a wide range), all/none, or tick versions by hand; plus ticks,
-players and seed.
+players and seed. *run tests* also runs the environment tab's tests in every
+version, each in its tick.
 
 Right, top: one row per version — format, status (`ok`, `warnings`,
-`errors`, `unsupported`), commands run, total and worst-tick time, counts,
-unknown commands, active overlays.
+`errors`, `tests failed`, `unsupported`), commands run, total and worst-tick
+time, counts, tests passed (`3/4`), unknown commands, active overlays.
 
 Right, bottom: the records of the selected version, with the same source /
 level / text filters as the logs dock. *export html* writes

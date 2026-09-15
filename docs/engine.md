@@ -5,14 +5,22 @@
 
 ```python
 from datapack_emulator.emulator import Datapack, TestEngine
+from datapack_emulator.emulator.testing import CommandTest
 from datapack_emulator.emulator.vanilla import default_library
 
 pack = Datapack.load("samples/hat")
-engine = TestEngine(pack, ticks=20, players=1, seed=0, library=default_library())
+engine = TestEngine(
+    pack,
+    ticks=20,
+    players=1,
+    seed=0,
+    library=default_library(),
+    tests=[CommandTest("execute as Player1 run trigger hat", at_tick=1)],
+)
 
 chosen = TestEngine.format_boundaries(pack.declared_versions())
 for run in engine.run(chosen):
-    print(run.version.id, run.status, sorted(run.unknown_commands))
+    print(run.version.id, run.status, run.tests_summary, sorted(run.unknown_commands))
 ```
 
 ## What each run does
@@ -28,6 +36,9 @@ for run in engine.run(chosen):
    * overlays declared for a version that predates them
    (the last two are `info` for packs whose declared range spans the change)
 4. Run a fresh `Emulator` for the requested ticks, with its own world and bus.
+   When the engine was given `tests` (a list of `CommandTest`), each enabled
+   test runs in its tick, after that tick's functions, exactly as in the
+   environment tab; tests the run does not reach fail as "not reached".
    Its `FunctionLibrary` drops every function with a line the version cannot
    parse (unknown commands, `execute on` before 1.19.4, macros before 1.20.2,
    …) and every tag missing a required entry, and logs each as a `game`
@@ -45,7 +56,8 @@ for run in engine.run(chosen):
 | `failed_functions`, `failed_tags` | what the version's server refused to load |
 | `missing_functions`, `unreachable`, `cycles` | from the call graph |
 | `profiler`, `graph` | the full objects |
-| `status` | `errors` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
+| `tests`, `tests_passed`, `tests_summary` | the command tests' results, and `"3/4"` (or `-` without tests) |
+| `status` | `errors` › `tests failed` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
 | `warnings`, `errors`, `chat`, `count(source, level)` | summaries |
 
 ## Choosing versions

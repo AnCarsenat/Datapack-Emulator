@@ -61,10 +61,11 @@ class ExecutionContext:
         return self.emulator.messages.render(key, *arguments)
 
     def feedback(self, key: str, *arguments: Any) -> LogRecord:
-        """Vanilla command feedback, shown when sendCommandFeedback is on."""
+        """Vanilla command feedback: shown to whoever typed the command (INFO);
+        functions send it nowhere, so there it is kept at DEBUG."""
         return self.emulator.output.log(
             LogSource.GAME,
-            LogLevel.DEBUG,
+            LogLevel.DEBUG if self.silent else LogLevel.INFO,
             self.render(key, *arguments),
             **self._fields(key=key),
         )

@@ -327,6 +327,16 @@ QMenuBar::item:selected {
                    </property>
                   </widget>
                  </item>
+                 <item row="3" column="1">
+                  <widget class="QCheckBox" name="checkTestsDuringRuns">
+                   <property name="text">
+                    <string>run tests during runs</string>
+                   </property>
+                   <property name="toolTip">
+                    <string>run all, run emulator and step also run each enabled test below in its tick, in the run's world, and fill the result column</string>
+                   </property>
+                  </widget>
+                 </item>
                 </layout>
                </widget>
               </item>
@@ -341,7 +351,7 @@ QMenuBar::item:selected {
                <item>
                 <widget class="QLabel" name="labelTestsHelp">
                  <property name="text">
-                  <string>Each test runs a command as the server — e.g. "function hat:tick" or "say hi" — after #minecraft:load (tick 0) or at a later tick, in a fresh world. It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
+                  <string>Each test runs a command on the server console in a fresh world, e.g. "function hat:tick", or "execute as Player1 run trigger hat" for a command a player would type. Like in game, it runs in its tick after that tick's functions (tick 0 is the first tick, where #minecraft:load runs too). It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
@@ -716,6 +726,7 @@ QMenuBar::item:selected {
     <addaction name="actionexplorer"/>
     <addaction name="actioninspector"/>
     <addaction name="actionlog"/>
+    <addaction name="actionworld"/>
     <addaction name="separator"/>
     <addaction name="actionenvironment"/>
     <addaction name="actionprofile"/>
@@ -889,6 +900,207 @@ QMenuBar::item:selected {
        <property name="styleSheet">
         <string notr="true">QTableView { font-family: monospace; font-size: 11px; }</string>
        </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="consoleLayout">
+       <item>
+        <widget class="QLineEdit" name="editConsole">
+         <property name="placeholderText">
+          <string>run a command in the current world, e.g. execute as Player1 run trigger hat — Enter to run, ↑/↓ for history</string>
+         </property>
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">QLineEdit { font-family: monospace; }</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonConsoleRun">
+         <property name="text">
+          <string>run</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </widget>
+  </widget>
+  <widget class="QDockWidget" name="dockWidgetWorld">
+   <property name="minimumSize">
+    <size>
+     <width>260</width>
+     <height>220</height>
+    </size>
+   </property>
+   <property name="windowTitle">
+    <string>world</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>2</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContentsWorld">
+    <layout class="QVBoxLayout" name="worldDockLayout">
+     <property name="leftMargin">
+      <number>2</number>
+     </property>
+     <property name="topMargin">
+      <number>2</number>
+     </property>
+     <property name="rightMargin">
+      <number>2</number>
+     </property>
+     <property name="bottomMargin">
+      <number>2</number>
+     </property>
+     <item>
+      <layout class="QHBoxLayout" name="worldHeaderLayout">
+       <item>
+        <widget class="QLabel" name="labelWorld">
+         <property name="text">
+          <string>no world yet — run or step</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #555;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="editWorldFilter">
+         <property name="placeholderText">
+          <string>filter…</string>
+         </property>
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QTabWidget" name="tabsWorld">
+       <widget class="QWidget" name="tabScores">
+        <attribute name="title">
+         <string>scoreboard</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="scoresLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTableWidget" name="tableScores">
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="toolTip">
+            <string>rows are score holders, columns objectives; hover a value for the values it took; highlighted cells changed since the last refresh, blue ones are enabled triggers</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTableWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabEntities">
+        <attribute name="title">
+         <string>entities</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="entitiesLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTreeWidget" name="treeEntities">
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="contextMenuPolicy">
+            <enum>Qt::CustomContextMenu</enum>
+           </property>
+           <property name="toolTip">
+            <string>every entity with its NBT; right-click to copy its data or run commands as it</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>entity / key</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>value</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabStorage">
+        <attribute name="title">
+         <string>storage</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="storageLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTreeWidget" name="treeStorage">
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>storage / key</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>value</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
       </widget>
      </item>
     </layout>
@@ -1088,6 +1300,17 @@ QMenuBar::item:selected {
   <action name="actionlog">
    <property name="text">
     <string>logs</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionworld">
+   <property name="text">
+    <string>world</string>
    </property>
    <property name="checkable">
     <bool>true</bool>
