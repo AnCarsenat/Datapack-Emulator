@@ -13,4 +13,4 @@
 | [costs.md](costs.md) | read (and tune) the execution-time estimates |
 | [architecture.md](architecture.md) | find your way around the code before changing it |
 
-Contributing guidelines live in the [readme](../readme.md#contributing).
+Contributing guidelines live in [CONTRIBUTING.md](../CONTRIBUTING.md).

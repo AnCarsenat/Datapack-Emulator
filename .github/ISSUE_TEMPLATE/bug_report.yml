@@ -1,0 +1,43 @@
+name: Bug report
+description: Something emulates, renders or reports wrongly
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Minecraft version emulated
+      placeholder: "1.21.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: jar
+    attributes:
+      label: Client jar loaded?
+      options: ["yes", "no", "not sure"]
+    validations:
+      required: true
+  - type: textarea
+    id: pack
+    attributes:
+      label: Smallest datapack that reproduces it
+      description: Paste the pack.mcmeta and the .mcfunction files involved, or attach a zip.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Output
+      description: "`python -m src.emulator run <pack> --version <v> --level debug`"
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: OS and Python version
+      placeholder: "Arch Linux, Python 3.14"

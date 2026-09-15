@@ -1,0 +1,19 @@
+name: Feature request
+description: A command to emulate, a check to add, a UI improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+  - type: textarea
+    id: vanilla
+    attributes:
+      label: Vanilla behaviour
+      description: For emulation requests, what the game does (wiki links, exact messages, versions).

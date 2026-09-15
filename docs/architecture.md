@@ -45,6 +45,8 @@ src/
       graph.py            pyqtgraph DAG canvas with node hit-testing
       highlight.py        .mcfunction and JSON highlighters
 tools/generate_version_data.py
+tests/       pytest suite; conftest.py builds synthetic packs and client jars
+.github/     CI workflow, Dependabot, issue and pull request templates
 docs/
 samples/     example packs (the first one opens on startup)
 projects/    saved projects (git-ignored)
