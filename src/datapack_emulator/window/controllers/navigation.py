@@ -184,6 +184,11 @@ class NavigationController(Controller):
             return menu
         if path.is_file():
             menu.addAction("open in source view", lambda: self.open_in_source(path))
+            function_id = self.function_at(path)
+            if function_id is not None:
+                menu.addAction(
+                    "edit note…", lambda: self.window.notes.edit_function_note(function_id)
+                )
         menu.addAction("open in external editor", lambda: self.open_externally(path))
         menu.addAction("open in external file manager", lambda: self.open_in_file_manager(path))
         menu.addAction("copy path", lambda: self.copy_path(path))
@@ -199,6 +204,12 @@ class NavigationController(Controller):
         menu.addSeparator()
         analyze = menu.addAction("analyze this line", self.analyze_cursor_line)
         analyze.setEnabled(self.source_path is not None)
+        function_id = self.function_at(self.source_path)
+        note = menu.addAction(
+            "edit note on this function…",
+            lambda: self.window.notes.edit_function_note(function_id),
+        )
+        note.setEnabled(function_id is not None)
         menu.exec(edit.viewport().mapToGlobal(point))
 
     def explorer_menu(self, point: QPoint) -> None:
@@ -226,7 +237,8 @@ class NavigationController(Controller):
             function_id if function_id.startswith("#") else f"#{function_id}"
         )
         if resource is not None:
-            window.datapacks.fill_inspector(describe_resource(resource, window.version))
+            rows = describe_resource(resource, window.version)
+            window.datapacks.fill_inspector(rows + window.notes.rows_for(function_id))
             window.dock_inspector.show()
 
     def profiler_menu(self, point: QPoint) -> None:

@@ -92,6 +92,7 @@ class ProjectController(Controller):
         window.spin_seed.setValue(project.seed)
         window.runs.speed = project.speed
         window.check_tests_during_runs.setChecked(project.tests_during_runs)
+        window.notes.project_notes = project.notes
         window.environment.set_tests([CommandTest.from_dict(test) for test in project.tests])
         if project.vanilla_jar and Path(project.vanilla_jar).is_file():
             try:
@@ -116,6 +117,7 @@ class ProjectController(Controller):
         project.seed = window.spin_seed.value()
         project.speed = window.runs.speed
         project.tests_during_runs = window.check_tests_during_runs.isChecked()
+        project.notes = window.notes.project_notes
         window.environment.commit_edits()  # a cell still being typed in counts
         project.tests = [test.to_dict() for test in window.environment.tests()]
         project.vanilla_jar = str(window.vanilla.jar_path) if window.vanilla else ""

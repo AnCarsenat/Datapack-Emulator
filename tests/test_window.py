@@ -544,3 +544,35 @@ def test_analyze_line_from_the_source_view_and_a_log_record(window):
     assert window.log_view.command_of(record) == "scoreboard players get Nobody hat"
     window.log_view.analyze(record)
     assert window.inspector.topLevelItem(1).text(1).startswith("scoreboard")
+
+
+def test_project_and_function_notes_are_saved(window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    from datapack_emulator.project import Project
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.projects.mark_saved()
+    window.edit_project_notes.setPlainText("check the armor stand")
+    assert window.projects.modified
+
+    monkeypatch.setattr(QInputDialog, "getMultiLineText", lambda *a: ("swaps the hat", True))
+    window.notes.edit_function_note("hat:tick")
+    rows = {
+        window.inspector.topLevelItem(i).text(0): window.inspector.topLevelItem(i).text(1)
+        for i in range(window.inspector.topLevelItemCount())
+    }
+    assert rows["your note"] == "swaps the hat"
+    path = window.navigation.function_path("hat:tick")
+    labels = [a.text() for a in window.navigation.path_menu(path).actions()]
+    assert "edit note…" in labels
+
+    saved = window.projects.capture().save(tmp_path / "notes.dpemu")
+    loaded = Project.load(saved)
+    assert loaded.notes == "check the armor stand"
+    assert loaded.function_notes == {"hat:tick": "swaps the hat"}
+
+    monkeypatch.setattr(QInputDialog, "getMultiLineText", lambda *a: ("", True))
+    window.notes.edit_function_note("hat:tick")
+    assert window.project.function_notes == {}

@@ -46,6 +46,7 @@ from datapack_emulator.window.controllers import (
     JarController,
     LogController,
     NavigationController,
+    NotesController,
     ProjectController,
     RunController,
     WorldController,
@@ -90,6 +91,7 @@ class MainWindow(QMainWindow):
         self.environment = EnvironmentController(self)
         self.world_view = WorldController(self)
         self.console = ConsoleController(self)
+        self.notes = NotesController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -99,6 +101,7 @@ class MainWindow(QMainWindow):
             self.environment,
             self.world_view,
             self.console,
+            self.notes,
         ):
             controller.connect()
         self._wire_actions()
@@ -141,6 +144,7 @@ class MainWindow(QMainWindow):
         self.combo_speed: QComboBox = find(QComboBox, "comboSpeed")
         self.check_tests_during_runs: QCheckBox = find(QCheckBox, "checkTestsDuringRuns")
         self.tick_label: QLabel = find(QLabel, "labelTickStatus")
+        self.edit_project_notes: QPlainTextEdit = find(QPlainTextEdit, "editProjectNotes")
         self.table_tests: QTableWidget = find(QTableWidget, "tableTests")
         self.add_test_button: QPushButton = find(QPushButton, "buttonAddTest")
         self.remove_test_button: QPushButton = find(QPushButton, "buttonRemoveTest")

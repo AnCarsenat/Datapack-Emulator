@@ -171,7 +171,8 @@ class DatapackController(Controller):
         resource = self.find_resource(resource_id) if resource_id else None
 
         if resource is not None:
-            self.fill_inspector(describe_resource(resource, window.version))
+            rows = describe_resource(resource, window.version)
+            self.fill_inspector(rows + window.notes.rows_for(resource.id))
         elif window.datapack is not None:
             self.fill_inspector(describe_datapack(window.datapack, window.version))
 
