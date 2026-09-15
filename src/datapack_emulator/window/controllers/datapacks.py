@@ -141,6 +141,8 @@ class DatapackController(Controller):
             window.runs.stop(refresh=False)
             window.datapack = None
             window.emulator = None
+            if window.engine_window is not None:
+                window.engine_window.close()
             window.world_view.forget()
             self.show(None)
             if not keep_project:
@@ -150,6 +152,8 @@ class DatapackController(Controller):
             self.status("no datapack analyzed — file › add datapack")
             return
         window.datapack = packs
+        if window.engine_window is not None:
+            window.engine_window.set_datapack(packs)
         for pack in packs:
             window.output.app(f"loaded {pack.path}")
             window.session.remember_datapack(pack.path)
@@ -264,7 +268,7 @@ class DatapackController(Controller):
         window = self.window
         path_value = index.data(PATH_ROLE)
         resource_id = index.data(RESOURCE_ROLE)
-        resource = self.find_resource(resource_id) if resource_id else None
+        resource = self.find_resource(resource_id, path_value) if resource_id else None
 
         if resource is not None:
             rows = describe_resource(resource, window.version)
@@ -278,17 +282,24 @@ class DatapackController(Controller):
         if path.is_file():
             window.navigation.show_source(path)
 
-    def find_resource(self, resource_id: str) -> Resource | None:
+    def find_resource(self, resource_id: str, path: str | None = None) -> Resource | None:
+        """The resource of an explorer row: the file clicked when ``path`` is
+        given (two packs can share an id), otherwise the first with that id."""
         packs = self.window.datapack
         if packs is None:
             return None
+        first = None
+        wanted = Path(path) if path else None
         for pack in packs:
             for layer in [pack.base, *pack.overlays]:
                 for namespace in layer.namespaces.values():
                     for resource in namespace.resources():
-                        if resource.id == resource_id:
+                        if resource.id != resource_id:
+                            continue
+                        if wanted is None or resource.path == wanted:
                             return resource
-        return None
+                        first = first or resource
+        return first
 
     def fill_inspector(self, rows: list[tuple[str, str]]) -> None:
         """Rows of the inspector: long labels and values wrap to the dock's

@@ -342,7 +342,7 @@ class PackView:
             for view in views:
                 for resource_id, tag in view.registries.get(registry, {}).items():
                     earlier = tags.get(resource_id)
-                    if isinstance(earlier, Tag) and isinstance(tag, Tag) and not tag.replace:
+                    if isinstance(earlier, Tag) and isinstance(tag, Tag):
                         tags[resource_id] = _merge_tags(earlier, tag)
                     else:
                         tags[resource_id] = tag
@@ -357,13 +357,14 @@ class PackView:
 
 
 def _merge_tags(earlier: Tag, later: Tag) -> Tag:
-    """The same tag from two packs: the earlier values, then the later ones."""
+    """The same tag from two packs: the earlier values then the later ones, or
+    only the later ones when it says ``replace``. ``sources`` keeps every file,
+    in order, for loaders that read each file on its own (1.16.1)."""
     merged = Tag(later.path, later.namespace, later.registry, later.resource_path)
     merged.overlay = later.overlay
-    merged.content = {
-        "values": [*earlier.content.get("values", []), *later.content.get("values", [])]
-    }
-    merged.merged_from = [*getattr(earlier, "merged_from", [earlier.path]), later.path]
+    earlier_values = [] if later.replace else earlier.content.get("values", [])
+    merged.content = {"values": [*earlier_values, *later.content.get("values", [])]}
+    merged.sources = [*getattr(earlier, "sources", [earlier]), later]
     return merged
 
 
@@ -679,14 +680,20 @@ class DatapackSet:
         return shared or self.primary.declared_versions()
 
     def compatibility(self, version: Version) -> Compatibility:
-        """The first pack ``version`` does not list as compatible, else the first pack's."""
-        for pack in self.packs:
-            result = pack.compatibility(version)
+        """The first pack ``version`` does not list as compatible, else the first
+        pack's; ``server_log`` holds what the server logs about every pack."""
+        results = [(pack, pack.compatibility(version)) for pack in self.packs]
+        if len(results) == 1:
+            return results[0][1]
+        server_log = [
+            f"{pack.name}: {line}" for pack, result in results for line in result.server_log
+        ]
+        for pack, result in results:
             if not result.compatible:
-                if len(self.packs) > 1:
-                    result = replace(result, reason=f"{pack.name}: {result.reason}")
-                return result
-        return self.primary.compatibility(version)
+                return replace(
+                    result, reason=f"{pack.name}: {result.reason}", server_log=server_log
+                )
+        return replace(results[0][1], server_log=server_log)
 
     def supports(self, version: Version) -> bool:
         return all(pack.supports(version) for pack in self.packs)

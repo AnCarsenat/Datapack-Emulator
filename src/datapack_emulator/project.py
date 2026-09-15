@@ -256,6 +256,11 @@ class Project:
                 str(entry) for entry in data.get("datapacks") or [] if isinstance(entry, str)
             ]
         data.pop("datapack", None)
+        root = target.resolve()
+        for folder in folders:
+            resolved = (root / folder).resolve()
+            if resolved == root or root not in resolved.parents:
+                raise ValueError(f"unsafe datapack path in the project: {folder}")
         data["datapacks"] = [
             str(target / folder) for folder in folders if (target / folder).is_dir()
         ]

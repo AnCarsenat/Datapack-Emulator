@@ -886,3 +886,17 @@ def test_several_datapacks_are_analyzed_and_removed_one_by_one(app, window, make
         Project.load(window.projects.capture().save(tmp_path / "moved.dpemu")).datapacks[0].name
         == "extra"
     )
+
+
+def test_shared_ids_inspect_the_clicked_file_and_the_engine_follows(app, window, make_pack):
+    first = make_pack({"data/test/function/tick.mcfunction": "say one\n"}, name="p1")
+    second = make_pack({"data/test/function/tick.mcfunction": "say two\nsay again\n"}, name="p2")
+    window.datapacks.load_many([first, second])
+    later = second / "data" / "test" / "function" / "tick.mcfunction"
+    resource = window.datapacks.find_resource("test:tick", str(later))
+    assert resource.path == later and len(resource.content) == 2
+
+    window.runs.open_engine()
+    window.datapacks.remove(1)
+    assert window.engine_window.datapack.name == "p1"
+    window.engine_window.close()

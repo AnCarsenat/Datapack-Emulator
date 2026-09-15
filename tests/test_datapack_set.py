@@ -69,3 +69,80 @@ def test_set_compatibility_looks_at_every_pack(make_pack):
     result = packs.compatibility(V1214)
     assert not result.compatible and result.reason.startswith("old:")
     assert not packs.supports(V1214)
+
+
+def test_archive_datapack_entries_must_stay_inside_the_archive(tmp_path, monkeypatch):
+    import json
+    import zipfile
+
+    import pytest
+
+    from datapack_emulator.project import Project
+    from datapack_emulator.settings import PATHS
+
+    monkeypatch.setattr(PATHS, "CACHE", tmp_path / ".cache")
+    outside = tmp_path / "outside_secret"
+    outside.mkdir()
+    for entry in (str(outside), "../../../outside_secret"):
+        archive_path = tmp_path / "evil.dpemu"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr(
+                "project.json", json.dumps({"archive_format": 2, "datapacks": [entry]})
+            )
+        with pytest.raises(ValueError, match="unsafe datapack path"):
+            Project.load(archive_path)
+
+
+def test_folder_spelling_is_checked_per_pack(make_pack):
+    from datapack_emulator.emulator.engine import TestEngine
+    from datapack_emulator.emulator.runtime.output import OutputBus
+
+    modern = make_pack({"data/a/function/tick.mcfunction": "say a\n"}, name="modern")
+    legacy = make_pack({"data/b/functions/tick.mcfunction": "say b\n"}, name="legacy")
+    run = TestEngine(DatapackSet.load([modern, legacy]), ticks=1).run_version("1.21.4", OutputBus())
+    warnings = [r.message for r in run.records if "reads 'function/'" in r.message]
+    assert warnings == [
+        "legacy: 1.21.4 reads 'function/', not 'functions/' — those files are ignored"
+    ]
+
+
+def test_an_unreadable_tag_file_does_not_hide_the_other_packs_on_1_16_1(make_pack):
+    from datapack_emulator.emulator.commands.registry import command_set
+    from datapack_emulator.emulator.runtime.library import FunctionLibrary
+
+    version = versions.parse("1.16.1")
+    objects = make_pack(
+        {
+            "data/minecraft/tags/functions/tick.json": {
+                "values": [{"id": "c:x", "required": False}]
+            },
+            "data/c/functions/x.mcfunction": "say x\n",
+        },
+        name="objects",
+    )
+    plain = make_pack(
+        {
+            "data/minecraft/tags/functions/tick.json": {"values": ["d:y"]},
+            "data/d/functions/y.mcfunction": "say y\n",
+        },
+        name="plain",
+    )
+    packs = DatapackSet.load([objects, plain])
+    library = FunctionLibrary.build(packs.view_for(version), command_set(version))
+    assert library.resolve_tag("#minecraft:tick") == ["d:y"]
+    assert "#minecraft:tick" in library.tag_failures  # objects' file is still reported
+
+
+def test_set_compatibility_keeps_every_packs_server_log(make_pack):
+    version = versions.parse("1.20.2")
+    ok = make_pack(
+        {"data/a/function/x.mcfunction": "say\n"}, mcmeta={"pack": {"pack_format": 18}}, name="ok"
+    )
+    warn = make_pack(
+        {"data/b/function/y.mcfunction": "say\n"},
+        mcmeta={"pack": {"pack_format": 18, "supported_formats": [20, 30]}},
+        name="warn",
+    )
+    alone = Datapack.load(warn).compatibility(version).server_log
+    together = DatapackSet.load([ok, warn]).compatibility(version).server_log
+    assert alone and together == [f"warn: {line}" for line in alone]

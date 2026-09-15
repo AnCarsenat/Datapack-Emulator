@@ -281,44 +281,46 @@ class TestEngine:
                 **fields,
             )
 
-        # folder naming ---------------------------------------------------
+        # folder naming and overlays, pack by pack ---------------------------
         # A pack that declares versions on both sides of a change ships the old
         # form on purpose, so the files one version ignores are expected there.
-        declared = self.datapack.declared_versions()
-
-        def spans(boundary: str) -> bool:
-            edge = versions.parse(boundary)
-            return any(v < edge for v in declared) and any(v >= edge for v in declared)
-
-        folder_level = (
-            LogLevel.INFO if spans(versions.SINGULAR_REGISTRIES_SINCE) else LogLevel.WARNING
-        )
-        raw_folders: set[str] = set()
-        for namespaces in view.namespaces.values():
-            for namespace in namespaces:
-                raw_folders |= namespace.raw_folders
+        packs = list(getattr(self.datapack, "packs", [self.datapack]))
         renamed = (
             PLURAL_REGISTRIES
             if versions.uses_singular_registries(version)
             else {singular: plural for plural, singular in PLURAL_REGISTRIES.items()}
         )
-        for folder in sorted(raw_folders):
-            wanted = renamed.get(folder)
-            if wanted is not None and wanted not in raw_folders:
+        for pack in packs:
+            declared = pack.declared_versions()
+            prefix = f"{pack.name}: " if len(packs) > 1 else ""
+
+            def spans(boundary: str, declared=declared) -> bool:
+                edge = versions.parse(boundary)
+                return any(v < edge for v in declared) and any(v >= edge for v in declared)
+
+            folder_level = (
+                LogLevel.INFO if spans(versions.SINGULAR_REGISTRIES_SINCE) else LogLevel.WARNING
+            )
+            raw_folders: set[str] = set()
+            for namespaces in pack.view_for(version).namespaces.values():
+                for namespace in namespaces:
+                    raw_folders |= namespace.raw_folders
+            for folder in sorted(raw_folders):
+                wanted = renamed.get(folder)
+                if wanted is not None and wanted not in raw_folders:
+                    bus.emulator(
+                        f"{prefix}{version.id} reads '{wanted}/', not '{folder}/' — "
+                        "those files are ignored",
+                        level=folder_level,
+                        **fields,
+                    )
+            if pack.overlays and not versions.supports_overlays(version):
                 bus.emulator(
-                    f"{version.id} reads '{wanted}/', not '{folder}/' — those files are ignored",
-                    level=folder_level,
+                    f"{prefix}the pack declares overlays, which {version.id} ignores "
+                    f"(added in {versions.OVERLAYS_SINCE})",
+                    level=LogLevel.INFO if spans(versions.OVERLAYS_SINCE) else LogLevel.WARNING,
                     **fields,
                 )
-
-        # pack.mcmeta features --------------------------------------------
-        if self.datapack.overlays and not versions.supports_overlays(version):
-            bus.emulator(
-                f"the pack declares overlays, which {version.id} ignores "
-                f"(added in {versions.OVERLAYS_SINCE})",
-                level=LogLevel.INFO if spans(versions.OVERLAYS_SINCE) else LogLevel.WARNING,
-                **fields,
-            )
         if view.active_overlays:
             bus.app(
                 "active overlay(s): " + ", ".join(view.active_overlays),
