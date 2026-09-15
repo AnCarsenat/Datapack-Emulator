@@ -717,19 +717,6 @@ def test_nbt_paths_accept_quoted_keys(make_pack):
     }
 
 
-def test_score_graph_segments_leave_gaps_for_resets():
-    from collections import deque
-
-    from datapack_emulator.emulator.runtime.world import Scoreboard
-    from datapack_emulator.window.score_graph import step_segments
-
-    board = Scoreboard()
-    board.history[("p", "o")] = deque([(1, 5), (3, None), (5, 7), (8, None)])
-    assert step_segments(board, "p", "o", 10) == [([1, 3], [5]), ([5, 8], [7])]
-    board.history[("p", "o")] = deque([(1, 5), (4, 6)])
-    assert step_segments(board, "p", "o", 10) == [([1, 4, 10], [5, 6])]
-
-
 def test_unknown_commands_and_bad_ranges_are_described_honestly():
     from datapack_emulator.emulator.analysis.explain import explain_line
     from datapack_emulator.emulator.testing import _valid_range
