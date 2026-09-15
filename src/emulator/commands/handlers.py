@@ -432,7 +432,7 @@ def cmd_function(command: Command, context: ExecutionContext) -> CommandResult:
     target = normalise_tagged_id(command.arguments[0])
     macro_arguments = _macro_arguments(command.arguments[1:], context)
     if target.startswith("#"):
-        function_ids = context.emulator.pack.resolve_function_tag(target)
+        function_ids = context.emulator.library.resolve_tag(target)
         if not function_ids:
             context.game_error("commands.function.scheduled.no_functions", target)
             return CommandResult.failure()
@@ -944,11 +944,7 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
 
     if kind == "function" and len(arguments) >= 2:
         target = normalise_tagged_id(arguments[1])
-        ids = (
-            context.emulator.pack.resolve_function_tag(target)
-            if target.startswith("#")
-            else [target]
-        )
+        ids = context.emulator.library.resolve_tag(target) if target.startswith("#") else [target]
         # vanilla: passes on the first function that returns a non-zero value;
         # a function that ends without `return` does not count
         for function_id in ids:

@@ -484,7 +484,11 @@ class Datapack:
         ]
 
     def supports(self, version: Version) -> bool:
-        return bool(self.mcmeta and self.mcmeta.supports_format(version.format))
+        return self.compatibility(version).compatible
+
+    def compatibility(self, version: Version) -> Compatibility:
+        """How ``version`` reads this pack's pack.mcmeta (see Compatibility)."""
+        return Compatibility.check(self, version)
 
     # convenience passthroughs to the default view -------------------------
 
@@ -507,3 +511,140 @@ class Datapack:
 
     def __repr__(self) -> str:
         return f"<Datapack {self.name} namespaces={list(self.namespaces)}>"
+
+
+#: 1.20.2 reads supported_formats; 1.21.9 (25w31a) requires min_format/max_format
+SUPPORTED_FORMATS_SINCE = "1.20.2"
+MIN_MAX_FORMAT_SINCE = "1.21.9"
+#: last data pack format without a minor version
+LAST_WHOLE_FORMAT = 81
+#: 1.21.9+ rejects multi-version metadata whose pack_format is older than this
+MULTI_VERSION_MIN_PACK_FORMAT = 15
+
+
+@dataclass
+class Compatibility:
+    """What one version makes of pack.mcmeta.
+
+    Rules checked by a peer session in decompiled Mojang jars:
+
+    * before 1.20.2 only ``pack_format`` is read and compared as one number
+    * 1.20.2–1.21.8 also read ``supported_formats``; a range that does not
+      contain ``pack_format`` is warned about and collapses to it
+    * 1.21.9+ require ``min_format``/``max_format``; when the minimum is a
+      pre-minor format (<= 81) ``pack_format`` and ``supported_formats`` must be
+      present and agree with them, and ``pack_format`` must be at least 15.
+      A violation makes the server log that it could not load the metadata and
+      treat compatibility as unknown.
+
+    In every case the pack is still loaded: incompatibility is a warning in the
+    pack list, never a refusal.
+    """
+
+    version: Version
+    #: "compatible", "too_old", "too_new" or "unknown"
+    status: str
+    #: problems the server itself logs while reading the metadata
+    server_log: list[str] = field(default_factory=list)
+    #: explanation of the verdict, for the emulator's notes
+    reason: str = ""
+
+    @property
+    def compatible(self) -> bool:
+        return self.status == "compatible"
+
+    @classmethod
+    def check(cls, datapack: Datapack, version: Version) -> Compatibility:
+        mcmeta = datapack.mcmeta
+        if mcmeta is None:
+            return cls(version, "unknown", reason="no pack.mcmeta")
+        pack = mcmeta.pack
+
+        if version < versions.parse(SUPPORTED_FORMATS_SINCE):
+            declared = pack.get("pack_format")
+            if not isinstance(declared, (int, float)) or isinstance(declared, bool):
+                return cls(version, "unknown", reason="pack_format is missing")
+            return cls._compare(
+                version, (int(declared), 0), (int(declared), ANY_MINOR), "pack_format"
+            )
+
+        if version < versions.parse(MIN_MAX_FORMAT_SINCE):
+            declared = pack.get("pack_format")
+            if not isinstance(declared, (int, float)) or isinstance(declared, bool):
+                return cls(version, "unknown", reason="pack_format is missing")
+            low, high = _format_bounds(pack.get("supported_formats"), None, None)
+            whole = (int(declared), 0)
+            if low is None and high is None:
+                low, high = whole, (int(declared), ANY_MINOR)
+            elif not _within(whole, low, high):
+                verdict = cls._compare(version, whole, (int(declared), ANY_MINOR), "pack_format")
+                verdict.server_log.append(
+                    f"pack_format {int(declared)} is outside its supported_formats; "
+                    "the range is ignored"
+                )
+                return verdict
+            return cls._compare(version, low, high, "supported_formats")
+
+        # 1.21.9 and later
+        problems = _modern_metadata_problems(pack)
+        if problems:
+            return cls(
+                version,
+                "unknown",
+                server_log=[
+                    f"Couldn't load {datapack.name} pack metadata: {problem}"
+                    for problem in problems
+                ],
+                reason="its metadata does not validate, so compatibility is unknown",
+            )
+        low = _as_format(pack.get("min_format"))
+        high = _as_format(pack.get("max_format"), upper=True)
+        return cls._compare(version, low, high, "min_format/max_format")
+
+    @classmethod
+    def _compare(
+        cls, version: Version, low: Format | None, high: Format | None, source: str
+    ) -> Compatibility:
+        target = version.format
+        if low is not None and target < low:
+            return cls(version, "too_new", reason=f"{source} starts after {version.format_string}")
+        if high is not None and target > high:
+            return cls(version, "too_old", reason=f"{source} ends before {version.format_string}")
+        return cls(version, "compatible", reason=f"{source} covers {version.format_string}")
+
+
+def _modern_metadata_problems(pack: dict[str, Any]) -> list[str]:
+    """The validation 1.21.9+ applies to min_format/max_format metadata."""
+    minimum = _as_format(pack.get("min_format"))
+    maximum = _as_format(pack.get("max_format"), upper=True)
+    if minimum is None or maximum is None:
+        return ["min_format and max_format are required"]
+    if minimum[0] > LAST_WHOLE_FORMAT:
+        legacy = [key for key in ("pack_format", "supported_formats") if key in pack]
+        return (
+            [f"{', '.join(legacy)} must be absent when min_format is above {LAST_WHOLE_FORMAT}"]
+            if legacy
+            else []
+        )
+    problems: list[str] = []
+    declared = pack.get("pack_format")
+    supported = pack.get("supported_formats")
+    if not isinstance(declared, (int, float)) or isinstance(declared, bool):
+        problems.append("pack_format is required when min_format is a pre-minor format")
+    if supported is None:
+        problems.append("supported_formats is required when min_format is a pre-minor format")
+    else:
+        low, high = _format_bounds(supported, None, None)
+        if low is not None and low[0] != minimum[0]:
+            problems.append("supported_formats must start at min_format")
+        if high is not None and high[0] not in (maximum[0], LAST_WHOLE_FORMAT):
+            problems.append("supported_formats must end at max_format")
+    if isinstance(declared, (int, float)) and not isinstance(declared, bool):
+        if not _within((int(declared), 0), minimum, maximum):
+            problems.append("pack_format must lie between min_format and max_format")
+        if int(declared) < MULTI_VERSION_MIN_PACK_FORMAT:
+            problems.append(
+                "Multi-version packs cannot support minimum version of less than "
+                f"{MULTI_VERSION_MIN_PACK_FORMAT}"
+            )
+    return problems

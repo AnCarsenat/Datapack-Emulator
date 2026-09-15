@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -79,18 +80,38 @@ class ItemModifier(JsonResource):
     pass
 
 
+@dataclass(frozen=True)
+class TagEntry:
+    """One entry of a tag's ``values``: ``"ns:id"`` or ``{"id", "required"}``."""
+
+    value: str
+    required: bool = True
+    #: object form, which 1.16.1 cannot read
+    written_as_object: bool = False
+
+
 class Tag(JsonResource):
     """A ``tags/<registry>/<name>.json`` list of entries."""
 
     @property
-    def values(self) -> list[str]:
-        out: list[str] = []
+    def entries(self) -> list[TagEntry]:
+        out: list[TagEntry] = []
         for entry in self.content.get("values", []):
             if isinstance(entry, str):
-                out.append(entry)
+                out.append(TagEntry(entry))
             elif isinstance(entry, dict) and "id" in entry:
-                out.append(str(entry["id"]))
+                out.append(
+                    TagEntry(
+                        str(entry["id"]),
+                        required=bool(entry.get("required", True)),
+                        written_as_object=True,
+                    )
+                )
         return out
+
+    @property
+    def values(self) -> list[str]:
+        return [entry.value for entry in self.entries]
 
     @property
     def replace(self) -> bool:

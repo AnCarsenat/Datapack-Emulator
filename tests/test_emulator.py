@@ -81,19 +81,33 @@ def test_macro_with_storage_and_missing_argument(make_pack):
     assert any("Missing argument name" in error for error in game_errors(emulator.output.records))
 
 
-def test_command_missing_from_version_gets_unknown_command(make_pack):
+def test_command_missing_from_version_fails_the_function_load(make_pack):
+    from src.emulator.commands.parser import Command
+
     emulator = run(
         make_pack,
         "",
         version="1.19.4",
         extra={  # 1.19.4 reads the plural folders
-            "data/test/functions/tick.mcfunction": "return 1\n",
+            "data/test/functions/tick.mcfunction": "say before\nreturn 1\n",
             "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
         },
     )
+    messages = [r.message for r in emulator.output.records if r.source is LogSource.GAME]
+    assert (
+        "Failed to load function test:tick: Whilst parsing command on line 2: "
+        "Unknown or incomplete command, see below for error"
+    ) in messages
+    assert (
+        "Couldn't load tag minecraft:tick as it is missing following references: test:tick"
+    ) in messages
+    assert "[Server] before" not in chat(emulator.output.records)  # nothing of it runs
+
+    # typed, the same command gets the game's parse error with its marker
+    emulator.run_command(Command.parse("return 1"), emulator.root_context())
     errors = game_errors(emulator.output.records)
-    assert errors and errors[0].startswith("Unknown or incomplete command")
-    assert errors[0].endswith("return<--[HERE]")
+    assert errors[-1].startswith("Unknown or incomplete command")
+    assert errors[-1].endswith("return<--[HERE]")
     notes = [
         r.message
         for r in emulator.output.records

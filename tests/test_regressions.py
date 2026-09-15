@@ -486,3 +486,64 @@ def test_emulator_limitations_are_noted_once_per_run(make_pack):
     assert len([r for r in notes if "'block'" in r.message]) == 1
     assert len([r for r in notes if "data get block" in r.message]) == 1
     assert all(r.level <= LogLevel.INFO for r in notes if "block" in r.message)
+
+
+def test_tags_with_missing_required_entries_are_dropped(make_pack):
+    from src.emulator import Datapack, Emulator
+
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/minecraft/tags/function/tick.json": {"values": ["test:a", "test:gone"]},
+                "data/minecraft/tags/function/load.json": {
+                    "values": ["test:a", {"id": "test:gone", "required": False}]
+                },
+                "data/test/function/a.mcfunction": "say a\n",
+            }
+        )
+    )
+    modern = Emulator(pack, version="1.21.4")
+    assert modern.library.resolve_tag("#minecraft:tick") == []
+    assert modern.library.resolve_tag("#minecraft:load") == ["test:a"]
+    assert "#minecraft:tick" in modern.library.tag_failures
+
+    legacy_pack = Datapack.load(
+        make_pack(
+            {
+                "data/minecraft/tags/functions/load.json": {
+                    "values": [{"id": "test:a", "required": False}]
+                },
+                "data/test/functions/a.mcfunction": "say a\n",
+            }
+        )
+    )
+    assert Emulator(legacy_pack, version="1.16.1").library.resolve_tag("#minecraft:load") == []
+    assert Emulator(legacy_pack, version="1.16.2").library.resolve_tag("#minecraft:load") == [
+        "test:a"
+    ]
+
+
+def test_first_tick_runs_load_and_tick_in_the_versions_order(make_pack):
+    from src.emulator import Datapack, Emulator
+
+    def order(version: str) -> list[str]:
+        pack = Datapack.load(
+            make_pack(
+                {
+                    "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
+                    "data/minecraft/tags/functions/load.json": {"values": ["test:load"]},
+                    "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+                    "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+                    "data/test/functions/tick.mcfunction": "say tick\n",
+                    "data/test/functions/load.mcfunction": "say load\n",
+                    "data/test/function/tick.mcfunction": "say tick\n",
+                    "data/test/function/load.mcfunction": "say load\n",
+                }
+            )
+        )
+        emulator = Emulator(pack, version=version)
+        emulator.run(ticks=2)
+        return chat(emulator.output.records)
+
+    assert order("1.19.2") == ["[Server] tick", "[Server] load", "[Server] tick"]
+    assert order("1.19.3") == ["[Server] load", "[Server] tick", "[Server] tick"]

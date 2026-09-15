@@ -21,6 +21,7 @@ from src.emulator.commands.registry import CommandSet
 from src.emulator.common import normalise_id
 from src.emulator.datapack import Datapack, PackView
 from src.emulator.runtime.context import ExecutionContext
+from src.emulator.runtime.library import FunctionLibrary
 from src.emulator.runtime.messages import MessageCatalogue, unknown_command
 from src.emulator.runtime.output import LogLevel, LogSource, OutputBus
 from src.emulator.runtime.world import World
@@ -53,6 +54,8 @@ class Emulator:
         self.version: Version = versions.parse(version)
         self.pack: PackView = datapack.view_for(self.version)
         self.commands: CommandSet = command_set(self.version)
+        #: what a server of this version actually loads from the pack
+        self.library = FunctionLibrary.build(self.pack, self.commands)
         #: base-game content read from a client jar, when one was loaded
         self.vanilla = vanilla
         self.messages = MessageCatalogue(
@@ -67,6 +70,7 @@ class Emulator:
         self.commands_run = 0
         self.schedules: list[tuple[int, str]] = []  # (absolute tick, function id)
         self.loaded = False
+        self._pending_load = False
         #: diagnostics already reported this run (see ExecutionContext.note_once)
         self.noted: set[str] = set()
 
@@ -79,6 +83,7 @@ class Emulator:
         self.commands_run = 0
         self.schedules.clear()
         self.loaded = False
+        self._pending_load = False
         self.noted.clear()
         self.output.set_tick(None)
 
@@ -95,7 +100,23 @@ class Emulator:
             if previous < needed:
                 sys.setrecursionlimit(previous)
 
+    #: until 1.19.2 the first tick ran #minecraft:tick before #minecraft:load
+    LOAD_BEFORE_TICK_SINCE = "1.19.3"
+
+    def report_load(self) -> None:
+        """What the server logs while loading the pack (once per run)."""
+        for failure in self.library.failures:
+            self.output.game(
+                failure.message + (f": {failure.detail}" if failure.detail else ""),
+                level=LogLevel.WARNING,
+                function=failure.resource_id if not failure.resource_id.startswith("#") else "",
+                line=failure.line,
+                version=self.version.id,
+                key=failure.key,
+            )
+
     def run_load(self) -> float:
+        """Run ``#minecraft:load`` now (``run()`` places it in the first tick)."""
         self.loaded = True
         self.output.set_tick(self.world.tick)
         with self._stack_headroom():
@@ -113,7 +134,13 @@ class Emulator:
         start = self.profiler.total_us
 
         with self._stack_headroom():
+            if self._pending_load and self.version >= versions.parse(self.LOAD_BEFORE_TICK_SINCE):
+                self._pending_load = False
+                self.run_load()
             self._run_tag("#minecraft:tick")
+            if self._pending_load:  # 1.16.1–1.19.2: load after the first tick
+                self._pending_load = False
+                self.run_load()
             game_time = self.world.tick + 1
             self.world.tick = game_time  # schedules made from here on count from here
             due = [entry for entry in self.schedules if entry[0] <= game_time]
@@ -133,7 +160,16 @@ class Emulator:
         return elapsed
 
     def run(self, ticks: int = 20) -> Profiler:
+        """Start the server, then run ``ticks`` ticks.
+
+        ``#minecraft:load`` runs in the first tick: after ``#minecraft:tick``
+        before 1.19.3, before it from 1.19.3 on.
+        """
         if not self.loaded:
+            self.report_load()
+            self._pending_load = True
+        if ticks <= 0 and self._pending_load:
+            self._pending_load = False
             self.run_load()
         for _ in range(ticks):
             self.run_tick()
@@ -141,11 +177,12 @@ class Emulator:
 
     def _run_tag(self, tag_id: str) -> float:
         start = self.profiler.total_us
-        targets = self.pack.resolve_function_tag(tag_id)
-        if not targets:
+        targets = self.library.resolve_tag(tag_id)
+        if not targets and tag_id not in self.noted:
+            self.noted.add(tag_id)
             self.output.emulator(
-                f"{tag_id} is empty or missing",
-                level=LogLevel.WARNING,
+                f"{tag_id} is empty, missing or failed to load",
+                level=LogLevel.INFO,
                 version=self.version.id,
             )
         for function_id in targets:
@@ -160,7 +197,7 @@ class Emulator:
     def run_scheduled(self, target: str) -> None:
         """Run a due schedule; ``#tag`` targets run every function in the tag."""
         if target.startswith("#"):
-            for function_id in self.pack.resolve_function_tag(target):
+            for function_id in self.library.resolve_tag(target):
                 self.run_function(function_id, self.root_context())
         else:
             self.run_function(target, self.root_context())
@@ -240,7 +277,7 @@ class Emulator:
         macro_arguments: dict[str, Any] | None = None,
     ) -> CommandResult:
         function_id = normalise_id(function_id)
-        function = self.pack.function(function_id)
+        function = self.library.function(function_id)
         if function is None:
             context.game_error("arguments.function.unknown", function_id)
             return CommandResult.failure()

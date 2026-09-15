@@ -50,6 +50,9 @@ class VersionRun:
     records: list[LogRecord] = field(default_factory=list)
     unknown_commands: set[str] = field(default_factory=set)
     missing_features: set[str] = field(default_factory=set)
+    #: functions and tags the server refused to load in this version
+    failed_functions: list[str] = field(default_factory=list)
+    failed_tags: list[str] = field(default_factory=list)
     missing_functions: list[str] = field(default_factory=list)
     unreachable: list[str] = field(default_factory=list)
     cycles: list[list[str]] = field(default_factory=list)
@@ -81,12 +84,17 @@ class VersionRun:
 
     @property
     def status(self) -> str:
-        if not self.supported:
-            return "unsupported"
-        if self.unknown_commands or self.errors:
+        """errors > warnings > unsupported > ok.
+
+        "unsupported" only means the pack's metadata does not claim this version:
+        the game still loads it, so real problems take precedence.
+        """
+        if self.errors:
             return "errors"
         if self.warnings:
             return "warnings"
+        if not self.supported:
+            return "unsupported"
         return "ok"
 
     def __repr__(self) -> str:
@@ -183,6 +191,20 @@ class TestEngine:
         )
         emulator.run(ticks=self.ticks)
 
+        # functions the version could not parse were logged by the emulator as
+        # load failures; keep what they needed for the summary columns
+        commands = command_set(version)
+        for function_id in emulator.library.function_failures:
+            for feature, _since in commands.missing_features(
+                view.functions[function_id].features()
+            ):
+                run.missing_features.add(feature)
+                kind, _, name = feature.partition(":")
+                if kind == "command":
+                    run.unknown_commands.add(name)
+        run.failed_functions = sorted(emulator.library.function_failures)
+        run.failed_tags = sorted(emulator.library.tag_failures)
+
         graph = CallGraph.from_pack(view)
         run.profiler = emulator.profiler
         run.graph = graph
@@ -222,48 +244,44 @@ class TestEngine:
         """Everything that can be decided without running a tick."""
         fields = {"version": version.id}
 
-        if not run.supported:
-            minimum, maximum = self.datapack.format_range
-            declared = self.datapack.pack_format
+        compatibility = self.datapack.compatibility(version)
+        for line in compatibility.server_log:
+            bus.game(line, level=LogLevel.WARNING, **fields)
+        if not compatibility.compatible:
             bus.emulator(
-                f"pack.mcmeta declares pack_format {declared} "
-                f"(supported {minimum} .. {maximum}); {version.id} uses "
-                f"{version.format_string}, so the game would warn about this pack",
-                level=LogLevel.WARNING,
+                f"{version.id} lists this pack as {compatibility.status.replace('_', ' ')} "
+                f"({compatibility.reason}); the game still loads it",
+                level=LogLevel.INFO,
                 **fields,
             )
 
         # folder naming ---------------------------------------------------
-        singular_names = set(PLURAL_REGISTRIES.values())
+        # A pack that declares versions on both sides of a change ships the old
+        # form on purpose, so the files one version ignores are expected there.
+        declared = self.datapack.declared_versions()
+
+        def spans(boundary: str) -> bool:
+            edge = versions.parse(boundary)
+            return any(v < edge for v in declared) and any(v >= edge for v in declared)
+
+        folder_level = (
+            LogLevel.INFO if spans(versions.SINGULAR_REGISTRIES_SINCE) else LogLevel.WARNING
+        )
         raw_folders: set[str] = set()
         for namespaces in view.namespaces.values():
             for namespace in namespaces:
                 raw_folders |= namespace.raw_folders
-        if versions.uses_singular_registries(version):
-            stale = {
-                folder
-                for folder in raw_folders
-                if folder in PLURAL_REGISTRIES and PLURAL_REGISTRIES[folder] not in raw_folders
-            }
-            for folder in sorted(stale):
+        renamed = (
+            PLURAL_REGISTRIES
+            if versions.uses_singular_registries(version)
+            else {singular: plural for plural, singular in PLURAL_REGISTRIES.items()}
+        )
+        for folder in sorted(raw_folders):
+            wanted = renamed.get(folder)
+            if wanted is not None and wanted not in raw_folders:
                 bus.emulator(
-                    f"{version.id} reads '{PLURAL_REGISTRIES[folder]}/', not '{folder}/' — "
-                    "those files are ignored",
-                    level=LogLevel.ERROR,
-                    **fields,
-                )
-        else:
-            plural_of = {value: key for key, value in PLURAL_REGISTRIES.items()}
-            stale = {
-                folder
-                for folder in raw_folders
-                if folder in singular_names and plural_of[folder] not in raw_folders
-            }
-            for folder in sorted(stale):
-                bus.emulator(
-                    f"{version.id} reads '{plural_of[folder]}/', not '{folder}/' — "
-                    "those files are ignored",
-                    level=LogLevel.ERROR,
+                    f"{version.id} reads '{wanted}/', not '{folder}/' — those files are ignored",
+                    level=folder_level,
                     **fields,
                 )
 
@@ -272,7 +290,7 @@ class TestEngine:
             bus.emulator(
                 f"the pack declares overlays, which {version.id} ignores "
                 f"(added in {versions.OVERLAYS_SINCE})",
-                level=LogLevel.WARNING,
+                level=LogLevel.INFO if spans(versions.OVERLAYS_SINCE) else LogLevel.WARNING,
                 **fields,
             )
         if view.active_overlays:
@@ -280,22 +298,6 @@ class TestEngine:
                 "active overlay(s): " + ", ".join(view.active_overlays),
                 **fields,
             )
-
-        # command availability --------------------------------------------
-        commands = command_set(version)
-        for function_id, function in sorted(view.functions.items()):
-            for feature, since in commands.missing_features(function.features()):
-                run.missing_features.add(feature)
-                kind, _, name = feature.partition(":")
-                if kind == "command":
-                    run.unknown_commands.add(name)
-                bus.emulator(
-                    f"{function_id} uses '{name}' ({kind}), which {version.id} does not have"
-                    + (f" (added in {since.id})" if since else ""),
-                    level=LogLevel.ERROR,
-                    function=function_id,
-                    **fields,
-                )
 
     # -- reporting --------------------------------------------------------
 
