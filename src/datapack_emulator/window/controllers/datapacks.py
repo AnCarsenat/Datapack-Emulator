@@ -136,7 +136,6 @@ class DatapackController(Controller):
         )
         window.tick_label.setText("idle")
         window.world_view.forget()
-        window.console.refresh_players()
 
     def on_version_changed(self, _text: str) -> None:
         window = self.window

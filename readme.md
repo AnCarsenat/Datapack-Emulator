@@ -11,9 +11,8 @@ checked against the real base game read out of a `client.jar`.
 * prints Minecraft's own error messages, kept apart from the app's own logs
 * shows the world as it runs — a scoreboard grid with each score's history,
   entities with their full NBT, command storage — and runs commands typed
-  into it, as the console or as a player
-* command tests, per tick and per player, in the window, in runs and across
-  versions
+  into it
+* command tests at any tick, in the window, during runs and across versions
 * profiler with per-function estimated cost, call-graph DAG, version matrix
 * reads registries, tags and message strings straight from a `client.jar`
 

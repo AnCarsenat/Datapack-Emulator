@@ -15,7 +15,7 @@ engine = TestEngine(
     players=1,
     seed=0,
     library=default_library(),
-    tests=[CommandTest("trigger hat", run_as="Player1", at_tick=1)],
+    tests=[CommandTest("execute as Player1 run trigger hat", at_tick=1)],
 )
 
 chosen = TestEngine.format_boundaries(pack.declared_versions())

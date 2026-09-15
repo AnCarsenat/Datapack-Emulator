@@ -32,7 +32,7 @@ src/datapack_emulator/     the package (standard src layout)
       profiler.py          Profiler and its HTML report
       graph.py             CallGraph
     engine.py              TestEngine, VersionRun
-    testing.py             CommandTest, TestSchedule, run_tests, run_as (tests and typed commands)
+    testing.py             CommandTest, TestSchedule, run_tests (the environment tab's tests)
     __main__.py            CLI: datapack-emulator-cli
   window/                  Qt only
     window.ui, engine.ui,  ALL layout

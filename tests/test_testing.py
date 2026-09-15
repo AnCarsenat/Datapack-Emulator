@@ -46,7 +46,7 @@ def test_command_tests_pass_fail_and_run_at_their_tick(make_pack):
 
 
 def test_command_tests_round_trip_through_dicts():
-    test = CommandTest("function hat:tick", at_tick=3, expect="Hat", enabled=False, run_as="@p")
+    test = CommandTest("function hat:tick", at_tick=3, expect="Hat", enabled=False)
     assert CommandTest.from_dict(test.to_dict()) == test
 
 
@@ -59,16 +59,16 @@ def test_any_hat_trigger_works_from_the_first_tick_as_a_player():
     results = run_tests(
         pack,
         [
-            CommandTest("trigger hat", run_as="Player1"),
-            CommandTest("trigger hat", run_as="Player1", at_tick=3),
+            CommandTest("execute as Player1 run trigger hat"),
+            CommandTest("execute as Player1 run trigger hat", at_tick=3),
             CommandTest("trigger hat"),
-            CommandTest("trigger hat", run_as="Nobody"),
+            CommandTest("execute as Nobody run trigger hat"),
         ],
         version="26.2",
     )
     assert results[0].passed and results[1].passed, [r.reason for r in results]
     assert results[2].reason == "A player is required to run this command here"
-    assert results[3].reason == "No player was found"
+    assert results[3].reason == "the command did not succeed"  # nobody to run as
 
 
 def test_a_trigger_is_used_up_until_enabled_again(make_pack):
@@ -84,7 +84,10 @@ def test_a_trigger_is_used_up_until_enabled_again(make_pack):
     )
     results = run_tests(
         pack,
-        [CommandTest("trigger t set 4", run_as="@a"), CommandTest("trigger t", run_as="@a")],
+        [
+            CommandTest("execute as @a run trigger t set 4"),
+            CommandTest("execute as @a run trigger t"),
+        ],
         version="1.21.4",
     )
     assert results[0].passed and "set value to 4" in results[0].records[-1].message

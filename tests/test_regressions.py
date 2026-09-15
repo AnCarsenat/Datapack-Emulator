@@ -680,7 +680,6 @@ def test_tags_survive_removing_the_tags_key_and_rotation_is_normalised(make_pack
 
 def test_reset_locks_a_trigger_and_killed_entities_lose_their_scores(make_pack):
     from datapack_emulator.emulator.commands.parser import Command
-    from datapack_emulator.emulator.testing import run_as
 
     emulator = _world(
         make_pack,
@@ -693,7 +692,8 @@ def test_reset_locks_a_trigger_and_killed_entities_lose_their_scores(make_pack):
         "scoreboard objectives setdisplay bogus t\n",
     )
     board = emulator.world.scoreboard
-    assert not run_as(emulator, Command.parse("trigger t"), "Player1").success
+    trigger = Command.parse("execute as Player1 run trigger t")
+    assert not emulator.run_command(trigger, emulator.root_context()).success
     assert board.tracked() == [] and not any(key[0] != "Player1" for key in board.history)
     errors = [r.message for r in emulator.output.records if r.failure]
     assert "Unknown display slot 'bogus'" in errors

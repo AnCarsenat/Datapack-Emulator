@@ -351,7 +351,7 @@ QMenuBar::item:selected {
                <item>
                 <widget class="QLabel" name="labelTestsHelp">
                  <property name="text">
-                  <string>Each test runs a command in a fresh world, on the server console or — with "run as" set to a player such as Player1 — typed by that player, e.g. "trigger hat". Like in game, it runs in its tick after that tick's functions (tick 0 is the first tick, where #minecraft:load runs too). It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
+                  <string>Each test runs a command on the server console in a fresh world, e.g. "function hat:tick", or "execute as Player1 run trigger hat" for a command a player would type. Like in game, it runs in its tick after that tick's functions (tick 0 is the first tick, where #minecraft:load runs too). It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
@@ -381,14 +381,6 @@ QMenuBar::item:selected {
                  <column>
                   <property name="text">
                    <string>tick</string>
-                  </property>
-                 </column>
-                 <column>
-                  <property name="text">
-                   <string>run as</string>
-                  </property>
-                  <property name="toolTip">
-                   <string>empty: the server console; a player name or selector (Player1, @a) types it in chat</string>
                   </property>
                  </column>
                  <column>
@@ -913,32 +905,9 @@ QMenuBar::item:selected {
      <item>
       <layout class="QHBoxLayout" name="consoleLayout">
        <item>
-        <widget class="QLabel" name="labelConsoleAs">
-         <property name="text">
-          <string>run as</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QComboBox" name="comboConsoleAs">
-         <property name="editable">
-          <bool>true</bool>
-         </property>
-         <property name="minimumSize">
-          <size>
-           <width>110</width>
-           <height>0</height>
-          </size>
-         </property>
-         <property name="toolTip">
-          <string>console runs it as the server; a player name, UUID or selector types it in chat</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <widget class="QLineEdit" name="editConsole">
          <property name="placeholderText">
-          <string>run a command in the current world, e.g. trigger hat — Enter to run, ↑/↓ for history</string>
+          <string>run a command in the current world, e.g. execute as Player1 run trigger hat — Enter to run, ↑/↓ for history</string>
          </property>
          <property name="clearButtonEnabled">
           <bool>true</bool>

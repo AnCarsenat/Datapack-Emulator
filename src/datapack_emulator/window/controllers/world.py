@@ -116,7 +116,8 @@ class WorldController(Controller):
             menu.addAction(entity.display).setEnabled(False)
             menu.addSeparator()
             menu.addAction(
-                "run commands as this entity", lambda: window.console.use_executor(entity.id)
+                "run a command as this entity",
+                lambda: window.console.prefill(f"execute as {entity.id} at @s run "),
             )
             menu.addAction("copy UUID", lambda: navigation.copy_text(entity.uuid, "the UUID"))
             menu.addAction(

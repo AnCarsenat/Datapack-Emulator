@@ -141,8 +141,8 @@ def test_tests_table_runs_commands_and_saves_with_the_project(window, make_pack,
     )
     results = window.environment.run()
     assert [result.passed for result in results] == [True, False]
-    assert window.table_tests.item(0, 4).text().startswith("✔")
-    assert window.table_tests.item(1, 4).text().startswith("✘")
+    assert window.table_tests.item(0, 3).text().startswith("✔")
+    assert window.table_tests.item(1, 3).text().startswith("✘")
     assert window.test_summary.text().startswith("1/2 passed")
 
     window.spin_seed.setValue(42)
@@ -286,7 +286,7 @@ def test_ctrl_s_saves_tests_into_a_dpemu_and_open_restores_them(app, window, mak
 
     # a cell still being edited when Ctrl+S is pressed is kept
     table = window.table_tests
-    table.editItem(table.item(0, 2))
+    table.editItem(table.item(0, 1))
     app.processEvents()
     editor = next(w for w in table.viewport().findChildren(QLineEdit) if w.isVisible())
     editor.setText("function test:tick")
@@ -377,30 +377,31 @@ def test_a_project_restores_the_engine_selection(window, make_pack):
     engine.close()
 
 
-def test_tests_table_runs_as_a_player(window):
+def test_tests_table_triggers_as_a_player(window):
     from datapack_emulator.emulator.testing import CommandTest
     from datapack_emulator.settings import PATHS
 
     window.datapacks.load(PATHS.SAMPLES / "hat")
-    window.environment.set_tests([CommandTest("trigger hat", run_as="Player1")])
-    assert window.environment.tests()[0].run_as == "Player1"
+    window.environment.set_tests([CommandTest("execute as Player1 run trigger hat")])
     assert [result.passed for result in window.environment.run()] == [True]
 
 
-def test_console_runs_commands_in_the_current_world_as_anyone(app, window):
+def test_console_runs_commands_in_the_current_world(app, window):
     from datapack_emulator.settings import PATHS
 
     window.datapacks.load(PATHS.SAMPLES / "hat")
-    window.combo_console_as.setCurrentText("Player1")
-    window.edit_console.setText("/trigger hat")
+    window.edit_console.setText("/execute as Player1 run trigger hat")
     window.edit_console.returnPressed.emit()
     app.processEvents()
     assert window.emulator.world.tick == 1  # the first tick ran, enabling the trigger
     assert window.emulator.world.scoreboard.get("Player1", "hat") == 1
     assert window.edit_console.text() == ""
-    assert window.statusBar().currentMessage().startswith("trigger hat: succeeded")
+    assert (
+        window.statusBar()
+        .currentMessage()
+        .startswith("execute as Player1 run trigger hat: succeeded")
+    )
 
-    window.combo_console_as.setCurrentText("console")
     result = window.console.run("trigger hat")
     assert not result.success
     window.log_view.flush()
@@ -426,8 +427,7 @@ def test_world_dock_shows_scores_entities_and_storage(app, window):
     window.runs.run_all()
     window.runs.wait()
     window.console.run("data modify storage test:mem list append value {a:1}")
-    window.console.use_executor("Player1")
-    window.console.run("trigger hat")
+    window.console.run("execute as Player1 run trigger hat")
 
     window.tabs_world.setCurrentIndex(0)
     table = window.table_scores
@@ -470,15 +470,15 @@ def test_tests_run_during_runs_and_steps_when_ticked(window, make_pack, tmp_path
     window.spin_ticks.setValue(5)
     window.runs.run_emulator()
     window.runs.wait()
-    assert window.table_tests.item(0, 4).text() == "✔ passed (value 3)"
-    assert window.table_tests.item(1, 4).text().startswith("✘ not reached")
+    assert window.table_tests.item(0, 3).text() == "✔ passed (value 3)"
+    assert window.table_tests.item(1, 3).text().startswith("✘ not reached")
     assert window.emulator.world.tick == 5  # the tests ran inside the run's world
 
     window.runs.step()  # tick 5: no test is due, the results stay
-    assert window.table_tests.item(0, 4).text() == "✔ passed (value 3)"
+    assert window.table_tests.item(0, 3).text() == "✔ passed (value 3)"
     window.environment.set_tests([CommandTest("scoreboard players get #ticks t", at_tick=6)])
     window.runs.step()  # tick 6
-    assert window.table_tests.item(0, 4).text() == "✔ passed (value 7)"
+    assert window.table_tests.item(0, 3).text() == "✔ passed (value 7)"
 
     saved = window.projects.capture().save(tmp_path / "p.dpemu")
     assert Project.load(saved).tests_during_runs is True

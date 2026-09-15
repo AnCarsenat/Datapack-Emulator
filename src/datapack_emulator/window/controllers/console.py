@@ -6,11 +6,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
-from datapack_emulator.emulator.testing import run_as
 from datapack_emulator.window.controllers.base import Controller
-
-#: the "run as" entry that means the server console
-CONSOLE = "console"
 
 
 class _HistoryKeys(QObject):
@@ -40,35 +36,13 @@ class ConsoleController(Controller):
         window.edit_console.returnPressed.connect(lambda: self.run())
         window.console_run_button.clicked.connect(lambda: self.run())
         window.edit_console.installEventFilter(self._keys)
-        self.refresh_players()
 
-    # -- who runs it --------------------------------------------------------
-
-    def refresh_players(self) -> None:
-        """Offer the console and every player of the current world (or the
-        players setting when there is no world yet)."""
-        combo = self.window.combo_console_as
-        current = combo.currentText() or CONSOLE
-        emulator = self.window.emulator
-        if emulator is not None:
-            names = [entity.name for entity in emulator.world.players]
-        else:
-            names = [f"Player{index + 1}" for index in range(self.window.spin_players.value())]
-        combo.blockSignals(True)
-        combo.clear()
-        combo.addItems([CONSOLE, *names])
-        combo.setCurrentText(current)
-        combo.blockSignals(False)
-
-    def use_executor(self, who: str) -> None:
-        self.window.combo_console_as.setCurrentText(who)
-        self.window.dock_logs.show()
-        self.window.edit_console.setFocus()
-
-    @property
-    def executor(self) -> str:
-        text = self.window.combo_console_as.currentText().strip()
-        return "" if text in ("", CONSOLE) else text
+    def prefill(self, text: str) -> None:
+        """Put ``text`` in the command line, ready to be completed."""
+        window = self.window
+        window.dock_logs.show()
+        window.edit_console.setText(text)
+        window.edit_console.setFocus()
 
     # -- running --------------------------------------------------------------
 
@@ -93,16 +67,14 @@ class ConsoleController(Controller):
             emulator.start()
             emulator.run_tick()
             window.output.app("started the world (ran the first tick) to run the command")
-        who = self.executor
-        window.output.app(f"> {line}" + (f"   (as {who})" if who else ""))
-        result = run_as(emulator, command, who)
+        window.output.app(f"> {line}")
+        result = emulator.run_command(command, emulator.root_context())
         self._remember(line)
         if text is None:
             window.edit_console.clear()
         window.log_view.flush()
         window.runs.show_tick()
         window.world_view.refresh()
-        self.refresh_players()
         outcome = "succeeded" if result.success else "failed"
         self.status(f"{line}: {outcome} (value {result.value}) at game time {emulator.world.tick}")
         return result

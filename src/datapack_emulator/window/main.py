@@ -165,7 +165,6 @@ class MainWindow(QMainWindow):
         self.table_scores: QTableWidget = find(QTableWidget, "tableScores")
         self.tree_entities: QTreeWidget = find(QTreeWidget, "treeEntities")
         self.tree_storage: QTreeWidget = find(QTreeWidget, "treeStorage")
-        self.combo_console_as: QComboBox = find(QComboBox, "comboConsoleAs")
         self.edit_console: QLineEdit = find(QLineEdit, "editConsole")
         self.console_run_button: QPushButton = find(QPushButton, "buttonConsoleRun")
 

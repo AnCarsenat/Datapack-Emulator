@@ -1,7 +1,7 @@
 """Command tests: run a command in a fresh world and check what happened.
 
-A test is what you would type into a server console, or into chat as a player,
-once the pack is running — ``function hat:tick``, ``say hi``, ``trigger hat``,
+A test is what you would type into a server console once the pack is running —
+``function hat:tick``, ``say hi``, ``execute as Player1 run trigger hat``,
 ``scoreboard players get #global counter`` — optionally at a later tick and
 with text the game output must contain.
 
@@ -25,8 +25,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.commands.parser import Command, Selector
-from datapack_emulator.emulator.commands.result import CommandResult
+from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.datapack import Datapack
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
@@ -50,8 +49,6 @@ class CommandTest:
     #: text the game output of the command must contain ("" = no check)
     expect: str = ""
     enabled: bool = True
-    #: who types it: "" for the server console, or a player name / selector
-    run_as: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -63,7 +60,6 @@ class CommandTest:
             at_tick=max(0, _as_int(data.get("at_tick"))),
             expect=str(data.get("expect", "")),
             enabled=bool(data.get("enabled", True)),
-            run_as=str(data.get("run_as", "")).strip(),
         )
 
 
@@ -171,9 +167,8 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
     records: list[LogRecord] = []
     emulator.output.listeners.append(records.append)
     try:
-        who = f" as {test.run_as}" if test.run_as else ""
-        emulator.output.app(f"test: {test.command}{who} (tick {test.at_tick})")
-        result = run_as(emulator, command, test.run_as)
+        emulator.output.app(f"test: {test.command} (tick {test.at_tick})")
+        result = emulator.run_command(command, emulator.root_context())
     finally:
         emulator.output.listeners.remove(records.append)
 
@@ -193,34 +188,3 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
         )
     detail = f"passed (value {result.value})"
     return TestResult(test, True, detail, result.value, records)
-
-
-def run_as(emulator: Emulator, command: Command, who: str = "") -> CommandResult:
-    """Run ``command`` the way it would be typed: on the console (``who`` empty)
-    or by each entity ``who`` selects, at its position — like ``execute as <who>
-    at @s run <command>``."""
-    root = emulator.root_context()
-    if not who:
-        return emulator.run_command(command, root)
-    selector = Selector.parse(who)
-    found = emulator.world.select(selector, root)
-    if not found:
-        key = (
-            "argument.entity.notfound.player"
-            if selector.is_player_only or selector.kind == "literal"
-            else "argument.entity.notfound.entity"
-        )
-        root.game_error(key)
-        return CommandResult.failure()
-    successes = total = 0
-    for entity in found:
-        context = root.branch(
-            executor=entity,
-            position=list(entity.position),
-            rotation=list(entity.rotation),
-            dimension=entity.dimension,
-        )
-        result = emulator.run_command(command, context)
-        successes += int(result.success)
-        total += result.value
-    return CommandResult(success=successes > 0, value=total if total else successes)

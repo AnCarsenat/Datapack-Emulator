@@ -48,15 +48,14 @@ current version.
     run emulator and step also run the tests below, each in its tick and in
     the run's world, filling the result column as ticks pass (tests a run
     does not reach say so).
-  * *tests*: commands run in a fresh world — `function hat:tick`, `say hi`,
-    `scoreboard players get …`, `trigger hat`. Columns:
+  * *tests*: commands run on the server console in a fresh world —
+    `function hat:tick`, `say hi`, `scoreboard players get …`, or
+    `execute as Player1 run trigger hat` for what a player would type.
+    Columns:
     * *tick*: the server tick it runs in. As in game, a command arrives after
       that tick's functions: tick 0 is the first tick, where
       `#minecraft:load` and `#minecraft:tick` have both run. Untick the box to
       skip the test.
-    * *run as*: empty for the server console, or a player name, UUID or
-      selector (`Player1`, `@a`) that types the command in chat, at its
-      position — needed for `trigger`.
     * *command*, *expect output* (text the game output must contain), and
       the *result*; hover a result for the records it produced.
 
@@ -99,9 +98,8 @@ All four are open by default and can be toggled from *view*.
   * the record counts, and *clear*, which empties the log.
 
   Below the table, a **command line** runs any command in the current world,
-  as it would be typed: *run as* is `console` (the server) or a player (any
-  name, UUID or selector can be typed). Enter runs it, ↑/↓ walk the history,
-  a leading `/` is optional. A world that has not ticked yet runs its first
+  as the server console would (`execute as Player1 run trigger hat` to act as
+  a player). Enter runs it, ↑/↓ walk the history, a leading `/` is optional. A world that has not ticked yet runs its first
   tick first, like a server that is up. The command's feedback and errors
   appear in the logs, and the world dock updates.
 * **world** — the current world, refreshed after runs, steps, tests and typed
@@ -122,7 +120,7 @@ All four are open by default and can be toggled from *view*.
 | call-graph node | same, plus *show in inspector*; tags open their `.json` |
 | profiler row | same as a graph node |
 | log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from; double-click opens the file too |
-| world › entity | run commands as this entity (fills the command line's *run as*) · copy UUID · copy data (SNBT) |
+| world › entity | run a command as this entity (starts `execute as <uuid> at @s run ` in the command line) · copy UUID · copy data (SNBT) |
 
 "External editor" and "external file manager" use the desktop's default handler
 (`QDesktopServices`), so they open whatever your system associates with the
