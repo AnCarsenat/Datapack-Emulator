@@ -39,6 +39,7 @@ class RunController(Controller):
         window.step_button.clicked.connect(self.step)
         window.stop_button.clicked.connect(self.stop)
         window.engine_button.clicked.connect(self.open_engine)
+        window.combo_speed.currentIndexChanged.connect(self.on_speed_changed)
 
     # -- settings -----------------------------------------------------------
 
@@ -49,6 +50,15 @@ class RunController(Controller):
     @speed.setter
     def speed(self, value: str) -> None:
         self.window.combo_speed.setCurrentIndex(SPEEDS.index(value) if value in SPEEDS else 0)
+
+    @property
+    def interval_ms(self) -> int:
+        return self.REALTIME_INTERVAL_MS if self.speed == "realtime" else 0
+
+    def on_speed_changed(self, _index: int) -> None:
+        """Switching speed during a run takes effect on the next timer slot."""
+        if self.timer.isActive():
+            self.timer.setInterval(self.interval_ms)
 
     # -- starting and stopping ----------------------------------------------
 
@@ -76,8 +86,7 @@ class RunController(Controller):
             window.emulator.run(ticks=0)  # just start the server and run load
             self.finish()
             return
-        interval = self.REALTIME_INTERVAL_MS if self.speed == "realtime" else 0
-        self.timer.start(interval)
+        self.timer.start(self.interval_ms)
         self.status(
             f"running {'until stopped' if self.remaining is None else f'{ticks} tick(s)'} "
             f"on {window.version.id}…"
@@ -89,9 +98,13 @@ class RunController(Controller):
             return
         if refresh:
             self.finish(stopped=True)
-        else:
-            self.timer.stop()
-            self._set_running(False)
+            return
+        self.timer.stop()
+        self._set_running(False)
+        self.window.log_view.flush()
+        self._show_tick()
+        if self.window.emulator is not None:
+            self.status(f"stopped at tick {self.window.emulator.world.tick}")
 
     def wait(self) -> None:
         """Drive a finite run to its end without the event loop (tests, scripts)."""

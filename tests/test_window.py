@@ -194,3 +194,55 @@ def test_log_records_can_be_copied_and_opened_in_the_source_view(app, window, ma
         a for a in window.log_view.menu_for(typed).actions() if a.text().startswith("open")
     ][0].isEnabled()
     assert failure.level == LogLevel.DEBUG  # silent: it failed inside a function
+
+
+def test_default_version_is_a_release_and_the_label_explains_incompatibility(window, make_pack):
+    from datapack_emulator.emulator import versions
+
+    newest = versions.NEWEST.format
+    readable = make_pack(
+        {"data/test/function/a.mcfunction": "say a\n"},
+        mcmeta={
+            "pack": {
+                "pack_format": 15,
+                "supported_formats": [15, newest],
+                "min_format": 15,
+                "max_format": newest,
+            }
+        },
+    )
+    window.datapacks.load(readable)
+    assert window.version.stable and window.version.format <= newest
+    assert "(" not in window.pack_label.text().split("emulating")[-1]
+
+    # the range excludes pack_format, so 1.20.2+ collapse to 10: too old everywhere
+    stale = make_pack(
+        {"data/test/function/a.mcfunction": "say a\n"},
+        mcmeta={"pack": {"pack_format": 10, "supported_formats": [15, 48]}},
+    )
+    window.datapacks.load(stale)
+    assert window.version.id == "1.21.1"
+    assert "marked incompatible: made for an older version" in window.pack_label.text()
+
+
+def test_speed_change_applies_to_a_running_timer(window, make_pack):
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.spin_ticks.setValue(-1)
+    window.runs.speed = "fast"
+    window.runs.run_emulator()
+    assert window.runs.timer.interval() == 0
+    window.runs.speed = "realtime"
+    assert window.runs.timer.interval() == window.runs.REALTIME_INTERVAL_MS
+    window.runs._on_timer()
+    window.runs.stop(refresh=False)
+    assert window.tick_label.text() == f"tick {window.emulator.world.tick}"
+    assert window.statusBar().currentMessage().startswith("stopped at tick")
+
+
+def test_all_tests_disabled_says_so(window, make_pack):
+    from datapack_emulator.emulator.testing import CommandTest
+
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.environment.set_tests([CommandTest("say hi", enabled=False)])
+    assert window.environment.run() == []
+    assert window.statusBar().currentMessage().startswith("enable at least one test")

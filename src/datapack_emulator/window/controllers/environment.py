@@ -87,7 +87,11 @@ class EnvironmentController(Controller):
             return []
         tests = self.tests()
         if not any(test.enabled for test in tests):
-            self.status("add a test first (environment tab)")
+            self.status(
+                "enable at least one test (environment tab)"
+                if tests
+                else "add a test first (environment tab)"
+            )
             window.tabs.setCurrentWidget(window.tab_page(TAB_ENVIRONMENT))
             return []
         window.runs.stop(refresh=False)

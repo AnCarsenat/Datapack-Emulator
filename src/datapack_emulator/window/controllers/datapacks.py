@@ -23,6 +23,15 @@ from datapack_emulator.window.panels import (
     describe_resource,
 )
 
+#: statuses the server shows as "made for an older/newer version"
+INCOMPATIBLE_STATUSES = ("too_old", "too_new")
+#: what the pack label adds for each compatibility status
+COMPATIBILITY_NOTES = {
+    "too_old": "  (pack is marked incompatible: made for an older version)",
+    "too_new": "  (pack is marked incompatible: made for a newer version)",
+    "unknown": "  (pack.mcmeta is invalid for this version)",
+}
+
 
 class DatapackController(Controller):
     def connect(self) -> None:
@@ -89,10 +98,22 @@ class DatapackController(Controller):
         """Default the version combo to the newest release the pack declares.
 
         A multi-version pack's pack_format is often its oldest target (hat_v2:
-        5, but supported up to 121), so it is only the fallback.
+        5, but supported up to 121), so it is only the fallback. Pre-releases
+        and versions whose server would mark the pack incompatible are skipped.
         """
         declared = datapack.declared_versions()
-        target = declared[-1] if declared else versions.closest_to_pack_format(datapack.pack_format)
+        usable = [
+            version
+            for version in declared
+            if version.stable
+            and datapack.compatibility(version).status not in INCOMPATIBLE_STATUSES
+        ]
+        if usable:
+            target = usable[-1]
+        elif declared:
+            target = declared[-1]
+        else:
+            target = versions.closest_to_pack_format(datapack.pack_format)
         index = self.window.combo_version.findData(target.id)
         if index >= 0:
             self.window.combo_version.setCurrentIndex(index)
@@ -133,10 +154,9 @@ class DatapackController(Controller):
             window.pack_label.setText("no datapack loaded")
             self.fill_inspector([])
             return
-        supported = datapack.supports(window.version)
+        status = datapack.compatibility(window.version).status
         window.pack_label.setText(
-            f"{datapack.name} — emulating {window.version.id}"
-            + ("" if supported else "  (pack does not declare support)")
+            f"{datapack.name} — emulating {window.version.id}" + COMPATIBILITY_NOTES.get(status, "")
         )
         self.fill_inspector(describe_datapack(datapack, window.version))
 
