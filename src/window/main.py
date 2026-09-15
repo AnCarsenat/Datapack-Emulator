@@ -340,7 +340,9 @@ class MainWindow(QMainWindow):
         self.load_datapack(sample)
         self.output.app(f"opened the sample datapack {sample.name} (file > import to change)")
 
-    def load_datapack(self, path: Path, keep_project: bool = False) -> None:
+    def load_datapack(
+        self, path: Path, keep_project: bool = False, keep_version: bool = False
+    ) -> None:
         self.clear_logs()
         datapack = Datapack.load(path)
         self.datapack = datapack
@@ -348,9 +350,9 @@ class MainWindow(QMainWindow):
         for error in datapack.errors:
             self.output.app(error, level=LogLevel.ERROR)
 
-        if not keep_project or not self.project.version:
-            # a project remembers its version; a freshly imported pack gets the
-            # release matching its pack_format
+        if not keep_version and (not keep_project or not self.project.version):
+            # reloading keeps the version on screen and a project remembers its
+            # own; a freshly imported pack gets the release matching its format
             self._select_pack_version(datapack)
         self.autoload_vanilla()
         self._rebuild_emulator()
@@ -462,7 +464,7 @@ class MainWindow(QMainWindow):
         if self.datapack is None:
             self.statusBar().showMessage("nothing to reload")
             return
-        self.load_datapack(self.datapack.path)
+        self.load_datapack(self.datapack.path, keep_project=True, keep_version=True)
 
     def show_datapack(self, datapack: Datapack | None) -> None:
         self.tree.setModel(build_explorer_model(datapack))
