@@ -11,18 +11,17 @@ the world model has no blocks or inventories to change.
 
 from __future__ import annotations
 
-import json
 from typing import Any, Callable
 
 from src.emulator.common import (
     as_int,
-    flatten_text_component,
     nbt_get,
     nbt_remove,
     nbt_set,
     normalise_id,
     normalise_tagged_id,
     parse_snbt,
+    parse_text_component,
     parse_value,
 )
 from src.emulator.commands.parser import (
@@ -122,10 +121,8 @@ def cmd_msg(command: Command, context: ExecutionContext) -> CommandResult:
 def cmd_tellraw(command: Command, context: ExecutionContext) -> CommandResult:
     if len(command.arguments) < 2:
         return CommandResult.failure()
-    payload = " ".join(command.arguments[1:])
-    try:
-        text = flatten_text_component(json.loads(payload))
-    except json.JSONDecodeError:
+    text = parse_text_component(" ".join(command.arguments[1:]))
+    if text is None:
         context.game_error("command.unknown.argument")
         return CommandResult.failure()
     targets = _require_targets(context, command.arguments[0])
@@ -141,9 +138,8 @@ def cmd_title(command: Command, context: ExecutionContext) -> CommandResult:
     action = command.arguments[1]
     if action in ("title", "subtitle", "actionbar") and len(command.arguments) > 2:
         payload = " ".join(command.arguments[2:])
-        try:
-            text = flatten_text_component(json.loads(payload))
-        except json.JSONDecodeError:
+        text = parse_text_component(payload)
+        if text is None:
             text = payload
         for entity in targets:
             context.chat(f"[{entity.display} {action}] {text}")

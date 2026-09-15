@@ -69,3 +69,14 @@ def test_helpers():
     assert parse_duration("1d") == 24000
     assert in_range(5, "1..5") and not in_range(6, "..5") and in_range(3, "3")
     assert parse_snbt('{Tags:["a"],NoGravity:1b,x:1.5d}') == {"Tags": ["a"], "NoGravity": 1, "x": 1.5}
+
+
+def test_text_components_in_json_and_snbt():
+    from src.emulator.common import parse_text_component
+
+    assert parse_text_component('{"text":"json"}') == "json"
+    assert parse_text_component('{text:"hi",color:"red"}') == "hi"
+    assert parse_text_component("['',{text:'a'},\"b\"]") == "ab"
+    assert parse_text_component('{text:"it\'s"}') == "it's"
+    assert parse_text_component("{text:'say \"q\"'}") == 'say "q"'
+    assert parse_text_component("{broken") is None

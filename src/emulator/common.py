@@ -55,6 +55,23 @@ def flatten_text_component(component: Any) -> str:
     return ""
 
 
+def parse_text_component(payload: str) -> Optional[str]:
+    """Plain text of a ``tellraw``/``title`` component, or ``None`` if unreadable.
+
+    Accepts JSON (every version) and SNBT (1.21.5 and later), e.g.
+    ``{text:"hi",color:"red"}`` or ``["",{text:"a"},'b']``.
+    """
+    payload = payload.strip()
+    try:
+        return flatten_text_component(json.loads(payload))
+    except json.JSONDecodeError:
+        pass
+    try:
+        return flatten_text_component(json.loads(snbt_to_json(payload)))
+    except json.JSONDecodeError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # tokenising
 # ---------------------------------------------------------------------------
@@ -202,11 +219,17 @@ def snbt_to_json(text: str) -> str:
     length = len(text)
     while index < length:
         char = text[index]
-        if char == '"':
+        if char in "\"'":
+            # SNBT allows both quote styles; JSON only double quotes
             end = index + 1
-            while end < length and text[end] != '"':
+            while end < length and text[end] != char:
                 end += 2 if text[end] == "\\" else 1
-            out.append(text[index : end + 1])
+            inner = text[index + 1 : end]
+            if char == "'":
+                inner = inner.replace("\\'", "'")
+                out.append(json.dumps(inner))
+            else:
+                out.append(f'"{inner}"')
             index = end + 1
             continue
         if char.isalpha() or char == "_":

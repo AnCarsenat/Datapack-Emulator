@@ -112,3 +112,9 @@ def test_teleport_to_an_entity(make_pack):
     )
     player = emulator.world.players[0]
     assert player.position == [10.0, 20.0, 30.0]
+
+
+def test_tellraw_accepts_snbt_components(make_pack):
+    emulator = run(make_pack, 'tellraw @a {text:"hi",color:"red"}\ntellraw @a ["",{text:"a"},"b"]\n')
+    assert chat(emulator.output.records) == ["[Player1] hi", "[Player1] ab"]
+    assert not game_errors(emulator.output.records)
