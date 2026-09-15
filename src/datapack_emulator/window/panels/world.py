@@ -181,6 +181,9 @@ def entity_summary(entity: Entity) -> str:
     parts = [entity.type, f"{x:g} {y:g} {z:g}"]
     if entity.tags:
         parts.append("tags " + ", ".join(sorted(entity.tags)))
+    stacks = list(entity.inventory.items())
+    if stacks:
+        parts.append(f"{sum(stack.count for _, stack in stacks)} item(s)")
     return " · ".join(parts)
 
 

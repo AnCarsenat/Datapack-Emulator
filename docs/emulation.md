@@ -8,13 +8,13 @@ did; from 1.19.3 load comes first.
 
 ## The world
 
-Deliberately small: no blocks, chunks, inventories or physics.
+Deliberately small: no blocks, chunks or physics.
 
 * **entities** — type, UUID, name, position, rotation, dimension, tags and
   the rest of their NBT. `Entity.data()` is what `data get entity` shows:
   `Pos`, `Motion`, `Rotation`, `UUID` (int array), the common defaults
   (`Air`, `Fire`, `OnGround`, …), `id`, `Tags`, player fields for players
-  (`Health`, `foodLevel`, `Inventory` — always empty, …) and everything that
+  (`Health`, `foodLevel`, …), the inventory (below) and everything that
   was summoned, merged, modified or stored onto the entity. Writing `Pos`,
   `Rotation` or `Tags` moves, turns or retags the entity; the UUID never
   changes. `players` fake players (`Player1`, …) exist from the start;
@@ -24,6 +24,22 @@ Deliberately small: no blocks, chunks, inventories or physics.
   players by name), enabled triggers, and the last 64 changes of every score
   with their game time (the world dock's grid shows them). Scores are 32-bit
   and wrap like Java ints; `*` means every holder with any score.
+* **inventories** (`runtime/inventory.py`) — item stacks with their id,
+  count, components (1.20.5+) or `tag` (before) and stack size (64, 16 for
+  pearls, snowballs, signs…, 1 for tools, armour, potions…, or the
+  `max_stack_size` component). Players have 36 container slots (hotbar 0–8,
+  inventory 9–35; the selected slot is 0), armour, offhand and an ender
+  chest; other entities have hands, armour, body armour and a saddle.
+  `data get entity` shows them in the version's own format:
+
+  | version | items | where |
+  | --- | --- | --- |
+  | before 1.20.5 | `{id, Count, tag}` | players: `Inventory` (armour in slots 100–103, offhand -106), `EnderItems`, `SelectedItem`; mobs: `HandItems`, `ArmorItems` |
+  | 1.20.5 | `{id, count, components}` | same places |
+  | 1.21.5 | same | armour, hands, body and saddle in `equipment` |
+
+  `data merge`/`modify` on a mob loads its items back; killed players drop
+  their items as `minecraft:item` entities unless `keepInventory` is true.
 * **storage** — `data … storage` compounds.
 * **gamerules** — stored; `maxCommandChainLength` is enforced.
 
@@ -35,8 +51,12 @@ Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
 
 Not evaluated: `team`, `gamemode`, `level`, `advancements`, `predicate`,
 `x_rotation`, `y_rotation` match every entity, and `nbt` keys the emulator does
-not store (`SelectedItem`, armour and hand items, …) fail the check. Both
-produce one emulator note per run.
+not store (effects, attributes, …) fail the check. Both produce one emulator
+note per run.
+
+NBT paths support compound keys, quoted keys (`"minecraft:custom_data"`),
+list indexes (`Pos[0]`, `list[-1]`) and list filters (`Inventory[{Slot:103b}]`;
+`data remove` removes every matching element).
 
 ## Commands
 
@@ -45,7 +65,7 @@ produce one emulator note per run.
 | command | notes |
 | --- | --- |
 | `execute` | `as at positioned rotated in if unless store run summon`; `anchored align facing` pass through; `on` ends the branch (relations are not modelled). `store` binds its target where it appears in the chain; `run return` leaves the function on the first branch that reaches it |
-| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `data` (entity, storage), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
+| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `data` (entity, storage), `items entity <targets> <slots> <predicate>` (slot wildcards like `container.*`; the count is the number of matching items), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
 | `function` | tags, `$` macros with inline SNBT or `with storage|entity [path]` |
 | `schedule` | `function <id> <time> [append|replace]`, `clear`; `t`/`s`/`d` units |
 | `return` | value, `run`, `fail` |
@@ -54,16 +74,22 @@ produce one emulator note per run.
 | `tag` | add/remove |
 | `summon` | keeps the NBT (a `UUID` is used, duplicates refused); the position argument wins over `Pos` |
 | `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z> [<yaw> <pitch>]` |
+| `give` | players only; stacks onto matching stacks (selected slot, offhand, container order), then empty slots; what does not fit drops as item entities; at most 100 stacks |
+| `clear` | `[targets] [item predicate] [maxCount]`: removes matching items (not the ender chest); `maxCount 0` only counts. Predicates: an id, `*`, `#tag` (from the client jar or the pack), `[component=value]`, `[component]` and the old `{nbt}` subset; `~` sub-predicates and `count` are noted and not checked |
+| `item` | `replace entity <targets> <slot> with <item> [count]`, `replace entity … from entity <source> <slot> [modifier]`, `modify entity <targets> <slot> <modifier>` (pack item modifiers: `set_count`, `set_components`, `set_nbt`); `block` forms are noted (no blocks) |
+| `replaceitem` | `entity <targets> <slot> <item> [count]` (before 1.17) |
+| `enchant` | adds the enchantment to the held item in the version's format (`Enchantments`, `enchantments.levels`, `enchantments`); which items accept it is not checked |
+| `loot` | `give`, `spawn` and `replace entity` with a `loot <table>` source, from the pack or the client jar: rolls, weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`; conditions count as passing and other functions are skipped (noted). `fish`, `kill`, `mine` and `insert` are noted |
 | `data` | on one entity or a storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data") |
 | `say me msg tell w tellraw title teammsg` | logged as `game` output; text components in JSON or (1.21.5+) SNBT, with `score` and `selector` parts resolved per recipient |
 | `gamerule` | |
 
-**Checked, no state change:** `setblock`, `give`, `clear`, `effect`,
-`particle` validate their id when a client jar is loaded
-([vanilla-assets.md](vanilla-assets.md)).
+**Checked, no state change:** `setblock`, `effect`, `particle` validate their
+id when a client jar is loaded ([vanilla-assets.md](vanilla-assets.md)); `give`,
+`clear`, `item`, `summon`, `enchant` check theirs too.
 
 **Dispatched and costed only:** every other command vanilla has in that
-version (`fill`, `item`, `loot`, `playsound`, `bossbar`, …).
+version (`fill`, `playsound`, `bossbar`, …).
 
 **Not in that version:** answered like the game, with the translated
 *Unknown or incomplete command* and a `<--[HERE]` marker, plus an emulator note
@@ -110,8 +136,8 @@ Limitations of the emulator itself (a condition or `data … block` it cannot
 evaluate, `execute on`, selector arguments it cannot check) are noted once per
 run at `info` level, so they do not mark a working pack as having warnings.
 So is every command that runs without changing the emulated world, with the
-reason (`'fill' runs, but blocks are not modelled`, `'give' runs, but
-inventories are not modelled (the item id is still checked)`, …); purely
+reason (`'fill' runs, but blocks are not modelled`, `'effect' runs, but status
+effects are not modelled (the effect id is still checked)`, …); purely
 cosmetic ones (`particle`, `playsound`, `stopsound`) are not noted. The
 *analyze this line* action shows the same information for any line.
 

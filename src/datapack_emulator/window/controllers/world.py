@@ -297,6 +297,18 @@ class WorldController(Controller):
             menu.addSeparator()
             menu.addAction("teleport…", lambda: window.console.prefill(f"tp {selector} "))
             menu.addAction("add tag…", lambda: window.console.prefill(f"tag {selector} add "))
+            if entity.is_player:
+                menu.addAction(
+                    "give item…", lambda: window.console.prefill(f"give {selector} minecraft:")
+                )
+                clear = menu.addAction("clear inventory", lambda: self._run(f"clear {selector}"))
+                clear.setEnabled(any(True for _ in entity.inventory.items()))
+            menu.addAction(
+                "set item in slot…",
+                lambda: window.console.prefill(
+                    f"item replace entity {selector} weapon.mainhand with minecraft:"
+                ),
+            )
             kill = menu.addAction("kill", lambda: self._run(f"kill {selector}"))
             kill.setToolTip("players respawn")
             menu.addAction(

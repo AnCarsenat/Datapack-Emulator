@@ -20,11 +20,14 @@ src/datapack_emulator/     the package (standard src layout)
       parser.py            Selector, Subcommand, Command (parse, features, cost, macros)
       result.py            CommandResult
       handlers.py          cmd_* implementations and the HANDLERS table
+      items.py             give, clear, item, replaceitem, enchant, loot, if items
       registry.py          CommandSet: what exists in a version, who runs it
     runtime/
       output.py            LogSource, LogLevel, LogRecord, OutputBus
       messages.py          vanilla strings, MessageCatalogue
       world.py             Entity, Scoreboard, World, selector resolution
+      inventory.py         ItemStack, Inventory, item parsing, per-version item NBT
+      loot.py              loot table evaluation for the loot command
       context.py           ExecutionContext (the command source; silent in functions)
       library.py           FunctionLibrary: functions and tags a version's server loads
       emulator.py          Emulator: start, load/tick order, dispatch, schedules
