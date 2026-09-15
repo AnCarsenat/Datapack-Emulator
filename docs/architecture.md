@@ -59,6 +59,14 @@ generated/   reports and .dot files (git-ignored)
 .cache/      downloaded client jars (git-ignored)
 ```
 
+These folders sit in the checkout when the package runs from one (a folder
+with `pyproject.toml` and `src/datapack_emulator`). A copy installed on its own
+uses per-user folders instead (`settings/main.py`): `projects/` and
+`generated/` in the data folder (`~/.local/share/datapack-emulator`,
+`~/Library/Application Support/datapack-emulator`, `%APPDATA%\datapack-emulator`)
+and the jar cache in the cache folder (`~/.cache/datapack-emulator`,
+`~/Library/Caches/datapack-emulator`, `%LOCALAPPDATA%\datapack-emulator\cache`).
+
 ## Data flow of a run
 
 ```

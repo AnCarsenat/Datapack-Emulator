@@ -11,7 +11,7 @@ layout changes are made in Qt Designer, never in code.
 
 | control | does |
 | --- | --- |
-| pack label | loaded pack and the version being emulated; warns if the pack does not declare support for it |
+| pack label | loaded pack and the version being emulated; says when that version marks the pack incompatible (made for an older or newer version) or cannot read its `pack.mcmeta` |
 | client.jar label | which base-game jar is in use (tooltip: what it contains) |
 | tick label | the current tick, and whether a run is going |
 | run all (F5) | a fresh world for the configured ticks, then profiler and call graph |
@@ -23,12 +23,14 @@ layout changes are made in Qt Designer, never in code.
 ### Tabs
 
 * **Environment**
-  * *world*: the Minecraft version; players online, meaning fake players
+  * *world*: the Minecraft version (on load, the newest stable release the
+    pack declares that does not mark it incompatible); players online, meaning fake players
     `Player1…` present from the start (they are what `@a`, `@p` and `@r`
     select, what `execute as @a` runs as and who receives `tellraw`); and a
     random seed for `@r` and `sort=random`.
   * *run*: ticks (`-1` = until stopped; 20 ticks are one second) and speed —
-    as fast as possible, or real time at 20 ticks per second. Runs tick in
+    as fast as possible, or real time at 20 ticks per second (switchable
+    while running). Runs tick in
     small batches, so the window stays responsive and logs keep flowing.
   * *tests*: commands run as the server in a fresh world after
     `#minecraft:load` (tick 0) or at a later tick — `function hat:tick`,

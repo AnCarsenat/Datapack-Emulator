@@ -78,7 +78,7 @@ carry `pack_format`, `pack_format_minor`, `format` (a tuple) and
 | singular registry folders (`function/`, `tags/function/`, …) | 1.21 | each version loads only its own spelling; files in the other one are not loaded, and the engine reports them |
 | `overlays` and `supported_formats` in `pack.mcmeta` | 1.20.2 | older versions read only the base pack |
 | `min_format` / `max_format` | 1.21.9 | parsed alongside the older fields |
-| macros (`$` lines, `function … with`) | 1.20.2 | reported as unavailable before |
+| macros (`$` lines, `function … with`) | 1.20.2 | a `$` line is an unknown command before, so its function fails to load |
 
 ## What a server of each version loads
 
@@ -87,8 +87,9 @@ Checked in decompiled Mojang jars (1.16.1 to 26.3-rc-3) and applied by
 
 * **Functions** are compiled one by one. A function with a line its version
   cannot parse is **not loaded at all** ("Failed to load function …: Whilst
-  parsing command on line N: …"); every other function still loads. `$`
-  macro lines are parsed when called, so they never fail the load. Multi-version
+  parsing command on line N: …"); every other function still loads. From
+  1.20.2, `$` macro lines are parsed when called, so they never fail the load;
+  before, a `$` line fails it like any unknown command. Multi-version
   packs use this on purpose, e.g. one function with `replaceitem` for 1.16 and
   one with `item replace` for 1.17+.
 * `function <id>` resolves when it runs, so calling a function that failed to

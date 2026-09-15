@@ -1,7 +1,8 @@
 # Projects
 
 A project remembers what you were working on. It is one JSON file in
-`projects/`, next to `samples/`:
+`projects/`, next to `samples/` (in the per-user data folder when the package
+is installed without a checkout, see [architecture](architecture.md)):
 
 ```json
 {
