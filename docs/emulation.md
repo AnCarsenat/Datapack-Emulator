@@ -1,6 +1,10 @@
 # What is emulated
 
-One `Emulator` is one pack, one version and one world. `run(ticks)` runs
+One `Emulator` is one version and one world, running one datapack or a
+`DatapackSet` — several packs enabled together, like a world's datapack list:
+in load order, a resource with the same id comes from the last pack that has
+it, and tags add their values across packs unless a later tag has
+`"replace": true` (overlays still apply inside each pack). `run(ticks)` runs
 `#minecraft:load` once, then each tick `#minecraft:tick` followed by the
 schedules that became due (see *Tick order* below). On 1.16.1–1.19.2 the
 first tick runs `#minecraft:tick` before `#minecraft:load`, as those servers

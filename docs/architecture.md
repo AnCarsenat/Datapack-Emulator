@@ -15,6 +15,7 @@ src/datapack_emulator/     the package (standard src layout)
     resources.py           Resource, JsonResource, Tag (+ TagEntry), Function, …
     namespace.py           Namespace, DirectoryNode, registry folder spellings
     datapack.py            PackMCMETA, OverlayEntry, Layer, PackView, Datapack,
+                           DatapackSet (several packs together),
                            Compatibility (how each version reads pack.mcmeta)
     commands/
       parser.py            Selector, Subcommand, Command (parse, features, cost, macros)
