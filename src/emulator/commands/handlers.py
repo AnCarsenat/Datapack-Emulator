@@ -246,6 +246,8 @@ def cmd_scoreboard(command: Command, context: ExecutionContext) -> CommandResult
             for holder in holders:
                 left = board.get(holder, objective) or 0
                 right = (board.get(sources[0], source_objective) or 0) if sources else 0
+                if operator == "><" and sources:
+                    board.set(sources[0], source_objective, left)  # swap both sides
                 last = _apply_operation(operator, left, right)
                 board.set(holder, objective, last)
             return CommandResult(success=bool(holders), value=last)
@@ -262,7 +264,7 @@ def _apply_operation(operator: str, left: int, right: int) -> int:
         "%=": left % right if right else left,
         "<": min(left, right),
         ">": max(left, right),
-        "><": right,  # swap: the caller only keeps the left-hand result
+        "><": right,  # swap: the caller writes the other side
     }.get(operator, left)
 
 
@@ -512,26 +514,54 @@ def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
         return CommandResult(success=removed > 0, value=removed)
 
     if action == "modify" and len(arguments) >= 6:
-        path, operation, source = arguments[3], arguments[4], arguments[5:]
+        path, operation = arguments[3], arguments[4]
+        source = arguments[5:]
+        index = 0
+        if operation == "insert" and source:
+            index = int(source[0]) if source[0].lstrip("-").isdigit() else 0
+            source = source[1:]
         value: Any = None
         if source and source[0] == "value":
             value = parse_value(" ".join(source[1:]))
         elif source and source[0] == "from":
-            value = nbt_get(stores[0], source[-1])
+            found, value = _data_source(context, source[1:])
+            if not found:
+                return CommandResult.failure()
         for store in stores:
             if operation in ("set", "merge"):
                 nbt_set(store, path, value)
-            elif operation in ("append", "prepend"):
+            elif operation in ("append", "prepend", "insert"):
                 existing = nbt_get(store, path)
                 if not isinstance(existing, list):
                     existing = []
                     nbt_set(store, path, existing)
-                if operation == "append":
-                    existing.append(value)
-                else:
-                    existing.insert(0, value)
+                position = {"append": len(existing), "prepend": 0}.get(operation, index)
+                existing.insert(position, value)
         return CommandResult(success=True, value=len(stores))
     return CommandResult.failure()
+
+
+def _data_source(context: ExecutionContext, source: list[str]) -> tuple[bool, Any]:
+    """Read ``(storage <id> | entity <selector>) [<path>]`` for ``modify ... from``."""
+    if len(source) < 2:
+        return (False, None)
+    kind, target = source[0], source[1]
+    path = source[2] if len(source) > 2 else ""
+    if kind == "storage":
+        store: Any = context.world.storage.get(normalise_id(target), {})
+    elif kind == "entity":
+        entities = _require_targets(context, target)
+        if not entities:
+            return (False, None)
+        store = entities[0].nbt
+    else:  # block NBT is not modelled
+        context.note_key("emulator.unimplemented", "data modify ... from block", context.emulator.version.id)
+        return (False, None)
+    value = nbt_get(store, path) if path else store
+    if value is None:
+        context.game_error("commands.data.get.unknown", path)
+        return (False, None)
+    return (True, value)
 
 
 def cmd_gamerule(command: Command, context: ExecutionContext) -> CommandResult:
@@ -686,11 +716,23 @@ def _apply_store(
             context.world.scoreboard.set(holder, arguments[3], value)
     elif target == "storage":
         store = context.world.storage.setdefault(normalise_id(arguments[2]), {})
-        scale = float(arguments[5]) if len(arguments) > 5 else 1.0
-        nbt_set(store, arguments[3], value * scale)
+        nbt_set(store, arguments[3], _stored_number(value, arguments[4:6]))
     elif target == "entity":
         for entity in _targets(context, arguments[2]):
-            nbt_set(entity.nbt, arguments[3], value)
+            nbt_set(entity.nbt, arguments[3], _stored_number(value, arguments[4:6]))
+
+
+def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
+    """``store ... <path> <type> <scale>``: integer types truncate, like vanilla."""
+    numeric_type = type_and_scale[0] if type_and_scale else "int"
+    try:
+        scale = float(type_and_scale[1]) if len(type_and_scale) > 1 else 1.0
+    except ValueError:
+        scale = 1.0
+    scaled = value * scale
+    if numeric_type in ("float", "double"):
+        return scaled
+    return int(scaled)  # byte, short, int, long
 
 
 def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:

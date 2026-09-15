@@ -2,9 +2,8 @@
 
 from conftest import chat, game_errors
 
-from src.emulator import Datapack, Emulator, versions
+from src.emulator import Datapack, Emulator
 from src.emulator.commands.parser import Command
-from src.emulator.vanilla import VanillaAssets
 
 
 def run(make_pack, body: str, version: str = "1.21.4", ticks: int = 1, extra=None, **kwargs):
@@ -54,3 +53,38 @@ def test_schedule_accepts_function_tags(make_pack):
     )
     assert chat(emulator.output.records).count("[Server] member ran") == 1
     assert not game_errors(emulator.output.records)
+
+
+def test_data_modify_from_reads_the_source(make_pack):
+    emulator = run(
+        make_pack,
+        "data modify storage test:b y set value 7\n"
+        "data modify storage test:a x set from storage test:b y\n",
+    )
+    assert emulator.world.storage["test:a"]["x"] == 7
+
+
+def test_store_result_in_storage_is_an_integer(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add x dummy\n"
+        "scoreboard players set #g x 3\n"
+        "execute store result storage test:m n int 1 run scoreboard players get #g x\n"
+        "function test:use with storage test:m\n",
+        extra={"data/test/function/use.mcfunction": "$scoreboard players set #copy x $(n)\n"},
+    )
+    assert emulator.world.storage["test:m"]["n"] == 3
+    assert isinstance(emulator.world.storage["test:m"]["n"], int)
+    assert emulator.world.scoreboard.get("#copy", "x") == 3
+
+
+def test_scoreboard_swap_updates_both_holders(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add x dummy\n"
+        "scoreboard players set #a x 1\n"
+        "scoreboard players set #b x 2\n"
+        "scoreboard players operation #a x >< #b x\n",
+    )
+    board = emulator.world.scoreboard
+    assert (board.get("#a", "x"), board.get("#b", "x")) == (2, 1)
