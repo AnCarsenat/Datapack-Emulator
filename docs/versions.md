@@ -49,7 +49,8 @@ the work dir, so re-runs only fetch new releases. Commit the regenerated
 ```python
 from src.emulator import versions
 
-v = versions.parse("1.21")                  # newest 1.21.x
+v = versions.parse("1.21.4")                # exact release id
+versions.parse("26")                        # not a release: newest 26.x
 versions.version_range("1.20.4", "1.21.4")  # inclusive, ordered
 versions.for_pack_format(107.1)             # releases using that format
 versions.closest_to_pack_format(50)         # newest release at or below

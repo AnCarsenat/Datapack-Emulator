@@ -16,7 +16,7 @@ python -m src.emulator run samples/hat --version 1.21.4 --ticks 20
 | option | default | |
 | --- | --- | --- |
 | `datapack` | | folder holding `pack.mcmeta` |
-| `--version` | latest | release id, or a line like `1.21` for its newest release |
+| `--version` | latest | release id (`1.21` means 1.21 itself); a prefix that is not a release, like `26`, means its newest release |
 | `--ticks` | 20 | |
 | `--players` | 1 | |
 | `--level` | info | `debug`, `info`, `warn`, `error` — lowest level printed |

@@ -87,7 +87,8 @@ def parse(spec: str | Version | None) -> Version:
     text = str(spec).strip()
     if text in BY_ID:
         return BY_ID[text]
-    # a partial like "1.21" resolves to the newest release on that line
+    # not a release id: a line like "26" resolves to its newest release ("26.2");
+    # an exact id always wins, so "1.21" is 1.21, not 1.21.11
     candidates = [version for version in VERSIONS if version.id.startswith(text + ".")]
     if candidates:
         return candidates[-1]
