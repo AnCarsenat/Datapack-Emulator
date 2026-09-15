@@ -7,6 +7,8 @@ name — add or move widgets in Qt Designer, not in this file.
 from __future__ import annotations
 
 import logging
+
+import shiboken6
 from pathlib import Path
 from typing import Optional
 
@@ -86,8 +88,7 @@ class MainWindow(QMainWindow):
 
         self.output.listeners.append(self._on_record)
         self.resize(WINDOW.WINDOW_WIDTH, WINDOW.WINDOW_HEIGHT)
-        for dock in (self.dock_explorer, self.dock_inspector, self.dock_logs):
-            dock.show()
+        self.show_all_docks()
         self.show_datapack(None)
         self.open_default_datapack()
 
@@ -201,8 +202,43 @@ class MainWindow(QMainWindow):
             action = self._action(name)
             if action is None or dock is None:
                 continue
-            action.toggled.connect(dock.setVisible)
-            dock.visibilityChanged.connect(action.setChecked)
+            # `triggered` fires only when the user clicks the menu entry, never
+            # when the checkmark is updated from code, so hiding the window
+            # (minimise, workspace switch, the window manager's first map)
+            # can no longer switch a dock off for good.
+            action.triggered.connect(
+                lambda checked, dock=dock: self._set_dock_visible(dock, checked)
+            )
+            # `isHidden()` is the dock's own flag; `visibilityChanged(False)` also
+            # fires when only the main window is hidden.
+            dock.visibilityChanged.connect(
+                lambda _visible, dock=dock, action=action: self._sync_dock_action(dock, action)
+            )
+
+    @staticmethod
+    def _set_dock_visible(dock: QDockWidget, visible: bool) -> None:
+        if shiboken6.isValid(dock):
+            dock.setVisible(visible)
+
+    @staticmethod
+    def _sync_dock_action(dock: QDockWidget, action: QAction) -> None:
+        # also runs while Qt tears the window down, after the C++ objects are gone
+        if shiboken6.isValid(dock) and shiboken6.isValid(action):
+            action.setChecked(not dock.isHidden())
+
+    @property
+    def docks(self) -> tuple[QDockWidget, ...]:
+        return (self.dock_explorer, self.dock_inspector, self.dock_logs)
+
+    def show_all_docks(self) -> None:
+        """Every panel open and docked — the default layout."""
+        for dock in self.docks:
+            dock.setFloating(False)
+            dock.show()
+        for name in ("actionexplorer", "actioninspector", "actionlog"):
+            action = self._action(name)
+            if action is not None:
+                action.setChecked(True)
 
     # -- projects ---------------------------------------------------------
 
