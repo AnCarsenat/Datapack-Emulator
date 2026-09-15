@@ -18,11 +18,11 @@ def app():
 
 @pytest.fixture
 def window(app, tmp_path, monkeypatch):
-    from src.settings import PATHS
+    from datapack_emulator.settings import PATHS
 
     monkeypatch.setattr(PATHS, "PROJECTS", tmp_path / "projects")
     monkeypatch.setattr(PATHS, "GENERATED", tmp_path / "generated")
-    from src.window import MainWindow
+    from datapack_emulator.window import MainWindow
 
     window = MainWindow()
     window.show()
@@ -41,7 +41,7 @@ def test_panels_open_and_survive_hiding(app, window):
 
 
 def test_opening_a_project_keeps_its_version(window, make_pack):
-    from src.project import Project
+    from datapack_emulator.project import Project
 
     pack = make_pack({"data/test/function/tick.mcfunction": "say hi\n"})
     project = Project(name="p", datapack=pack, version="1.20.4")

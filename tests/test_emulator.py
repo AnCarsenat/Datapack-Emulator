@@ -1,7 +1,7 @@
 from conftest import chat, game_errors
 
-from src.emulator import Datapack, Emulator
-from src.emulator.runtime.output import LogLevel, LogSource
+from datapack_emulator.emulator import Datapack, Emulator
+from datapack_emulator.emulator.runtime.output import LogLevel, LogSource
 
 
 def run(make_pack, body: str, version: str = "1.21.4", ticks: int = 1, extra=None, **kwargs):
@@ -82,7 +82,7 @@ def test_macro_with_storage_and_missing_argument(make_pack):
 
 
 def test_command_missing_from_version_fails_the_function_load(make_pack):
-    from src.emulator.commands.parser import Command
+    from datapack_emulator.emulator.commands.parser import Command
 
     emulator = run(
         make_pack,

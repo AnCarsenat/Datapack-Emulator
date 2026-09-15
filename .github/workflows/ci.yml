@@ -41,7 +41,7 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-dev.txt
       # the emulator core is standard library only; the suite needs pytest
-      - run: pip install "pytest>=8"
+      - run: pip install -e . "pytest>=8"
       - run: python -m pytest
 
   gui:
@@ -73,8 +73,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - run: python -m src.emulator --quiet run samples/hat --ticks 5
-      - run: python -m src.emulator --quiet matrix samples/hat --declared --boundaries --ticks 3
+      - run: pip install -e .
+      - run: datapack-emulator-cli --quiet run samples/hat --ticks 5
+      - run: datapack-emulator-cli --quiet matrix samples/hat_v2 --declared --boundaries --ticks 3
       - uses: actions/upload-artifact@v4
         with:
           name: reports

@@ -1,8 +1,8 @@
 # The window
 
 Every widget, dock, menu, action and shortcut is declared in
-`src/window/window.ui` (main window), `src/window/engine.ui` (engine
-window) and `src/window/download.ui` (client-jar download popup). The Python side only loads those files and wires behaviour, so
+`src/datapack_emulator/window/window.ui` (main window), `src/datapack_emulator/window/engine.ui` (engine
+window) and `src/datapack_emulator/window/download.ui` (client-jar download popup). The Python side only loads those files and wires behaviour, so
 layout changes are made in Qt Designer, never in code.
 
 ## Main window

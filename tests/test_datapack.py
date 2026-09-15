@@ -1,8 +1,8 @@
 import struct
 import zlib
 
-from src.emulator import versions
-from src.emulator.datapack import Datapack, PackMCMETA
+from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.datapack import Datapack, PackMCMETA
 
 
 def _mcmeta(tmp_path, pack):
@@ -14,7 +14,7 @@ def _mcmeta(tmp_path, pack):
 
 
 def test_pack_format_forms(tmp_path):
-    from src.emulator.datapack import ANY_MINOR
+    from datapack_emulator.emulator.datapack import ANY_MINOR
 
     assert _mcmeta(tmp_path, {"pack_format": 61}).format_tuple == (61, 0)
     assert _mcmeta(tmp_path, {"pack_format": 107.1}).format_tuple == (107, 1)
@@ -27,7 +27,7 @@ def test_pack_format_forms(tmp_path):
 
 
 def test_whole_number_bounds_follow_vanilla(tmp_path):
-    from src.emulator.datapack import ANY_MINOR, format_label
+    from datapack_emulator.emulator.datapack import ANY_MINOR, format_label
 
     meta = _mcmeta(tmp_path, {"min_format": 88, "max_format": [94]})
     assert meta.format_range == ((88, 0), (94, ANY_MINOR))

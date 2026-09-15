@@ -1,4 +1,4 @@
-from src.emulator import versions
+from datapack_emulator.emulator import versions
 
 
 def test_versions_sort_numerically():

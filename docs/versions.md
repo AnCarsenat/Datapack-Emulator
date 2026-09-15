@@ -1,11 +1,11 @@
 # Versions, pack formats and overlays
 
-Every version-dependent decision goes through `src/emulator/versions.py`.
+Every version-dependent decision goes through `src/datapack_emulator/emulator/versions.py`.
 Nothing else in the code compares version strings.
 
 ## Where the data comes from
 
-`src/emulator/version_data.py` is **generated** from
+`src/datapack_emulator/emulator/version_data.py` is **generated** from
 [misode/mcmeta](https://github.com/misode/mcmeta), which republishes Mojang's
 data-generator output for every release:
 
@@ -54,7 +54,7 @@ the work dir, so re-runs only fetch new releases. Commit the regenerated
 ## The API
 
 ```python
-from src.emulator import versions
+from datapack_emulator.emulator import versions
 
 v = versions.parse("1.21.4")                # exact release id
 versions.parse("26")                        # not a release: newest 26.x
@@ -83,7 +83,7 @@ carry `pack_format`, `pack_format_minor`, `format` (a tuple) and
 ## What a server of each version loads
 
 Checked in decompiled Mojang jars (1.16.1 to 26.3-rc-3) and applied by
-`FunctionLibrary` in `src/emulator/runtime/library.py`:
+`FunctionLibrary` in `src/datapack_emulator/emulator/runtime/library.py`:
 
 * **Functions** are compiled one by one. A function with a line its version
   cannot parse is **not loaded at all** ("Failed to load function …: Whilst

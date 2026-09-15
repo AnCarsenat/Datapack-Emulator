@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.emulator import Datapack, TestEngine, versions
-from src.emulator.runtime.output import LogLevel, LogSource
+from datapack_emulator.emulator import Datapack, TestEngine, versions
+from datapack_emulator.emulator.runtime.output import LogLevel, LogSource
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
 

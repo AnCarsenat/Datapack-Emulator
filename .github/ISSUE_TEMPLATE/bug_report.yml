@@ -34,7 +34,7 @@ body:
     id: log
     attributes:
       label: Output
-      description: "`python -m src.emulator run <pack> --version <v> --level debug`"
+      description: "`python -m datapack_emulator.emulator run <pack> --version <v> --level debug`"
       render: text
   - type: input
     id: env

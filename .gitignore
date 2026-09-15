@@ -12,3 +12,8 @@ generated/*
 # user projects (keep the folder, not its contents)
 projects/*
 !projects/.gitkeep
+
+# packaging
+build/
+dist/
+*.egg-info/

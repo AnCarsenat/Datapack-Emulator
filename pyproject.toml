@@ -1,6 +1,6 @@
-# Metadata and tool configuration. The project is run from a checkout
-# (imports are `src.…`), so there is no build backend yet: install the
-# dependencies with `pip install -r requirements-dev.txt`.
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "datapack-emulator"
@@ -17,25 +17,37 @@ classifiers = [
     "Topic :: Games/Entertainment",
     "Topic :: Software Development :: Testing",
 ]
-# The emulator core (src/emulator) is pure standard library.
+# The emulator core (datapack_emulator.emulator) is pure standard library.
 dependencies = []
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6", "pyqtgraph>=0.13", "numpy>=1.26"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
+[project.scripts]
+datapack-emulator = "datapack_emulator.app:main"
+datapack-emulator-cli = "datapack_emulator.emulator.__main__:main"
+
 [project.urls]
 Repository = "https://github.com/AnCarsenat/Datapack-Emulator"
 Issues = "https://github.com/AnCarsenat/Datapack-Emulator/issues"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["datapack_emulator*"]
+
+[tool.setuptools.package-data]
+"datapack_emulator.window" = ["*.ui"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = "-ra"
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-extend-exclude = ["src/.venv", "src/emulator/version_data.py"]
+extend-exclude = [".venv", "src/.venv", "src/datapack_emulator/emulator/version_data.py"]
 
 [tool.ruff.format]
 # keep hand-aligned examples in the docs as written
@@ -47,6 +59,9 @@ ignore = [
     "B008",   # QModelIndex() default arguments are the Qt model idiom
     "SIM108", # ternaries are not always clearer
 ]
+
+[tool.ruff.lint.isort]
+known-first-party = ["datapack_emulator"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]

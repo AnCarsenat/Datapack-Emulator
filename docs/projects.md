@@ -44,7 +44,7 @@ the file it lives in.
 ## From code
 
 ```python
-from src.project import Project, list_projects
+from datapack_emulator.project import Project, list_projects
 
 project = Project(name="hat", datapack=Path("samples/hat"), version="1.21.4")
 project.save()                      # projects/hat.json

@@ -1,6 +1,0 @@
-"""Runtime layer: world state, execution context, output bus, emulator.
-
-Intentionally empty of re-exports: ``handlers`` imports ``runtime.context``
-while ``commands`` is still initialising, so importing the emulator here would
-make that a cycle.  Use ``from src.emulator import Emulator`` instead.
-"""

@@ -1,4 +1,4 @@
-"""Regenerate ``src/emulator/version_data.py`` from misode/mcmeta.
+"""Regenerate ``src/datapack_emulator/emulator/version_data.py`` from misode/mcmeta.
 
 Downloads the release table and one Brigadier command tree per release into a
 work directory, diffs them, and writes the table the emulator reads.
@@ -17,7 +17,7 @@ import re
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = ROOT / "src" / "emulator" / "version_data.py"
+OUT = ROOT / "src" / "datapack_emulator" / "emulator" / "version_data.py"
 VERSIONS_URL = "https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json"
 COMMANDS_URL = (
     "https://raw.githubusercontent.com/misode/mcmeta/{version}-summary/commands/data.json"

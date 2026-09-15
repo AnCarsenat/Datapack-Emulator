@@ -4,8 +4,8 @@
 `VersionRun` per version.
 
 ```python
-from src.emulator import Datapack, TestEngine
-from src.emulator.vanilla import default_library
+from datapack_emulator.emulator import Datapack, TestEngine
+from datapack_emulator.emulator.vanilla import default_library
 
 pack = Datapack.load("samples/hat")
 engine = TestEngine(pack, ticks=20, players=1, seed=0, library=default_library())
@@ -56,7 +56,7 @@ matching `pack_format` when nothing is declared.
 ## Reports
 
 `TestEngine.write_html(results, path, pack_name)` writes the matrix table.
-The engine window's *export html* and `python -m src.emulator matrix` both use
+The engine window's *export html* and `python -m datapack_emulator.emulator matrix` both use
 it.
 
 ## Performance note

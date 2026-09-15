@@ -15,17 +15,17 @@ checked against the real base game read out of a `client.jar`.
 ## Quick start
 
 ```sh
-python -m venv src/.venv
-src/.venv/bin/pip install -r requirements.txt
+python -m venv .venv
+.venv/bin/pip install -e ".[gui]"
 
-src/.venv/bin/python ./src/main.py       # the window; press F5
+.venv/bin/datapack-emulator          # the window; press F5
 ```
 
 The first pack in `samples/` opens on startup. Headless:
 
 ```sh
-src/.venv/bin/python -m src.emulator run    samples/hat --version 1.21.4 --vanilla
-src/.venv/bin/python -m src.emulator matrix samples/hat --declared --boundaries
+.venv/bin/datapack-emulator-cli run    samples/hat_v2 --version 1.21.4 --vanilla
+.venv/bin/datapack-emulator-cli matrix samples/hat_v2 --declared --boundaries
 ```
 
 ## Documentation
@@ -46,9 +46,9 @@ Timings are **estimates from a cost model**, not measurements — see
 ## Layout
 
 ```
-src/emulator/   model, commands, runtime, analysis, version engine (no Qt)
-src/window/     window.ui, engine.ui, download.ui, and the code that wires them
-src/project.py  projects/ files
+src/datapack_emulator/emulator/   model, commands, runtime, analysis, version engine (no Qt)
+src/datapack_emulator/window/     window.ui, engine.ui, download.ui, and the code that wires them
+src/datapack_emulator/project.py  projects/ files
 tests/          pytest suite (no network, no Minecraft install needed)
 tools/          generate_version_data.py
 docs/           documentation

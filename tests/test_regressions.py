@@ -2,8 +2,8 @@
 
 from conftest import chat, game_errors
 
-from src.emulator import Datapack, Emulator
-from src.emulator.commands.parser import Command
+from datapack_emulator.emulator import Datapack, Emulator
+from datapack_emulator.emulator.commands.parser import Command
 
 
 def run(make_pack, body: str, version: str = "1.21.4", ticks: int = 1, extra=None, **kwargs):
@@ -91,7 +91,7 @@ def test_scoreboard_swap_updates_both_holders(make_pack):
 
 
 def test_id_checks_strip_components_nbt_and_particle_options(make_pack, fake_jar):
-    from src.emulator.vanilla import VanillaAssets
+    from datapack_emulator.emulator.vanilla import VanillaAssets
 
     emulator = run(
         make_pack,
@@ -123,7 +123,7 @@ def test_tellraw_accepts_snbt_components(make_pack):
 
 
 def test_whole_number_max_format_accepts_minor_formats(make_pack):
-    from src.emulator import versions
+    from datapack_emulator.emulator import versions
 
     pack = Datapack.load(make_pack({}, mcmeta={"pack": {"min_format": 88, "max_format": 94}}))
     assert pack.supports(versions.parse("1.21.11"))  # format 94.1
@@ -295,7 +295,7 @@ def test_deep_recursion_is_not_capped_at_64(make_pack):
 
 
 def test_each_version_reads_only_its_folder_spelling(make_pack):
-    from src.emulator import versions
+    from datapack_emulator.emulator import versions
 
     plural_only = Datapack.load(
         make_pack(
@@ -349,7 +349,7 @@ def test_selector_nbt_and_volume_arguments(make_pack):
 
 
 def test_unmodelled_selector_arguments_are_reported_once(make_pack):
-    from src.emulator.runtime.output import LogSource
+    from datapack_emulator.emulator.runtime.output import LogSource
 
     emulator = run(make_pack, "execute if entity @a[gamemode=creative] run say creative\n", ticks=3)
     notes = [
@@ -403,7 +403,7 @@ def test_tellraw_resolves_score_and_selector_components(make_pack):
 
 
 def test_reports_escape_pack_content(make_pack):
-    from src.emulator import TestEngine
+    from datapack_emulator.emulator import TestEngine
 
     pack = Datapack.load(
         make_pack(
@@ -418,7 +418,7 @@ def test_reports_escape_pack_content(make_pack):
 
 
 def test_nbt_filter_sees_tags_and_reports_unmodelled_data(make_pack):
-    from src.emulator.runtime.output import LogSource
+    from datapack_emulator.emulator.runtime.output import LogSource
 
     emulator = run(
         make_pack,
@@ -462,8 +462,8 @@ def test_data_get_saturates_and_set_string_needs_a_value(make_pack):
 def test_failures_inside_functions_are_silent_but_typed_commands_are_not(make_pack):
     from conftest import visible_errors
 
-    from src.emulator.commands.parser import Command
-    from src.emulator.runtime.output import LogLevel
+    from datapack_emulator.emulator.commands.parser import Command
+    from datapack_emulator.emulator.runtime.output import LogLevel
 
     emulator = run(make_pack, "tag @a remove nothing\n", ticks=2)
     failures = [r for r in emulator.output.records if r.message == "Target does not have this tag"]
@@ -475,7 +475,7 @@ def test_failures_inside_functions_are_silent_but_typed_commands_are_not(make_pa
 
 
 def test_emulator_limitations_are_noted_once_per_run(make_pack):
-    from src.emulator.runtime.output import LogLevel, LogSource
+    from datapack_emulator.emulator.runtime.output import LogLevel, LogSource
 
     emulator = run(
         make_pack,
@@ -489,7 +489,7 @@ def test_emulator_limitations_are_noted_once_per_run(make_pack):
 
 
 def test_tags_with_missing_required_entries_are_dropped(make_pack):
-    from src.emulator import Datapack, Emulator
+    from datapack_emulator.emulator import Datapack, Emulator
 
     pack = Datapack.load(
         make_pack(
@@ -524,7 +524,7 @@ def test_tags_with_missing_required_entries_are_dropped(make_pack):
 
 
 def test_first_tick_runs_load_and_tick_in_the_versions_order(make_pack):
-    from src.emulator import Datapack, Emulator
+    from datapack_emulator.emulator import Datapack, Emulator
 
     def order(version: str) -> list[str]:
         pack = Datapack.load(

@@ -81,7 +81,7 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
 * **Base-game facts come from data**, not code: the generated version table
   or a client jar. If you are about to type a list of vanilla ids, read them
   from `VanillaAssets` instead.
-* **`src/emulator` never imports Qt**; the window is one consumer among the
+* **`src/datapack_emulator/emulator` never imports Qt**; the window is one consumer among the
   CLI and tests.
 * **All layout is in `.ui` files.** Python looks widgets up by object name.
   The only widget created in code is the pyqtgraph canvas, which Designer
@@ -91,4 +91,4 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
   translation key; what *we* notice goes through `context.note(…)`.
 * **`runtime/__init__.py` re-exports nothing** — `handlers` imports
   `runtime.context` while `commands` is initialising; re-exporting the
-  emulator there would create an import cycle. Import from `src.emulator`.
+  emulator there would create an import cycle. Import from `datapack_emulator.emulator`.

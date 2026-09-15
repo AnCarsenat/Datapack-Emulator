@@ -6,27 +6,30 @@ Contributions are welcome — bug reports, new command handlers, UI work, docs.
 
 ```sh
 git clone git@github.com:AnCarsenat/Datapack-Emulator.git && cd Datapack-Emulator
-python -m venv src/.venv
-src/.venv/bin/pip install -r requirements-dev.txt
-src/.venv/bin/python ./src/main.py
+python -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt   # editable install with the gui and dev extras
+.venv/bin/datapack-emulator
 ```
 
-Work from the project root: imports are `src.…` absolute.
+The package is `datapack_emulator`, in `src/` (the standard src layout).
+Imports are absolute: `from datapack_emulator.emulator import Datapack`. The
+editable install means edits take effect without reinstalling; pytest finds
+the package without it.
 
 ## Ground rules
 
 Read [docs/architecture.md](docs/architecture.md) first. In short:
 
-1. **Version logic goes through `src/emulator/versions.py`.** Don't compare
+1. **Version logic goes through `src/datapack_emulator/emulator/versions.py`.** Don't compare
    version strings or pack formats anywhere else.
 2. **Don't hardcode base-game facts.** Command availability comes from the
    generated `version_data.py`; ids, tags and message strings come from a
-   client jar via `src/emulator/vanilla.py`.
-3. **Never edit `src/emulator/version_data.py` by hand.** Regenerate it with
+   client jar via `src/datapack_emulator/emulator/vanilla.py`.
+3. **Never edit `src/datapack_emulator/emulator/version_data.py` by hand.** Regenerate it with
    `python tools/generate_version_data.py` and commit the result.
-4. **All layout lives in `src/window/*.ui`.** Add widgets and actions in Qt
+4. **All layout lives in `src/datapack_emulator/window/*.ui`.** Add widgets and actions in Qt
    Designer, then find them by object name in Python.
-5. **Keep `src/emulator` free of Qt.**
+5. **Keep `src/datapack_emulator/emulator` free of Qt.**
 6. **Keep game output and diagnostics apart.** A handler reports what
    Minecraft would say with `context.game_error("<real.translation.key>", …)`;
    what the emulator notices goes through `context.note(…)`.
@@ -36,18 +39,18 @@ Read [docs/architecture.md](docs/architecture.md) first. In short:
 ## Adding a command
 
 1. Write `cmd_<name>(command, context) -> CommandResult` in
-   `src/emulator/commands/handlers.py`; report failures with vanilla
+   `src/datapack_emulator/emulator/commands/handlers.py`; report failures with vanilla
    translation keys (add missing ones to `runtime/messages.py`).
 2. Register it in `HANDLERS`. Availability per version is already known.
-3. Give it a cost in `src/emulator/costs.py` if the default does not fit.
+3. Give it a cost in `src/datapack_emulator/emulator/costs.py` if the default does not fit.
 4. Document it in [docs/emulation.md](docs/emulation.md).
 
 ## Before opening a pull request
 
 ```sh
-src/.venv/bin/ruff check .
-src/.venv/bin/ruff format --check .
-src/.venv/bin/python -m pytest
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+.venv/bin/python -m pytest
 ```
 
 CI runs the same checks (plus a CLI smoke run) on every pull request.
@@ -68,4 +71,4 @@ CI runs the same checks (plus a CLI smoke run) on every pull request.
 Use the *Bug report* issue template. It asks for the Minecraft version
 selected, whether a client jar was loaded, the smallest datapack that
 reproduces it, and the output of
-`python -m src.emulator run <pack> --version <v> --level debug`.
+`python -m datapack_emulator.emulator run <pack> --version <v> --level debug`.

@@ -1,4 +1,4 @@
-from src.emulator import CallGraph, Datapack, TestEngine, versions
+from datapack_emulator.emulator import CallGraph, Datapack, TestEngine, versions
 
 
 def test_matrix_flags_commands_a_version_lacks(make_pack):
@@ -75,7 +75,7 @@ def test_call_graph_findings(make_pack):
 
 
 def test_multi_version_packs_are_not_warned_for_their_legacy_forms(make_pack):
-    from src.emulator.runtime.output import LogLevel
+    from datapack_emulator.emulator.runtime.output import LogLevel
 
     files = {
         "data/test/functions/tick.mcfunction": "say hi\n",

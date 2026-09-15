@@ -7,7 +7,7 @@ functions, versions and edits of the same pack — not as wall-clock truth.
 
 ## The model
 
-All values live in `src/emulator/costs.py`, in microseconds, and are read at
+All values live in `src/datapack_emulator/emulator/costs.py`, in microseconds, and are read at
 call time, so patching them at runtime works.
 
 A command's cost is the sum of:
