@@ -128,9 +128,11 @@ class ProjectController(Controller):
         name, accepted = QInputDialog.getText(self.window, "new project", "project name:")
         if not accepted or not name.strip():
             return
-        self.window.project = Project(name=name.strip())
-        self.capture()
-        self.save()
+        project = Project(name=name.strip())
+        if project.default_path().exists() and not self.confirm_overwrite(project.default_path()):
+            return
+        self.window.project = project
+        self._write(self.capture(), project.default_path())
 
     def open(self) -> None:
         if not self.confirm_close():
@@ -157,6 +159,9 @@ class ProjectController(Controller):
         project = self.capture()
         if project.path is None and project.name == "untitled" and window.datapack is not None:
             project.name = window.datapack.name
+        if project.path is None and project.default_path().exists():
+            # never replace another project just because it has the same name
+            return self.save_as()
         return self._write(project, None)
 
     def save_as(self) -> bool:
@@ -167,10 +172,23 @@ class ProjectController(Controller):
         return self.save_to(Path(chosen)) if chosen else False
 
     def save_to(self, path: Path) -> bool:
-        """Save under a new name (the suffix is always .dpemu)."""
+        """Save under a new name (the suffix is always .dpemu).
+
+        The file dialog already asked before replacing an existing file.
+        """
         name = path.stem if path.suffix in (SUFFIX, LEGACY_SUFFIX) else path.name
-        self.window.project = self.window.project.renamed(name)
-        return self._write(self.capture(), path)
+        # the window keeps its current project until the new file is written
+        return self._write(self.capture().renamed(name), path)
+
+    def confirm_overwrite(self, path: Path) -> bool:
+        answer = QMessageBox.question(
+            self.window,
+            "replace project",
+            f"{path.name} already exists. Replace it?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return answer == QMessageBox.Yes
 
     def _write(self, project: Project, path: Path | None) -> bool:
         try:
@@ -178,6 +196,7 @@ class ProjectController(Controller):
         except (OSError, ValueError) as exc:
             QMessageBox.warning(self.window, "save project", f"cannot write:\n{exc}")
             return False
+        self.window.project = project
         self.mark_saved()
         self.window.output.app(f"saved project {target}")
         self.status(f"saved {target}")

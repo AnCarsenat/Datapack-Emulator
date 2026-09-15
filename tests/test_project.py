@@ -116,3 +116,48 @@ def test_default_sample_is_first_pack(repo):
     (repo / "samples" / "b" / "pack.mcmeta").write_text("{}")
     (repo / "samples" / "a_not_a_pack").mkdir()
     assert default_sample() == repo / "samples" / "b"
+
+
+def test_an_archive_saved_inside_its_own_pack_does_not_contain_itself(repo):
+    pack = _pack(repo / "samples" / "hat")
+    project = Project(name="hat", datapack=pack)
+    first = project.save(pack / "hat.dpemu")
+    size = first.stat().st_size
+    project.save()
+    with zipfile.ZipFile(first) as archive:
+        assert not any(name.endswith((".dpemu", ".dpemu.part")) for name in archive.namelist())
+    assert first.stat().st_size == size
+
+
+def test_symlinks_are_left_out_and_a_failed_save_leaves_no_part_file(repo, tmp_path):
+    pack = _pack(repo / "samples" / "hat")
+    outside = tmp_path / "secret.txt"
+    outside.write_text("outside the pack")
+    (pack / "data" / "hat" / "link.mcfunction").symlink_to(outside)
+    (pack / "data" / "linked_folder").symlink_to(pack / "data" / "hat", target_is_directory=True)
+    saved = Project(name="hat", datapack=pack).save()
+    with zipfile.ZipFile(saved) as archive:
+        names = archive.namelist()
+    assert "datapack/data/hat/function/tick.mcfunction" in names
+    assert not any("link" in name for name in names)
+
+    (pack / "data" / "hat" / "function" / "tick.mcfunction").chmod(0)
+    try:
+        with pytest.raises(OSError):
+            Project(name="broken", datapack=pack).save()
+    finally:
+        (pack / "data" / "hat" / "function" / "tick.mcfunction").chmod(0o644)
+    assert not list((repo / "projects").glob("*.part"))
+
+
+@pytest.mark.parametrize("manifest", ["[1]", '{"ticks": {"a": 1}}', '"text"'])
+def test_malformed_manifests_are_value_errors(repo, tmp_path, manifest):
+    archive_path = tmp_path / "odd.dpemu"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("project.json", manifest)
+    with pytest.raises(ValueError):
+        Project.load(archive_path)
+    legacy = tmp_path / "odd.json"
+    legacy.write_text(manifest)
+    with pytest.raises(ValueError):
+        Project.load(legacy)

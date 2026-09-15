@@ -318,3 +318,40 @@ def test_closing_with_unsaved_changes_asks_first(window, monkeypatch):
     assert not window.close() and window.isVisible()
     monkeypatch.setattr(window.projects, "ask_save_changes", lambda: QMessageBox.Discard)
     assert window.close()
+
+
+def test_saving_never_silently_replaces_a_project_with_the_same_name(window, monkeypatch):
+    from datapack_emulator.project import Project
+
+    other = Project(name=window.project.name, tests=[{"command": "say keep me"}]).save()
+    window.projects.mark_modified()
+    asked = []
+    monkeypatch.setattr(window.projects, "save_as", lambda: asked.append(True) or False)
+    assert window.projects.save() is False and asked
+    assert Project.load(other).tests == [{"command": "say keep me"}]
+
+    monkeypatch.setattr("PySide6.QtWidgets.QInputDialog.getText", lambda *a: (other.stem, True))
+    monkeypatch.setattr(window.projects, "confirm_overwrite", lambda path: False)
+    window.projects.new()
+    assert Project.load(other).tests == [{"command": "say keep me"}]
+
+
+def test_a_failed_save_as_keeps_the_current_project(window, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a: None)
+    assert window.projects.save_to(tmp_path / "first.dpemu")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    try:
+        assert not window.projects.save_to(locked / "other.dpemu")
+    finally:
+        locked.chmod(0o700)
+    assert window.project.path == tmp_path / "first.dpemu" and window.project.name == "first"
+
+
+def test_loading_another_client_jar_is_an_unsaved_change(window, fake_jar):
+    window.projects.mark_saved()
+    window.jars.use(window.library.load_jar(fake_jar))
+    assert window.projects.modified

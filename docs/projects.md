@@ -15,8 +15,9 @@ hat.dpemu
 └── datapack/           a copy of the pack: pack.mcmeta, data/, overlays…
 ```
 
-`.git`, `__pycache__` and `.DS_Store` are left out. Rename the file to `.zip`
-to look inside with any archive tool.
+`.git`, `__pycache__`, `.DS_Store` and symbolic links (logged as a warning)
+are left out, and so is the archive itself when it is saved inside the pack
+folder. Rename the file to `.zip` to look inside with any archive tool.
 
 `project.json`:
 
@@ -60,8 +61,9 @@ editor*) are kept once you save. Reopening an archive replaces its unpacked
 copy: **the `.dpemu` file is what counts.**
 
 The archive is written to `<name>.dpemu.part` first and then swapped in, so a
-failed save leaves the previous file intact. Names that would unpack outside
-the cache folder are refused.
+failed save leaves the previous file intact (and no `.part` behind). Names
+that would unpack outside the cache folder are refused, and so are archives
+whose `project.json` is not a valid project.
 
 ### Older `.json` projects
 
@@ -75,14 +77,14 @@ beside it (`hat.json` → `hat.dpemu`) and leaves the `.json` alone.
 | --- | --- |
 | file › new project (Ctrl+N) | asks for a name, saves the current state under it |
 | file › open project… (Ctrl+Shift+O) | restores settings and tests, then opens the pack |
-| file › save project (Ctrl+S) | writes `projects/<name>.dpemu` (the pack name if untitled), or the file the project came from |
-| file › save project as… (Ctrl+Shift+S) | same, under another name or path |
+| file › save project (Ctrl+S) | writes the file the project came from; a project never saved goes to `projects/<name>.dpemu` (the pack name if untitled), or asks for a name when that file already belongs to another project |
+| file › save project as… (Ctrl+Shift+S) | same, under another name or path; if it fails, the project keeps its current file |
 
 The shortcuts work while the main window has focus.
 
 The title bar shows the project name, `(unsaved)` until the first save, the
-file it lives in, and a `*` when settings, tests or the datapack changed since
-the last save. Closing the window or opening another project with unsaved
+file it lives in, and a `*` when settings, tests, the datapack or the client
+jar changed since the last save. Closing the window or opening another project with unsaved
 changes asks whether to save them first. A test cell still being typed in when
 you save is included.
 

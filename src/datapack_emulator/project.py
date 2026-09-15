@@ -160,13 +160,19 @@ class Project:
         data["datapack"] = ARCHIVE_DATAPACK if pack else ""
         # write next to the target and swap, so a failed save keeps the old file
         partial = target.with_name(target.name + ".part")
-        with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(ARCHIVE_MANIFEST, _dump(data))
-            if pack is not None:
-                for file in _pack_files(pack):
+        # listed before the .part exists; an archive saved inside its own pack
+        # must not swallow itself
+        files = [] if pack is None else _pack_files(pack, exclude={target, partial})
+        try:
+            with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(ARCHIVE_MANIFEST, _dump(data))
+                for file in files:
                     name = PurePosixPath(ARCHIVE_DATAPACK, *file.relative_to(pack).parts)
                     archive.write(file, str(name))
-        os.replace(partial, target)
+            os.replace(partial, target)
+        except BaseException:
+            partial.unlink(missing_ok=True)
+            raise
 
     @classmethod
     def load(cls, path: Path | str, unpack_to: Path | None = None) -> Project:
@@ -179,7 +185,17 @@ class Project:
         if path.suffix == SUFFIX or zipfile.is_zipfile(path):
             return cls._load_archive(path, unpack_to)
         data = json.loads(path.read_text(encoding="utf-8"))
-        return cls.from_dict(data, path=path)
+        return cls._parse(data, path)
+
+    @classmethod
+    def _parse(cls, data: Any, path: Path) -> Project:
+        """``from_dict`` for file contents: anything malformed is a ValueError."""
+        if not isinstance(data, dict):
+            raise ValueError("the project data is not a JSON object")
+        try:
+            return cls.from_dict(data, path=path)
+        except (TypeError, AttributeError) as exc:
+            raise ValueError(f"malformed project data: {exc}") from exc
 
     @classmethod
     def _load_archive(cls, path: Path, unpack_to: Path | None) -> Project:
@@ -187,6 +203,8 @@ class Project:
         try:
             with zipfile.ZipFile(path) as archive:
                 data = json.loads(archive.read(ARCHIVE_MANIFEST).decode("utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError(f"{ARCHIVE_MANIFEST} is not a JSON object")
                 version = data.get("archive_format", ARCHIVE_FORMAT)
                 if not isinstance(version, int) or version > ARCHIVE_FORMAT:
                     raise ValueError(f"made by a newer version (archive format {version})")
@@ -199,7 +217,7 @@ class Project:
             raise ValueError(f"not a project archive: {exc}") from exc
         pack = target / ARCHIVE_DATAPACK
         data["datapack"] = str(pack) if data.get("datapack") and pack.is_dir() else ""
-        return cls.from_dict(data, path=path)
+        return cls._parse(data, path)
 
     def renamed(self, name: str) -> Project:
         """A copy under a new name, not yet written anywhere."""
@@ -223,11 +241,31 @@ def _dump(data: dict[str, Any]) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
-def _pack_files(pack: Path) -> list[Path]:
+def _pack_files(pack: Path, exclude: set[Path] = frozenset()) -> list[Path]:
+    """Regular files of the pack, sorted. Symlinks (files and folders alike)
+    are left out with a warning: following them could archive files from
+    outside the pack or loop forever."""
+    excluded = {path.resolve() for path in exclude}
     files = []
     for folder, directories, names in os.walk(pack):
-        directories[:] = sorted(name for name in directories if name not in SKIPPED_NAMES)
-        files.extend(Path(folder) / name for name in sorted(names) if name not in SKIPPED_NAMES)
+        base = Path(folder)
+        kept = []
+        for name in sorted(directories):
+            if name in SKIPPED_NAMES:
+                continue
+            if (base / name).is_symlink():
+                log.warning("not archived (symbolic link): %s", base / name)
+                continue
+            kept.append(name)
+        directories[:] = kept
+        for name in sorted(names):
+            file = base / name
+            if name in SKIPPED_NAMES or file.resolve() in excluded:
+                continue
+            if file.is_symlink():
+                log.warning("not archived (symbolic link): %s", file)
+                continue
+            files.append(file)
     return files
 
 
