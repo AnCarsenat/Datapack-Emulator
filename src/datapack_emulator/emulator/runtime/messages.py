@@ -112,11 +112,19 @@ VANILLA: dict[str, str] = {
     # entities
     "commands.summon.success": "Summoned new %s",
     "commands.summon.failed": "Unable to summon entity",
+    "commands.summon.failed.uuid": "Unable to summon entity due to duplicate UUIDs",
     "commands.kill.success.single": "Killed %s",
     "commands.kill.success.multiple": "Killed %s entities",
     "commands.teleport.success.entity.single": "Teleported %s to %s",
     # data
     "commands.data.get.unknown": "Can't get %s; tag doesn't exist",
+    "commands.data.entity.query": "%s has the following entity data: %s",
+    "commands.data.entity.get": "%s on %s after scale factor of %s is %s",
+    "commands.data.entity.modified": "Modified entity data of %s",
+    "commands.data.entity.invalid": "Unable to modify player data",
+    "commands.data.storage.query": "Storage %s has the following contents: %s",
+    "commands.data.storage.get": "%s in storage %s after scale factor of %s is %s",
+    "commands.data.storage.modified": "Modified storage %s",
     "commands.data.get.invalid": "Can't get %s; only numeric tags are allowed",
     "commands.data.merge.failed": (
         "Nothing changed. The specified properties already have these values"

@@ -373,3 +373,31 @@ def merge_compound(target: dict[str, Any], source: dict[str, Any]) -> bool:
             target[key] = copy.deepcopy(value)
             changed = True
     return changed
+
+
+_BARE_KEY_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
+
+
+def to_snbt(value: Any) -> str:
+    """SNBT the way vanilla prints it in feedback: ``{Pos: [0.0d, 1.0d], Tags: ["a"]}``.
+
+    Numeric types are not tracked by the emulator, so integers print bare and
+    floating-point numbers as doubles.
+    """
+    if isinstance(value, dict):
+        items = ", ".join(
+            f"{key if _BARE_KEY_RE.match(key) else json.dumps(key)}: {to_snbt(item)}"
+            for key, item in value.items()
+        )
+        return "{" + items + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(to_snbt(item) for item in value) + "]"
+    if isinstance(value, bool):
+        return "1b" if value else "0b"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value!r}d"
+    if value is None:
+        return "{}"
+    return json.dumps(str(value), ensure_ascii=False)

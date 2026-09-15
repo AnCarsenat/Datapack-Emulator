@@ -251,3 +251,48 @@ def test_scoreboard_remembers_the_values_a_score_takes(make_pack):
     history = list(emulator.world.scoreboard.history[("#n", "c")])
     assert [value for _, value in history] == [1, 2, 3]
     assert [tick for tick, _ in history] == [0, 1, 2]
+
+
+def test_summoned_entities_keep_their_full_nbt(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add v dummy\n"
+        "summon minecraft:armor_stand 1 2 3 "
+        '{NoGravity:1b,Tags:["a","b"],CustomName:\'"Keeper"\',Rotation:[90f,0f]}\n'
+        "tag @e[type=minecraft:armor_stand] add c\n"
+        "data merge entity @e[type=minecraft:armor_stand,limit=1] {Pos:[5.0d,6.0d,7.0d],Glowing:1b}\n"
+        'data modify entity @e[tag=a,limit=1] Tags append value "d"\n'
+        "data remove entity @e[tag=a,limit=1] NoGravity\n"
+        "tp @e[tag=a] 8 9 10 45 10\n"
+        "execute store result entity @e[tag=a,limit=1] Health float 0.5 run scoreboard players "
+        "set #x v 7\n"
+        "data get entity @e[tag=a,limit=1]\n"
+        "data get entity @e[tag=a,limit=1] Pos[0]\n",
+    )
+    (stand,) = [entity for entity in emulator.world.entities if not entity.is_player]
+    assert stand.position == [8.0, 9.0, 10.0] and stand.rotation == [45.0, 10.0]
+    assert stand.tags == {"a", "b", "c", "d"}
+    data = stand.data()
+    assert data["Glowing"] == 1 and "NoGravity" not in data
+    assert data["Health"] == 3.5  # execute store ... float 0.5
+    assert data["Pos"] == [8.0, 9.0, 10.0] and data["id"] == "minecraft:armor_stand"
+    assert len(data["UUID"]) == 4 and data["Tags"] == ["a", "b", "c", "d"]
+    assert stand.display == "Keeper"
+    feedback = [r.message for r in emulator.output.records if r.key.startswith("commands.data")]
+    assert any(
+        m.startswith("Keeper has the following entity data: {Pos: [8.0d, 9.0d, 10.0d]")
+        for m in feedback
+    )
+    assert "Keeper has the following entity data: 8.0d" in feedback
+
+
+def test_player_data_is_read_only_and_killed_players_stay(make_pack):
+    emulator = run(
+        make_pack,
+        "data merge entity Player1 {Glowing:1b}\n"
+        "kill @a\n"
+        "execute if data entity Player1 Health run say still here\n",
+    )
+    assert game_errors(emulator.output.records) == ["Unable to modify player data"]
+    assert [entity.name for entity in emulator.world.players] == ["Player1"]
+    assert "[Server] still here" in chat(emulator.output.records)

@@ -7,6 +7,7 @@ out of.
 
 from __future__ import annotations
 
+import copy
 import random
 import uuid as _uuid
 from collections import deque
@@ -17,7 +18,9 @@ from typing import TYPE_CHECKING, Any
 from datapack_emulator.emulator.commands.parser import Selector
 from datapack_emulator.emulator.common import (
     distance_squared,
+    flatten_text_component,
     in_range,
+    load_text_component,
     normalise_id,
     parse_snbt,
     split_arguments,
@@ -27,9 +30,58 @@ if TYPE_CHECKING:  # pragma: no cover
     from datapack_emulator.emulator.runtime.context import ExecutionContext
 
 
+#: NBT every entity reports besides what was summoned or set on it
+ENTITY_DEFAULTS: dict[str, Any] = {
+    "Motion": [0.0, 0.0, 0.0],
+    "FallDistance": 0.0,
+    "Fire": -1,
+    "Air": 300,
+    "OnGround": 0,
+    "Invulnerable": 0,
+    "PortalCooldown": 0,
+}
+#: what a player adds (inventories and abilities are not modelled)
+PLAYER_DEFAULTS: dict[str, Any] = {
+    "Health": 20.0,
+    "foodLevel": 20,
+    "XpLevel": 0,
+    "XpP": 0.0,
+    "SelectedItemSlot": 0,
+    "Inventory": [],
+    "playerGameType": 0,
+}
+#: kept in the entity's own fields, not in ``nbt``
+SYNCED_KEYS = ("Pos", "Rotation", "UUID", "Tags")
+
+
+def uuid_to_ints(value: str) -> list[int]:
+    """A UUID as NBT stores it: four signed 32-bit ints, most significant first."""
+    number = _uuid.UUID(value).int
+    parts = [(number >> shift) & 0xFFFFFFFF for shift in (96, 64, 32, 0)]
+    return [part - 2**32 if part >= 2**31 else part for part in parts]
+
+
+def ints_to_uuid(parts: list[int]) -> str | None:
+    if not isinstance(parts, list) or len(parts) != 4:
+        return None
+    try:
+        number = 0
+        for part in parts:
+            number = (number << 32) | (int(part) & 0xFFFFFFFF)
+    except (TypeError, ValueError):
+        return None
+    return str(_uuid.UUID(int=number))
+
+
 @dataclass
 class Entity:
-    """A minimal entity: enough for selectors, tags, scores and NBT probing."""
+    """An entity: position, rotation, tags and the rest of its NBT.
+
+    ``nbt`` holds everything that was summoned, merged or modified onto the
+    entity except the keys the emulator keeps as fields (``Pos``, ``Rotation``,
+    ``UUID``, ``Tags``); :meth:`data` puts them back together the way ``data
+    get entity`` shows them.
+    """
 
     type: str = "minecraft:marker"
     uuid: str = field(default_factory=lambda: str(_uuid.uuid4()))
@@ -40,15 +92,64 @@ class Entity:
     tags: set[str] = field(default_factory=set)
     nbt: dict[str, Any] = field(default_factory=dict)
     is_player: bool = False
+    #: the game time it was summoned at
+    born: int = 0
 
     @property
     def id(self) -> str:
+        """The score holder: a player's name, otherwise the UUID."""
         return self.name or self.uuid
 
     @property
     def display(self) -> str:
-        """How vanilla names the entity in feedback."""
-        return self.name or self.type.split(":")[-1].replace("_", " ").title()
+        """How vanilla names the entity in feedback: player name, custom name, type."""
+        if self.name:
+            return self.name
+        custom = self.nbt.get("CustomName")
+        if custom:
+            component = load_text_component(custom) if isinstance(custom, str) else custom
+            text = flatten_text_component(component if component is not None else custom)
+            if text:
+                return text
+        return self.type.split(":")[-1].replace("_", " ").title()
+
+    def data(self) -> dict[str, Any]:
+        """The entity's full NBT, as ``data get entity`` shows it (a copy)."""
+        data: dict[str, Any] = {
+            "Pos": [float(value) for value in self.position],
+            **copy.deepcopy(ENTITY_DEFAULTS),
+            "Rotation": [float(value) for value in self.rotation],
+            "UUID": uuid_to_ints(self.uuid),
+        }
+        if self.is_player:
+            data.update(copy.deepcopy(PLAYER_DEFAULTS))
+            data["Dimension"] = self.dimension
+        else:
+            data["id"] = self.type
+        data.update(copy.deepcopy(self.nbt))
+        if self.tags:
+            data["Tags"] = sorted(self.tags)
+        return data
+
+    def apply_data(self, data: dict[str, Any]) -> None:
+        """Load NBT back onto the entity, like ``Entity.load``: position,
+        rotation and tags follow; the UUID never changes."""
+        position = data.get("Pos")
+        if _numbers(position, 3):
+            self.position = [float(value) for value in position]
+        rotation = data.get("Rotation")
+        if _numbers(rotation, 2):
+            self.rotation = [float(value) for value in rotation]
+        tags = data.get("Tags")
+        self.tags = {str(tag) for tag in tags} if isinstance(tags, list) else set()
+        defaults = {**ENTITY_DEFAULTS, **(PLAYER_DEFAULTS if self.is_player else {})}
+        self.nbt = {
+            key: copy.deepcopy(value)
+            for key, value in data.items()
+            if key not in SYNCED_KEYS
+            and key not in ("id", "Dimension")
+            and not (key in defaults and defaults[key] == value)
+        }
 
     def __repr__(self) -> str:
         return f"<Entity {self.type} {self.id} tags={sorted(self.tags)}>"
@@ -152,10 +253,22 @@ class World:
     # -- entities ---------------------------------------------------------
 
     def spawn(self, entity: Entity) -> Entity:
+        entity.born = self.tick
         self.entities.append(entity)
         return entity
 
+    def entity_by_id(self, holder: str) -> Entity | None:
+        """The entity a score holder or literal name refers to, if any."""
+        for entity in self.entities:
+            if entity.id == holder or entity.uuid == holder:
+                return entity
+        return None
+
     def kill(self, entity: Entity) -> None:
+        """Killed players respawn (nothing about them is modelled to reset);
+        any other entity is removed."""
+        if entity.is_player:
+            return
         if entity in self.entities:
             self.entities.remove(entity)
 
@@ -310,12 +423,16 @@ def _inside_volume(entity: Entity, selector: Selector, origin: list[float]) -> b
 
 
 def _entity_data(entity: Entity) -> dict[str, Any]:
-    """The NBT a selector sees: what was summoned or set, plus the entity's tags
-    (``tag`` writes into ``Tags`` in vanilla, but they are kept apart here)."""
-    data = dict(entity.nbt)
-    if entity.tags:
-        data["Tags"] = sorted(set(data.get("Tags", [])) | entity.tags)
-    return data
+    """The NBT a selector's ``nbt=`` sees."""
+    return entity.data()
+
+
+def _numbers(value: Any, count: int) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) == count
+        and all(isinstance(item, (int, float)) and not isinstance(item, bool) for item in value)
+    )
 
 
 def nbt_matches(actual: Any, pattern: Any) -> bool:

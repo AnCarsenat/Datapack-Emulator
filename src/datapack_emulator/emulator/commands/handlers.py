@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from datapack_emulator.emulator.commands.parser import (
@@ -35,9 +36,10 @@ from datapack_emulator.emulator.common import (
     normalise_tagged_id,
     parse_snbt,
     parse_value,
+    to_snbt,
 )
 from datapack_emulator.emulator.runtime.context import ExecutionContext
-from datapack_emulator.emulator.runtime.world import Entity, wrap_int
+from datapack_emulator.emulator.runtime.world import Entity, ints_to_uuid, wrap_int
 
 Handler = Callable[[Command, ExecutionContext], CommandResult]
 
@@ -694,20 +696,23 @@ def cmd_tag(command: Command, context: ExecutionContext) -> CommandResult:
 
 def cmd_summon(command: Command, context: ExecutionContext) -> CommandResult:
     if not command.arguments:
+        context.game_error("command.unknown.command")
         return CommandResult.failure()
     entity_type = normalise_id(command.arguments[0])
     if not _require_id(context, "entity_type", entity_type):
         return CommandResult.failure()
     position = resolve_position(command.arguments[1:4], context.position)
-    nbt: dict[str, Any] = {}
-    tags: set[str] = set()
-    for argument in command.arguments[1:]:
-        if argument.startswith("{"):
-            nbt = parse_snbt(argument)
-            for tag in nbt.get("Tags", []) or []:
-                tags.add(str(tag))
-            break
-    entity = Entity(type=entity_type, position=position, nbt=nbt, tags=tags)
+    payload = next((a for a in command.arguments[1:] if a.startswith("{")), "")
+    data = parse_snbt(payload) if payload else {}
+    entity = Entity(type=entity_type)
+    uuid = ints_to_uuid(data.get("UUID"))
+    if uuid is not None:
+        if any(other.uuid == uuid for other in context.world.entities):
+            context.game_error("commands.summon.failed.uuid")
+            return CommandResult.failure()
+        entity.uuid = uuid
+    data["Pos"] = position  # the position argument wins over Pos in the NBT
+    entity.apply_data(data)
     context.world.spawn(entity)
     context.feedback("commands.summon.success", entity.display)
     return CommandResult(success=True, value=1)
@@ -729,9 +734,13 @@ def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
     if not command.arguments:
         return CommandResult.failure()
     arguments = command.arguments
-    if len(arguments) >= 4:  # tp <targets> <x y z> [rotation|facing ...]
+    rotation: list[float] | None = None
+    if len(arguments) >= 4:  # tp <targets> <x y z> [<yaw> <pitch> | facing ...]
         targets = _require_targets(context, arguments[0])
         destination = resolve_position(arguments[1:4], context.position)
+        if len(arguments) >= 6 and arguments[4] != "facing":
+            # relative rotation is relative to the command source, like positions
+            rotation = resolve_position([*arguments[4:6], "0"], [*context.rotation, 0.0])[:2]
     elif len(arguments) == 3:  # tp <x y z>
         targets = [context.executor] if context.executor else []
         destination = resolve_position(arguments, context.position)
@@ -748,6 +757,8 @@ def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
     for entity in targets:
         if entity is not None:
             entity.position = list(destination)
+            if rotation is not None:
+                entity.rotation = list(rotation)
     if len(targets) == 1 and targets[0] is not None:
         context.feedback(
             "commands.teleport.success.entity.single",
@@ -793,7 +804,7 @@ def _macro_arguments(rest: list[str], context: ExecutionContext) -> dict[str, An
         store: Any = context.world.storage.get(normalise_id(target), {})
     elif source == "entity":
         entities = _targets(context, target)
-        store = entities[0].nbt if entities else {}
+        store = entities[0].data() if entities else {}
     else:
         context.note_key_once(
             "emulator.unimplemented", f"function ... with {source}", context.emulator.version.id
@@ -849,55 +860,111 @@ def cmd_return(command: Command, context: ExecutionContext) -> CommandResult:
 # ---------------------------------------------------------------------------
 
 
+@dataclass
+class _DataTarget:
+    """What ``data`` reads and writes: a working copy of an entity's NBT or a storage."""
+
+    data: dict[str, Any]
+    entity: Entity | None = None
+    storage: str = ""
+
+    def describe(self) -> str:
+        return self.entity.display if self.entity is not None else self.storage
+
+    def commit(self, context: ExecutionContext) -> None:
+        if self.entity is not None:
+            self.entity.apply_data(self.data)
+        else:
+            context.world.storage[self.storage] = self.data
+
+    @property
+    def feedback_kind(self) -> str:
+        return "entity" if self.entity is not None else "storage"
+
+
+def _data_target(
+    context: ExecutionContext, kind: str, token: str, action: str
+) -> _DataTarget | None:
+    if kind == "storage":
+        storage = normalise_id(token)
+        return _DataTarget(copy.deepcopy(context.world.storage.get(storage, {})), storage=storage)
+    if kind == "entity":
+        found = _require_targets(context, token)
+        if not found:
+            return None
+        if len(found) > 1:
+            context.game_error("argument.entity.toomany")
+            return None
+        entity = found[0]
+        if action != "get" and entity.is_player:
+            context.game_error("commands.data.entity.invalid")
+            return None
+        return _DataTarget(entity.data(), entity=entity)
+    # block NBT is not modelled
+    context.note_key_once(
+        "emulator.unimplemented", f"data {action} block", context.emulator.version.id
+    )
+    return None
+
+
 def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
     """``data get|merge|modify|remove`` on entities and storage."""
     arguments = command.arguments
     if len(arguments) < 3:
+        context.game_error("command.unknown.command")
         return CommandResult.failure()
-    action, holder_kind, target_token = arguments[0], arguments[1], arguments[2]
-
-    if holder_kind == "storage":
-        stores: list[dict[str, Any]] = [
-            context.world.storage.setdefault(normalise_id(target_token), {})
-        ]
-    elif holder_kind == "entity":
-        stores = [entity.nbt for entity in _require_targets(context, target_token)]
-    else:  # block NBT is not modelled
-        context.note_key_once(
-            "emulator.unimplemented", f"data {action} block", context.emulator.version.id
-        )
+    action, kind, token = arguments[0], arguments[1], arguments[2]
+    target = _data_target(context, kind, token, action)
+    if target is None:
         return CommandResult.failure()
-
-    if not stores:
-        return CommandResult.failure()
+    where = target.feedback_kind
 
     if action == "get":
         path = arguments[3] if len(arguments) > 3 else ""
-        value = nbt_get(stores[0], path) if path else stores[0]
+        if not path:
+            context.feedback(
+                f"commands.data.{where}.query", target.describe(), to_snbt(target.data)
+            )
+            return CommandResult(success=True, value=1)
+        value = nbt_get(target.data, path)
         if value is None:
             context.game_error("commands.data.get.unknown", path)
             return CommandResult.failure()
         scale = _float_or_none(arguments[4]) if len(arguments) > 4 else None
-        if scale is not None and not isinstance(value, (int, float)):
-            context.game_error("commands.data.get.invalid", path)
-            return CommandResult.failure()
-        return CommandResult(success=True, value=as_int(value, scale))
+        if scale is not None:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                context.game_error("commands.data.get.invalid", path)
+                return CommandResult.failure()
+            result = as_int(value, scale)
+            context.feedback(
+                f"commands.data.{where}.get", path, target.describe(), _number(scale), result
+            )
+            return CommandResult(success=True, value=result)
+        context.feedback(f"commands.data.{where}.query", target.describe(), to_snbt(value))
+        return CommandResult(success=True, value=as_int(value))
 
     if action == "merge" and len(arguments) >= 4:
-        payload = parse_snbt(" ".join(arguments[3:]))
-        changed = sum(1 for store in stores if merge_compound(store, payload))
-        if not changed:
-            context.game_error("commands.data.merge.failed")
-            return CommandResult.failure()
-        return CommandResult(success=True, value=changed)
+        changed = merge_compound(target.data, parse_snbt(" ".join(arguments[3:])))
+    elif action == "remove" and len(arguments) >= 4:
+        changed = nbt_remove(target.data, arguments[3])
+    elif action == "modify" and len(arguments) >= 6:
+        result = _data_modify(context, [target.data], arguments[3], arguments[4], arguments[5:])
+        if not result.success:
+            return result
+        changed = True
+    else:
+        context.game_error("command.unknown.command")
+        return CommandResult.failure()
+    if not changed:
+        context.game_error("commands.data.merge.failed")
+        return CommandResult.failure()
+    target.commit(context)
+    context.feedback(f"commands.data.{where}.modified", target.describe())
+    return CommandResult(success=True, value=1)
 
-    if action == "remove" and len(arguments) >= 4:
-        removed = sum(1 for store in stores if nbt_remove(store, arguments[3]))
-        return CommandResult(success=removed > 0, value=removed)
 
-    if action == "modify" and len(arguments) >= 6:
-        return _data_modify(context, stores, arguments[3], arguments[4], arguments[5:])
-    return CommandResult.failure()
+def _number(value: float) -> str:
+    return str(int(value)) if float(value).is_integer() else str(value)
 
 
 def _data_modify(
@@ -986,7 +1053,7 @@ def _data_source(context: ExecutionContext, source: list[str]) -> tuple[bool, An
         entities = _require_targets(context, target)
         if not entities:
             return (False, None)
-        store = entities[0].nbt
+        store = entities[0].data()
     else:  # block NBT is not modelled
         context.note_key_once(
             "emulator.unimplemented", "data modify ... from block", context.emulator.version.id
@@ -1201,7 +1268,11 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
         nbt_set(store, arguments[3], _stored_number(value, arguments[4:6]))
     elif target == "entity":
         for entity in _targets(context, arguments[2]):
-            nbt_set(entity.nbt, arguments[3], _stored_number(value, arguments[4:6]))
+            if entity.is_player:  # player data cannot be modified
+                continue
+            data = entity.data()
+            nbt_set(data, arguments[3], _stored_number(value, arguments[4:6]))
+            entity.apply_data(data)
 
 
 def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
@@ -1267,7 +1338,7 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
             return nbt_get(store, arguments[3]) is not None
         if arguments[1] == "entity":
             return any(
-                nbt_get(entity.nbt, arguments[3]) is not None
+                nbt_get(entity.data(), arguments[3]) is not None
                 for entity in _targets(context, arguments[2])
             )
         return False
