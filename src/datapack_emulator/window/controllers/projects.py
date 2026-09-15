@@ -98,6 +98,10 @@ class ProjectController(Controller):
                 window.output.app(f"cannot read {project.vanilla_jar}: {exc}", level=LogLevel.ERROR)
         if project.datapack and Path(project.datapack).is_dir():
             window.datapacks.load(Path(project.datapack), keep_project=True)
+        if window.engine_window is not None and window.datapack is not None:
+            window.engine_window.set_datapack(window.datapack)
+            if project.engine_versions:
+                window.engine_window.select_ids(project.engine_versions)
 
     def capture(self) -> Project:
         """Read the current window state back into the project."""

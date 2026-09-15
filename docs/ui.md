@@ -20,6 +20,19 @@ layout changes are made in Qt Designer, never in code.
 | stop (Shift+F5) | ends a run and refreshes the profiler; the only way to end `∞` runs |
 | engine… | open the version test engine |
 
+### Menus
+
+| menu | entries |
+| --- | --- |
+| file | new / open / save / save as project ([projects](projects.md)) · import datapack · reload datapack · load client jar… · download client jar for this version · quit |
+| edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path |
+| run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · version engine… · export call graph (.dot) |
+| view | explorer · inspector · logs (show or hide each dock) · environment / profiler / call graph / source tab |
+
+*export call graph (.dot)* writes `generated/<pack>-<version>.dot` for
+Graphviz, from the graph on screen or, if none was built yet, from the
+current version.
+
 ### Tabs
 
 * **Environment** (scrolls when the window is short)
@@ -63,7 +76,14 @@ All three are open by default and can be toggled from *view*.
   lacks.
 * **logs** — one row per record: tick, source, level, where
   (`function:line`), message. Tooltips show the command, the vanilla
-  translation key and the version.
+  translation key and the version. Above the table:
+  * *app* / *emulator* / *game* checkboxes: which sources to show — what this
+    program does, what the emulation engine notices, what Minecraft itself
+    would print;
+  * *level*: the lowest level shown (`debug`, `info` — the default —,
+    `warning`, `error`); silent failures inside functions are `debug`;
+  * a text filter matched against the message;
+  * the record counts, and *clear*, which empties the log.
 
 ### Right-click
 

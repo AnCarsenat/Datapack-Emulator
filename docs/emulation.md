@@ -2,7 +2,9 @@
 
 One `Emulator` is one pack, one version and one world. `run(ticks)` runs
 `#minecraft:load` once, then each tick `#minecraft:tick` followed by the
-schedules that became due (see *Tick order* below).
+schedules that became due (see *Tick order* below). On 1.16.1–1.19.2 the
+first tick runs `#minecraft:tick` before `#minecraft:load`, as those servers
+did; from 1.19.3 load comes first.
 
 ## The world
 

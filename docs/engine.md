@@ -56,8 +56,9 @@ for run in engine.run(chosen):
 | `TestEngine.version_range(a, b)` | inclusive range |
 | `TestEngine.format_boundaries(list)` | first release of each pack format |
 
-`engine.run()` with no list uses the declared versions, or the release
-matching `pack_format` when nothing is declared.
+`engine.run()` with no list uses the declared versions, or the newest release
+at or below `pack_format` (`versions.closest_to_pack_format`) when nothing is
+declared.
 
 ## Reports
 
@@ -69,4 +70,4 @@ it.
 
 Runs are sequential and, in the window, on the UI thread: a large selection
 with many ticks keeps the window busy until it finishes. *one per format*
-covers 1.13 → 26.2 in 22 runs.
+covers 1.13 → 26.3-rc-3 in 23 runs.

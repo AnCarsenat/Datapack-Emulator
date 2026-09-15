@@ -39,7 +39,8 @@ picked up if one is installed.
 ## First run
 
 1. Press **F5** (*run all*). This emulates `#minecraft:load` once, then
-   `#minecraft:tick` for the number of ticks set in the Environment tab, and refreshes
+   `#minecraft:tick` for the number of ticks set in the Environment tab (on
+   1.16.1–1.19.2 the first tick runs before load, as it did then), and refreshes
    everything that depends on the run.
 2. **Profiler** tab — estimated time per function, worst tick against the 50 ms
    budget. Right-click a row to open that function.

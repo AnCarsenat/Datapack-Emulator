@@ -258,7 +258,11 @@ class RunController(Controller):
             window.engine_window = EngineWindow(
                 window.datapack, parent=window, library=window.library
             )
-        else:
+            if window.project.engine_versions:
+                window.engine_window.select_ids(window.project.engine_versions)
+        elif window.engine_window.datapack is not window.datapack:
+            # a different pack: start from what it declares; the same pack
+            # keeps the versions ticked last time
             window.engine_window.set_datapack(window.datapack)
         window.engine_window.show()
         window.engine_window.raise_()
