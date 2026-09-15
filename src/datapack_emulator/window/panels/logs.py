@@ -10,7 +10,7 @@ from __future__ import annotations
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 
-from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource
+from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, trim_records
 
 COLUMNS = ("tick", "source", "level", "where", "message")
 COLUMN_HELP = (
@@ -112,7 +112,8 @@ class LogTableModel(QAbstractTableModel):
 
     # -- feeding ----------------------------------------------------------
 
-    #: records kept for the table; the oldest go first on long or endless runs
+    #: records kept for the table; on long or endless runs the oldest go first,
+    #: debug before info before warnings before errors
     MAX_RECORDS = 50_000
 
     def append(self, record: LogRecord) -> None:
@@ -125,7 +126,8 @@ class LogTableModel(QAbstractTableModel):
         self._records.extend(records)
         if len(self._records) > self.MAX_RECORDS:
             self.beginResetModel()
-            del self._records[: len(self._records) - self.MAX_RECORDS]
+            # trim well below the cap, so this happens rarely
+            self._records = trim_records(self._records, self.MAX_RECORDS * 4 // 5)
             self._refilter()
             self.endResetModel()
             return

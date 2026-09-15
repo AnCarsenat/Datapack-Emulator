@@ -71,6 +71,29 @@ class LogRecord:
         return f"{head} {self.source}/{self.level.label}{where}: {self.message}"
 
 
+def trim_records(records: list[LogRecord], keep: int) -> list[LogRecord]:
+    """Drop records until ``keep`` remain: the oldest of the lowest level first.
+
+    Long runs log mostly debug records (feedback functions send nowhere,
+    silent failures); dropping those before anything else keeps the chat,
+    warnings and errors that were visible from disappearing.
+    """
+    excess = len(records) - keep
+    if excess <= 0:
+        return records
+    dropped: set[int] = set()
+    for level in sorted({record.level for record in records}):
+        for index, record in enumerate(records):
+            if excess <= 0:
+                break
+            if record.level == level:
+                dropped.add(index)
+                excess -= 1
+        if excess <= 0:
+            break
+    return [record for index, record in enumerate(records) if index not in dropped]
+
+
 class OutputBus:
     """Collects :class:`LogRecord` objects and fans them out to listeners."""
 
@@ -112,7 +135,7 @@ class OutputBus:
 
         self.records.append(record)
         if len(self.records) > self.limit:
-            del self.records[: len(self.records) // 4]
+            self.records[:] = trim_records(self.records, self.limit * 3 // 4)
         counter = (record.source, record.level)
         self.counts[counter] = self.counts.get(counter, 0) + 1
         for listener in list(self.listeners):

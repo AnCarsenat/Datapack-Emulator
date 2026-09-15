@@ -779,3 +779,20 @@ def test_score_graph_segments_leave_gaps_for_resets():
     assert step_segments(board, "p", "o", 10) == [([1, 3], [5]), ([5, 8], [7])]
     board.history[("p", "o")] = deque([(1, 5), (4, 6)])
     assert step_segments(board, "p", "o", 10) == [([1, 4, 10], [5, 6])]
+
+
+def test_log_table_keeps_visible_records_on_long_runs(app, monkeypatch):
+    from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource
+    from datapack_emulator.window.panels import LogTableModel
+
+    monkeypatch.setattr(LogTableModel, "MAX_RECORDS", 50)
+    model = LogTableModel()
+    model.extend([LogRecord(LogSource.GAME, LogLevel.INFO, "[Player1] hello", tick=0)])
+    for tick in range(20):
+        model.extend(
+            [
+                LogRecord(LogSource.GAME, LogLevel.DEBUG, f"feedback {i}", tick=tick)
+                for i in range(10)
+            ]
+        )
+    assert model.record_at(0).message == "[Player1] hello"  # debug records went first
