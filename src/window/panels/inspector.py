@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.emulator import versions
-from src.emulator.datapack import Datapack
+from src.emulator.datapack import Datapack, format_label
 from src.emulator.engine import VersionRun
 from src.emulator.resources import Function, Resource
 from src.emulator.versions import Version
@@ -15,7 +15,7 @@ def _format(value) -> str:
     if value is None:
         return "-"
     if isinstance(value, tuple):
-        return ".".join(str(part) for part in value)
+        return format_label(value)
     return str(value)
 
 

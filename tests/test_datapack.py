@@ -14,16 +14,29 @@ def _mcmeta(tmp_path, pack):
 
 
 def test_pack_format_forms(tmp_path):
+    from src.emulator.datapack import ANY_MINOR
+
     assert _mcmeta(tmp_path, {"pack_format": 61}).format_tuple == (61, 0)
     assert _mcmeta(tmp_path, {"pack_format": 107.1}).format_tuple == (107, 1)
     ranged = _mcmeta(tmp_path, {"pack_format": 15, "supported_formats": [10, 20]})
-    assert ranged.format_range == ((10, 0), (20, 0))
+    assert ranged.format_range == ((10, 0), (20, ANY_MINOR))
     objected = _mcmeta(
         tmp_path, {"supported_formats": {"min_inclusive": 18, "max_inclusive": 41}}
     )
-    assert objected.format_range == ((18, 0), (41, 0))
+    assert objected.format_range == ((18, 0), (41, ANY_MINOR))
     modern = _mcmeta(tmp_path, {"min_format": [88, 0], "max_format": [94, 1]})
     assert modern.format_range == ((88, 0), (94, 1))
+
+
+def test_whole_number_bounds_follow_vanilla(tmp_path):
+    from src.emulator.datapack import ANY_MINOR, format_label
+
+    meta = _mcmeta(tmp_path, {"min_format": 88, "max_format": [94]})
+    assert meta.format_range == ((88, 0), (94, ANY_MINOR))
+    assert format_label(meta.format_range[1]) == "94.*"
+    assert meta.format_tuple == (94, 1)  # newest real release of format 94
+    legacy = _mcmeta(tmp_path, {"supported_formats": {"min_inclusive": 48, "max_inclusive": 57}})
+    assert legacy.format_range == ((48, 0), (57, ANY_MINOR))
 
 
 def test_description_flattens_text_components(tmp_path):

@@ -118,3 +118,11 @@ def test_tellraw_accepts_snbt_components(make_pack):
     emulator = run(make_pack, 'tellraw @a {text:"hi",color:"red"}\ntellraw @a ["",{text:"a"},"b"]\n')
     assert chat(emulator.output.records) == ["[Player1] hi", "[Player1] ab"]
     assert not game_errors(emulator.output.records)
+
+
+def test_whole_number_max_format_accepts_minor_formats(make_pack):
+    from src.emulator import versions
+
+    pack = Datapack.load(make_pack({}, mcmeta={"pack": {"min_format": 88, "max_format": 94}}))
+    assert pack.supports(versions.parse("1.21.11"))  # format 94.1
+    assert "1.21.11" in [v.id for v in pack.declared_versions()]

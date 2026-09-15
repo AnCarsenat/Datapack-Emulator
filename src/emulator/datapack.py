@@ -28,16 +28,61 @@ log = logging.getLogger(__name__)
 Format = tuple[int, int]
 
 
-def _as_format(value: Any) -> Optional[Format]:
-    """``18``, ``18.1`` or ``[18, 1]`` -> ``(18, 1)``."""
-    if value is None:
+#: the minor version vanilla uses for "any minor" (a whole-number upper bound)
+ANY_MINOR = 0x7FFFFFFF
+
+
+def _as_format(value: Any, upper: bool = False) -> Optional[Format]:
+    """Read a pack format as ``(major, minor)``.
+
+    ``18.1`` and ``[18, 1]`` are exact. A whole number or a one-element list
+    means the major version only: as a lower bound that is ``(18, 0)``, as an
+    upper bound it is ``(18, ANY_MINOR)`` — "max_format: 94" includes 94.1.
+    https://minecraft.wiki/w/Pack.mcmeta
+    """
+    if value is None or isinstance(value, bool):
         return None
-    if isinstance(value, (list, tuple)) and len(value) == 2:
-        return (int(value[0]), int(value[1]))
-    if isinstance(value, (int, float)):
+    whole = ANY_MINOR if upper else 0
+    if isinstance(value, (list, tuple)):
+        if len(value) == 2:
+            return (int(value[0]), int(value[1]))
+        if len(value) == 1:
+            return (int(value[0]), whole)
+        return None
+    if isinstance(value, int):
+        return (value, whole)
+    if isinstance(value, float):
         major = int(value)
-        return (major, round((float(value) - major) * 10))
+        return (major, round((value - major) * 10))
     return None
+
+
+def format_label(pack_format: Optional[Format]) -> str:
+    """``(94, 1)`` -> ``"94.1"``, ``(94, ANY_MINOR)`` -> ``"94.*"``."""
+    if pack_format is None:
+        return "*"
+    major, minor = pack_format
+    return f"{major}.*" if minor == ANY_MINOR else f"{major}.{minor}"
+
+
+def _format_bounds(
+    formats: Any, min_format: Any, max_format: Any
+) -> tuple[Optional[Format], Optional[Format]]:
+    """``(min, max)`` from the old ``supported_formats``/``formats`` field or
+    the newer ``min_format``/``max_format`` pair; the newer fields fill gaps."""
+    minimum = maximum = None
+    if isinstance(formats, dict):
+        minimum = _as_format(formats.get("min_inclusive"))
+        maximum = _as_format(formats.get("max_inclusive"), upper=True)
+    elif isinstance(formats, list) and len(formats) == 2:
+        minimum, maximum = _as_format(formats[0]), _as_format(formats[1], upper=True)
+    elif formats is not None:
+        minimum, maximum = _as_format(formats), _as_format(formats, upper=True)
+    if minimum is None:
+        minimum = _as_format(min_format)
+    if maximum is None:
+        maximum = _as_format(max_format, upper=True)
+    return (minimum, maximum)
 
 
 @dataclass
@@ -59,9 +104,7 @@ class OverlayEntry:
         return True
 
     def describe(self) -> str:
-        low = ".".join(str(part) for part in self.minimum) if self.minimum else "*"
-        high = ".".join(str(part) for part in self.maximum) if self.maximum else "*"
-        return f"{self.directory} [{low} .. {high}]"
+        return f"{self.directory} [{format_label(self.minimum)} .. {format_label(self.maximum)}]"
 
 
 class PackMCMETA:
@@ -87,27 +130,33 @@ class PackMCMETA:
         value = self.pack.get("pack_format")
         if isinstance(value, (int, float)):
             return float(value)
-        declared = self.format_range[1] or self.format_range[0]
+        declared = self.format_tuple
         return float(f"{declared[0]}.{declared[1]}") if declared else None
 
     @property
     def format_tuple(self) -> Optional[Format]:
-        return _as_format(self.pack.get("pack_format")) or self.format_range[1]
+        """The format the pack targets: ``pack_format``, else the top of its range."""
+        exact = _as_format(self.pack.get("pack_format"))
+        if exact is not None:
+            return exact
+        minimum, maximum = self.format_range
+        bound = maximum or minimum
+        if bound is None:
+            return None
+        if bound[1] != ANY_MINOR:
+            return bound
+        # "any minor of N": the newest release actually published with major N
+        known = [version.format for version in versions.VERSIONS if version.pack_format == bound[0]]
+        return max(known) if known else (bound[0], 0)
 
     @property
     def format_range(self) -> tuple[Optional[Format], Optional[Format]]:
         """``(min, max)`` from ``supported_formats`` / ``min_format`` / ``max_format``."""
-        supported = self.pack.get("supported_formats")
-        if isinstance(supported, dict):
-            return (
-                _as_format(supported.get("min_inclusive")),
-                _as_format(supported.get("max_inclusive")),
-            )
-        if isinstance(supported, list) and len(supported) == 2:
-            return (_as_format(supported[0]), _as_format(supported[1]))
-        if isinstance(supported, (int, float)):
-            return (_as_format(supported), _as_format(supported))
-        return (_as_format(self.pack.get("min_format")), _as_format(self.pack.get("max_format")))
+        return _format_bounds(
+            self.pack.get("supported_formats"),
+            self.pack.get("min_format"),
+            self.pack.get("max_format"),
+        )
 
     @property
     def description(self) -> str:
@@ -121,19 +170,9 @@ class PackMCMETA:
         for entry in raw_entries:
             if not isinstance(entry, dict) or "directory" not in entry:
                 continue
-            formats = entry.get("formats")
-            minimum = maximum = None
-            if isinstance(formats, dict):
-                minimum = _as_format(formats.get("min_inclusive"))
-                maximum = _as_format(formats.get("max_inclusive"))
-            elif isinstance(formats, list) and len(formats) == 2:
-                minimum, maximum = _as_format(formats[0]), _as_format(formats[1])
-            elif formats is not None:
-                minimum = maximum = _as_format(formats)
-            if minimum is None:
-                minimum = _as_format(entry.get("min_format"))
-            if maximum is None:
-                maximum = _as_format(entry.get("max_format"))
+            minimum, maximum = _format_bounds(
+                entry.get("formats"), entry.get("min_format"), entry.get("max_format")
+            )
             out.append(
                 OverlayEntry(
                     directory=str(entry["directory"]),
