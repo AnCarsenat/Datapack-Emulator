@@ -85,8 +85,8 @@ class Emulator:
 
         due = [entry for entry in self.schedules if entry[0] <= self.world.tick]
         self.schedules = [entry for entry in self.schedules if entry[0] > self.world.tick]
-        for _, function_id in due:
-            self.run_function(function_id, self.root_context())
+        for _, target in due:
+            self.run_scheduled(target)
 
         self._run_tag("#minecraft:tick")
 
@@ -126,6 +126,14 @@ class Emulator:
         return ExecutionContext(emulator=self, function_id="<server>", executor=None)
 
     # -- schedules --------------------------------------------------------
+
+    def run_scheduled(self, target: str) -> None:
+        """Run a due schedule; ``#tag`` targets run every function in the tag."""
+        if target.startswith("#"):
+            for function_id in self.pack.resolve_function_tag(target):
+                self.run_function(function_id, self.root_context())
+        else:
+            self.run_function(target, self.root_context())
 
     def add_schedule(self, function_id: str, tick: int, replace: bool = True) -> None:
         if replace:

@@ -426,7 +426,7 @@ def _macro_arguments(rest: list[str], context: ExecutionContext) -> dict[str, An
 def cmd_schedule(command: Command, context: ExecutionContext) -> CommandResult:
     arguments = command.arguments
     if len(arguments) >= 2 and arguments[0] == "clear":
-        target = normalise_id(arguments[1])
+        target = normalise_tagged_id(arguments[1])
         removed = context.emulator.clear_schedule(target)
         if removed:
             context.feedback("commands.schedule.cleared.success", removed, target)
@@ -434,7 +434,7 @@ def cmd_schedule(command: Command, context: ExecutionContext) -> CommandResult:
         context.game_error("commands.schedule.cleared.failure", target)
         return CommandResult.failure()
     if len(arguments) >= 3 and arguments[0] == "function":
-        target = normalise_id(arguments[1])
+        target = normalise_tagged_id(arguments[1])  # a function or a #tag
         delay = parse_duration(arguments[2])
         if delay <= 0:
             context.game_error("commands.schedule.same_tick")
