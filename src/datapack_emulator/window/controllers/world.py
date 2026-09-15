@@ -115,7 +115,7 @@ class WorldController(Controller):
                 window.edit_objective_filter.text(),
             )
         elif tab == TAB_ENTITIES:
-            fill_entities(window.tree_entities, world, text)
+            fill_entities(window.tree_entities, world, text, emulator.version)
         else:
             fill_storage(window.tree_storage, world.storage, text)
         self._fill_seconds = time.monotonic() - started
@@ -125,7 +125,8 @@ class WorldController(Controller):
         window = self.window
         if item.parent() is None and window.emulator is not None:
             uuid = str(item.data(0, UUID_ROLE))
-            expand_entity(item, window.emulator.world.entity_by_id(uuid))
+            emulator = window.emulator
+            expand_entity(item, emulator.world.entity_by_id(uuid), emulator.version)
         window.tree_entities.resizeColumnToContents(0)
 
     def forget(self) -> None:
@@ -296,6 +297,18 @@ class WorldController(Controller):
             menu.addSeparator()
             menu.addAction("teleport…", lambda: window.console.prefill(f"tp {selector} "))
             menu.addAction("add tag…", lambda: window.console.prefill(f"tag {selector} add "))
+            if entity.is_player:
+                menu.addAction(
+                    "give item…", lambda: window.console.prefill(f"give {selector} minecraft:")
+                )
+                clear = menu.addAction("clear inventory", lambda: self._run(f"clear {selector}"))
+                clear.setEnabled(any(True for _ in entity.inventory.items()))
+            menu.addAction(
+                "set item in slot…",
+                lambda: window.console.prefill(
+                    f"item replace entity {selector} weapon.mainhand with minecraft:"
+                ),
+            )
             kill = menu.addAction("kill", lambda: self._run(f"kill {selector}"))
             kill.setToolTip("players respawn")
             menu.addAction(
@@ -305,6 +318,8 @@ class WorldController(Controller):
             menu.addAction("copy UUID", lambda: navigation.copy_text(entity.uuid, "the UUID"))
             menu.addAction(
                 "copy data (SNBT)",
-                lambda: navigation.copy_text(to_snbt(entity.data()), "the entity data"),
+                lambda: navigation.copy_text(
+                    to_snbt(entity.data(window.emulator.version)), "the entity data"
+                ),
             )
         menu.exec(tree.viewport().mapToGlobal(point))

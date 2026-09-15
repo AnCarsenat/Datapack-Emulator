@@ -290,7 +290,8 @@ def split_path(path: str) -> list[str]:
     """``a.b[0]."minecraft:x"`` -> ``["a", "b", "0", "minecraft:x"]``.
 
     Keys may be quoted (with ``"`` or ``'``) to hold dots, colons or spaces;
-    list indexes are the numbers in brackets.
+    list indexes are the numbers in brackets, and ``[{Slot:103b}]`` keeps the
+    compound whole (``"{Slot:103b}"``) to pick the elements that match it.
     """
     parts: list[str] = []
     text = path.strip()
@@ -298,6 +299,11 @@ def split_path(path: str) -> list[str]:
     current = ""
     while index < len(text):
         char = text[index]
+        if char == "{" and not current:
+            end = _compound_end(text, index)
+            parts.append(text[index : end + 1])
+            index = end + 1
+            continue
         if char in "\"'":
             end = index + 1
             quoted = []
@@ -321,6 +327,41 @@ def split_path(path: str) -> list[str]:
     return parts
 
 
+def _compound_end(text: str, start: int) -> int:
+    depth = 0
+    quote: str | None = None
+    for index in range(start, len(text)):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                continue
+            if char == quote:
+                quote = None
+        elif char in "\"'":
+            quote = char
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+            if depth == 0:
+                return index
+    return len(text) - 1
+
+
+def nbt_matches(actual: Any, pattern: Any) -> bool:
+    """Vanilla NBT matching: compounds match by subset, every pattern list
+    element must match some actual element, other tags must be equal."""
+    if isinstance(pattern, dict):
+        return isinstance(actual, dict) and all(
+            key in actual and nbt_matches(actual[key], value) for key, value in pattern.items()
+        )
+    if isinstance(pattern, list):
+        return isinstance(actual, list) and all(
+            any(nbt_matches(item, wanted) for item in actual) for wanted in pattern
+        )
+    return actual == pattern
+
+
 def nbt_get(store: dict[str, Any], path: str) -> Any:
     return _get_parts(store, split_path(path))
 
@@ -329,6 +370,10 @@ def _get_parts(store: Any, parts: list[str]) -> Any:
     node: Any = store
     for part in parts:
         if isinstance(node, dict):
+            if part.startswith("{"):  # a compound filter on the node itself
+                if not nbt_matches(node, parse_snbt(part)):
+                    return None
+                continue
             if part not in node:
                 return None
             node = node[part]
@@ -343,7 +388,11 @@ def _get_parts(store: Any, parts: list[str]) -> Any:
 
 
 def _list_index(node: list[Any], part: str) -> int | None:
-    """A list index in a path; negative counts from the end, like vanilla."""
+    """A list index in a path (negative counts from the end, like vanilla), or
+    the first element matching a compound filter such as ``{Slot:103b}``."""
+    if part.startswith("{"):
+        pattern = parse_snbt(part)
+        return next((index for index, item in enumerate(node) if nbt_matches(item, pattern)), None)
     try:
         index = int(part)
     except ValueError:
@@ -356,37 +405,52 @@ def _list_index(node: list[Any], part: str) -> int | None:
 def nbt_set(store: dict[str, Any], path: str, value: Any) -> bool:
     """Set ``path`` to ``value``, creating missing compounds on the way.
 
-    List elements are addressed by index (``Pos[1]``, ``list[-1]``); an index
+    List elements are addressed by index (``Pos[1]``, ``list[-1]``) or by a
+    compound filter (``Items[{Slot:0b}]``), which reaches every matching
+    element and, when none matches, adds the filter as a new element. An index
     that does not exist, or a path through something that is neither a
     compound nor a list, sets nothing and returns False.
     """
     parts = split_path(path)
-    if not parts:
-        return False
-    node: Any = store
-    for part in parts[:-1]:
-        if isinstance(node, dict):
-            child = node.get(part)
-            if not isinstance(child, (dict, list)):
-                child = node[part] = {}
-            node = child
-        elif isinstance(node, list):
-            index = _list_index(node, part)
-            if index is None:
-                return False
-            node = node[index]
-        else:
-            return False
-    last = parts[-1]
+    return bool(parts) and _set_parts(store, parts, value)
+
+
+def _set_parts(node: Any, parts: list[str], value: Any) -> bool:
+    part, rest = parts[0], parts[1:]
     if isinstance(node, dict):
-        node[last] = value
-        return True
+        if part.startswith("{"):  # a filter on the compound itself
+            return nbt_matches(node, parse_snbt(part)) and (
+                _set_parts(node, rest, value) if rest else False
+            )
+        if not rest:
+            node[part] = value
+            return True
+        child = node.get(part)
+        if not isinstance(child, (dict, list)):
+            child = node[part] = [] if rest[0].startswith("{") else {}
+        return _set_parts(child, rest, value)
     if isinstance(node, list):
-        index = _list_index(node, last)
+        if part.startswith("{"):
+            pattern = parse_snbt(part)
+            matches = [index for index, item in enumerate(node) if nbt_matches(item, pattern)]
+            if not matches:
+                node.append(copy.deepcopy(pattern))
+                matches = [len(node) - 1]
+            changed = False
+            for index in matches:
+                if rest:
+                    changed = _set_parts(node[index], rest, value) or changed
+                else:
+                    node[index] = copy.deepcopy(value)
+                    changed = True
+            return changed
+        index = _list_index(node, part)
         if index is None:
             return False
-        node[index] = value
-        return True
+        if not rest:
+            node[index] = value
+            return True
+        return _set_parts(node[index], rest, value)
     return False
 
 
@@ -400,6 +464,12 @@ def nbt_remove(store: dict[str, Any], path: str) -> bool:
         del parent[last]
         return True
     if isinstance(parent, list):
+        if last.startswith("{"):  # every matching element goes
+            pattern = parse_snbt(last)
+            kept = [item for item in parent if not nbt_matches(item, pattern)]
+            removed = len(kept) != len(parent)
+            parent[:] = kept
+            return removed
         index = _list_index(parent, last)
         if index is not None:
             del parent[index]

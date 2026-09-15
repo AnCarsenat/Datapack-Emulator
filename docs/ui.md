@@ -167,8 +167,9 @@ All four are open by default and can be toggled from *view*.
     hovering a value lists the values the score took and at which game time.
     Double-click a cell to set it; right-click to set, add or remove 1,
     reset, enable a trigger, copy, or **graph the score over time**.
-  * *entities*: every entity — type, position and tags — with its full NBT
-    as a tree (what `data get entity` shows, built when expanded; at most
+  * *entities*: every entity — type, position, tags and how many items it
+    carries — with its full NBT (inventory included) as a tree (what
+    `data get entity` shows, built when expanded; at most
     1000 listed). Double-click a value to change it.
   * *storage*: every command storage and its contents; double-click a value
     to change it, right-click to remove or copy it.
@@ -185,7 +186,7 @@ All four are open by default and can be toggled from *view*.
 | log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from (double-click too) · analyze the command · add the command as a test |
 | test | run this test · show its records in the logs · analyze the command · duplicate · move up / down · remove · add test |
 | world › score | set… · add 1 · remove 1 · reset · enable trigger · graph over time… · copy value · new objective… |
-| world › entity | change value… (on an NBT value) · teleport… · add tag… · kill · run a command as this entity (starts `execute as @e[nbt={UUID:[I;…]},limit=1] at @s run `, or the player's name) · copy UUID · copy data (SNBT) |
+| world › entity | change value… (on an NBT value) · teleport… · add tag… · give item… and clear inventory (players) · set item in slot… · kill · run a command as this entity (starts `execute as @e[nbt={UUID:[I;…]},limit=1] at @s run `, or the player's name) · copy UUID · copy data (SNBT) |
 | world › storage value | change value… · remove · copy value |
 
 "External editor" and "external file manager" use the desktop's default handler

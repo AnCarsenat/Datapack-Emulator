@@ -112,6 +112,36 @@ VANILLA: dict[str, str] = {
     # entities
     "commands.summon.success": "Summoned new %s",
     "commands.summon.failed": "Unable to summon entity",
+    "commands.give.success.single": "Gave %s %s to %s",
+    "commands.give.success.multiple": "Gave %s %s to %s players",
+    "commands.give.failed.toomanyitems": "Can't give more than %s of %s",
+    "commands.clear.success.single": "Removed %s item(s) from player %s",
+    "commands.clear.success.multiple": "Removed %s item(s) from %s players",
+    "commands.clear.failed.single": "No items were found on player %s",
+    "commands.clear.failed.multiple": "No items were found on %s players",
+    "commands.clear.test.single": "Found %s matching item(s) on player %s",
+    "commands.clear.test.multiple": "Found %s matching item(s) on %s players",
+    "commands.item.entity.set.success.single": "Replaced a slot on %s with %s",
+    "commands.item.entity.set.success.multiple": "Replaced a slot on %s entities with %s",
+    "commands.item.target.no_changes": "No targets accepted item into slot %s",
+    "commands.item.source.no_such_slot": "The source does not have slot %s",
+    "commands.enchant.success.single": "Applied enchantment %s to %s's item",
+    "commands.enchant.success.multiple": "Applied enchantment %s to %s entities",
+    "commands.enchant.failed": (
+        "Nothing changed. Targets either have no item in their hands or the enchantment "
+        "could not be applied"
+    ),
+    "commands.enchant.failed.itemless": "%s is not holding any item",
+    "commands.enchant.failed.incompatible": "%s cannot support that enchantment",
+    "arguments.item.overstacked": "%s can only stack up to %s",
+    "argument.integer.big": "Integer must not be more than %s, found %s",
+    "commands.drop.success.single": "Dropped %s %s",
+    "commands.drop.success.multiple": "Dropped %s items",
+    "argument.player.entities": (
+        "Only players may be affected by this command, but the provided selector includes entities"
+    ),
+    "slot.unknown": "Unknown slot '%s'",
+    "enchantment.unknown": "Unknown enchantment: %s",
     "commands.summon.failed.uuid": "Unable to summon entity due to duplicate UUIDs",
     "commands.kill.success.single": "Killed %s",
     "commands.kill.success.multiple": "Killed %s entities",

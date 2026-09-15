@@ -814,3 +814,22 @@ def test_profiler_tab_shows_a_per_tick_call_tree(window, make_pack):
     child = tick.child(0)
     assert child.text(0) == "test:tick" and child.text(4) == "1.00"  # one call per tick
     assert window.profile_summary.text().startswith("average of 4 tick(s)")
+
+
+def test_world_dock_shows_inventories(window):
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.console.run("give Player1 minecraft:stone 5")
+    window.tabs_world.setCurrentIndex(1)
+    window.world_view.refresh()
+    tree = window.tree_entities
+    player = next(
+        tree.topLevelItem(i)
+        for i in range(tree.topLevelItemCount())
+        if tree.topLevelItem(i).text(0) == "Player1"
+    )
+    assert "5 item(s)" in player.text(1)
+    player.setExpanded(True)
+    keys = [player.child(i).text(0) for i in range(player.childCount())]
+    assert "Inventory" in keys and "SelectedItem" in keys

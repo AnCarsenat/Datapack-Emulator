@@ -99,7 +99,7 @@ def test_id_checks_strip_components_nbt_and_particle_options(make_pack, fake_jar
         make_pack,
         "give @a minecraft:diamond[enchantments={levels:{sharpness:1}}]\n"
         "give @a minecraft:diamond{display:{}} 1\n"
-        "clear @a minecraft:diamond[custom_name='x']\n"
+        "clear @a minecraft:diamond[enchantments={levels:{sharpness:1}}]\n"
         "particle minecraft:flame{scale:1} ~ ~ ~\n",
         vanilla=VanillaAssets.from_jar(fake_jar),
     )
