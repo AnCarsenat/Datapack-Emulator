@@ -960,7 +960,7 @@ QMenuBar::item:selected {
     </property>
     <widget class="QMenu" name="menurecent_projects">
      <property name="title">
-      <string>recent projects</string>
+      <string>open recent project</string>
      </property>
     </widget>
     <widget class="QMenu" name="menurecent_datapacks">
@@ -975,9 +975,10 @@ QMenuBar::item:selected {
     </widget>
     <addaction name="actionnew_project"/>
     <addaction name="actionopen_project"/>
+    <addaction name="menurecent_projects"/>
+    <addaction name="actionopen_last_project"/>
     <addaction name="actionsave_project"/>
     <addaction name="actionsave_project_as"/>
-    <addaction name="menurecent_projects"/>
     <addaction name="separator"/>
     <addaction name="actionimport_datapack"/>
     <addaction name="menurecent_datapacks"/>
@@ -1525,6 +1526,17 @@ QMenuBar::item:selected {
    </property>
    <property name="shortcut">
     <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="actionopen_last_project">
+   <property name="text">
+    <string>open last project</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+O</string>
+   </property>
+   <property name="statusTip">
+    <string>open the project saved or opened most recently</string>
    </property>
   </action>
   <action name="actionopen_project">

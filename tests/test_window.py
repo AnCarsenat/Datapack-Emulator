@@ -710,7 +710,7 @@ def test_session_remembers_recent_items_and_layout(app, window, make_pack, tmp_p
 
     window.recent_datapacks_menu.aboutToShow.emit()
     labels = [action.text() for action in window.recent_datapacks_menu.actions()]
-    assert any(label.startswith(pack.name) for label in labels)
+    assert any(f"  {pack.name}  —" in label for label in labels)
 
     window.dock_world.hide()
     window.session.save()
@@ -949,3 +949,29 @@ def test_removing_every_pack_without_a_project_opens_the_default_pack(window, ma
     assert window.project.path is None
     window.datapacks.remove(0)
     assert window.datapack is not None and window.datapack.paths == [default_sample()]
+
+
+def test_open_recent_and_last_project(app, window, make_pack, tmp_path):
+    window.datapacks.load(_hat_like_pack(make_pack))
+    first = window.projects.capture().save(tmp_path / "first.dpemu")
+    window.projects._write(window.project, first)
+    second = tmp_path / "second.dpemu"
+    window.projects.save_to(second)
+    assert window.session.recent_projects[:2] == [str(second.resolve()), str(first.resolve())]
+
+    window.recent_projects_menu.aboutToShow.emit()
+    texts = [action.text() for action in window.recent_projects_menu.actions() if action.text()]
+    assert texts[0].startswith("&1  second") and texts[-1] == "clear the list"
+
+    window.projects.mark_saved()
+    assert window.session.open_project(first)
+    assert window.project.path == first
+    assert (
+        window.session.open_last_project() and window.project.path == first
+    )  # first is newest now
+
+    first.unlink()
+    assert not window.session.open_project(first)
+    assert str(first.resolve()) not in window.session.recent_projects
+    window.session.clear_recent_projects()
+    assert not window.session.open_last_project()

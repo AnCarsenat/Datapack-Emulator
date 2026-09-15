@@ -234,6 +234,7 @@ class MainWindow(QMainWindow):
             "actionreload_datapack": self.datapacks.reload,
             "actionnew_project": self.projects.new,
             "actionopen_project": self.projects.open,
+            "actionopen_last_project": lambda: self.session.open_last_project(),
             "actionsave_project": self.projects.save,
             "actionsave_project_as": self.projects.save_as,
             "actionload_vanilla": self.jars.load_by_hand,
