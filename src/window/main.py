@@ -185,6 +185,8 @@ class MainWindow(QMainWindow):
             "actionchat": lambda: self.tabs.setCurrentIndex(TAB_CHAT),
             "actionopen_file_in_editor": self.open_selected_externally,
             "actionopen_folder_in_explorer": self.open_selected_folder,
+            "actionopen_in_source": lambda: self.open_in_source(self._selected_path()),
+            "actioncopy_path": lambda: self.copy_path(self._selected_path()),
         }
         for name, slot in connections.items():
             action = self._action(name)

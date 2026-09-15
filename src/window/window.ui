@@ -469,8 +469,10 @@ QMenuBar::item:selected {
     <property name="title">
      <string>edit</string>
     </property>
+    <addaction name="actionopen_in_source"/>
     <addaction name="actionopen_file_in_editor"/>
     <addaction name="actionopen_folder_in_explorer"/>
+    <addaction name="actioncopy_path"/>
    </widget>
    <widget class="QMenu" name="menurun">
     <property name="title">
