@@ -36,10 +36,11 @@ for run in engine.run(chosen):
 | `version`, `supported`, `overlays`, `vanilla` | context |
 | `ticks`, `commands`, `total_us`, `worst_tick_us` | cost |
 | `records` | every log record of that run |
-| `unknown_commands`, `missing_features` | from the static checks |
+| `unknown_commands`, `missing_features` | what the functions that failed to load needed |
+| `failed_functions`, `failed_tags` | what the version's server refused to load |
 | `missing_functions`, `unreachable`, `cycles` | from the call graph |
 | `profiler`, `graph` | the full objects |
-| `status` | `unsupported` › `errors` › `warnings` › `ok` |
+| `status` | `errors` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
 | `warnings`, `errors`, `chat`, `count(source, level)` | summaries |
 
 ## Choosing versions

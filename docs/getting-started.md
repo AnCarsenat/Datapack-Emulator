@@ -33,7 +33,7 @@ jar is picked up if one is installed.
 ## First run
 
 1. Press **F5** (*run all*). This emulates `#minecraft:load` once, then
-   `#minecraft:tick` for the number of ticks in the toolbar, and refreshes
+   `#minecraft:tick` for the number of ticks set in the Environment tab, and refreshes
    everything that depends on the run.
 2. **Profiler** tab — estimated time per function, worst tick against the 50 ms
    budget. Right-click a row to open that function.
@@ -44,7 +44,7 @@ jar is picked up if one is installed.
 
 ## Try another version
 
-Pick a version in the toolbar combo and press F5 again. The command set, the
+Pick a version in the **Environment** tab and press F5 again. The command set, the
 active overlays and (if a jar is installed) the message wording all follow
 the selection.
 
