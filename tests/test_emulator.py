@@ -82,7 +82,15 @@ def test_macro_with_storage_and_missing_argument(make_pack):
 
 
 def test_command_missing_from_version_gets_unknown_command(make_pack):
-    emulator = run(make_pack, "return 1\n", version="1.19.4")
+    emulator = run(
+        make_pack,
+        "",
+        version="1.19.4",
+        extra={  # 1.19.4 reads the plural folders
+            "data/test/functions/tick.mcfunction": "return 1\n",
+            "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
+        },
+    )
     errors = game_errors(emulator.output.records)
     assert errors and errors[0].startswith("Unknown or incomplete command")
     assert errors[0].endswith("return<--[HERE]")

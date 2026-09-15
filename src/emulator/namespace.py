@@ -51,6 +51,17 @@ def normalise_registry(registry: str) -> str:
     return registry
 
 
+def _spelling(raw_registry: str, registry: str) -> str:
+    if raw_registry in PLURAL_REGISTRIES:
+        return "plural"
+    if registry in _SINGULAR_NAMES:
+        return "singular"
+    return "any"
+
+
+_SINGULAR_NAMES = frozenset(PLURAL_REGISTRIES.values())
+
+
 @dataclass
 class DirectoryNode:
     """One node of the mirrored directory structure of a namespace."""
@@ -90,8 +101,11 @@ class Namespace:
         self.path = Path(path)
         #: "" for the base pack, else the overlay directory this came from
         self.overlay = overlay
-        #: normalised registry -> resource id -> resource
+        #: normalised registry -> resource id -> resource, preferring the modern
+        #: folder when a pack ships both spellings (see registries_for)
         self.registries: dict[str, dict[str, Resource]] = {}
+        #: the same, split by folder spelling: "plural", "singular" or "any"
+        self.by_spelling: dict[str, dict[str, dict[str, Resource]]] = {}
         #: old-style folder names found while loading, e.g. {"functions"}
         self.plural_folders: set[str] = set()
         #: every registry folder as spelled on disk, e.g. {"function", "tags/function"}
@@ -102,6 +116,7 @@ class Namespace:
 
     def load(self) -> Namespace:
         self.registries.clear()
+        self.by_spelling.clear()
         self.plural_folders.clear()
         self.raw_folders.clear()
         self.tree = self._build_tree(self.path)
@@ -148,7 +163,11 @@ class Namespace:
         cls = resource_class(registry, file_path.suffix)
         resource = cls(file_path, self.name, registry, resource_path)
         resource.overlay = self.overlay
+        resource.spelling = _spelling(raw_registry, registry)
         resource.load()
+        self.by_spelling.setdefault(resource.spelling, {}).setdefault(registry, {})[resource.id] = (
+            resource
+        )
         bucket = self.registries.setdefault(registry, {})
         existing = bucket.get(resource.id)
         if existing is not None and raw_registry != registry:
@@ -159,6 +178,18 @@ class Namespace:
         return resource
 
     # -- accessors --------------------------------------------------------
+
+    def registries_for(self, singular: bool) -> dict[str, dict[str, Resource]]:
+        """What a version reads: unrenamed registries plus one folder spelling.
+
+        1.21 renamed ``functions/`` to ``function/`` (and friends); a version
+        ignores the spelling it does not use, even when only that one exists.
+        """
+        merged: dict[str, dict[str, Resource]] = {}
+        for spelling in ("any", "singular" if singular else "plural"):
+            for registry, bucket in self.by_spelling.get(spelling, {}).items():
+                merged.setdefault(registry, {}).update(bucket)
+        return merged
 
     @property
     def functions(self) -> dict[str, Function]:

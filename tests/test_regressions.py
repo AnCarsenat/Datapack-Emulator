@@ -292,3 +292,36 @@ def test_deep_recursion_is_not_capped_at_64(make_pack):
         },
     )
     assert emulator.world.scoreboard.get("#d", "o") == 300
+
+
+def test_each_version_reads_only_its_folder_spelling(make_pack):
+    from src.emulator import versions
+
+    plural_only = Datapack.load(
+        make_pack(
+            {
+                "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
+                "data/test/functions/tick.mcfunction": "say plural ran\n",
+            }
+        )
+    )
+    assert plural_only.view_for(versions.parse("1.20.4")).function("test:tick") is not None
+    assert plural_only.view_for(versions.parse("1.21.4")).function("test:tick") is None
+    modern = Emulator(plural_only, version="1.21.4")
+    modern.run(ticks=1)
+    assert "[Server] plural ran" not in chat(modern.output.records)
+
+    both = Datapack.load(
+        make_pack(
+            {
+                "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
+                "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+                "data/test/functions/tick.mcfunction": "say OLD plural\n",
+                "data/test/function/tick.mcfunction": "say NEW singular\n",
+            }
+        )
+    )
+    assert both.view_for(versions.parse("1.20.4")).function("test:tick").lines == ["say OLD plural"]
+    assert both.view_for(versions.parse("1.21.4")).function("test:tick").lines == [
+        "say NEW singular"
+    ]

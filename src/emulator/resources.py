@@ -26,6 +26,9 @@ class Resource:
         self.error: str | None = None
         #: "" for the base pack, otherwise the overlay directory it came from
         self.overlay: str = ""
+        #: "plural" (functions/), "singular" (function/) or "any" for registries
+        #: that were never renamed; decides which versions read the file
+        self.spelling: str = "any"
 
     @property
     def id(self) -> str:

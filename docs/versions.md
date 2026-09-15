@@ -68,7 +68,7 @@ carry `pack_format`, `pack_format_minor`, `format` (a tuple) and
 
 | rule | since | effect |
 | --- | --- | --- |
-| singular registry folders (`function/`, `tags/function/`, …) | 1.21 | files in the other spelling are reported as ignored |
+| singular registry folders (`function/`, `tags/function/`, …) | 1.21 | each version loads only its own spelling; files in the other one are not loaded, and the engine reports them |
 | `overlays` and `supported_formats` in `pack.mcmeta` | 1.20.2 | older versions read only the base pack |
 | `min_format` / `max_format` | 1.21.9 | parsed alongside the older fields |
 | macros (`$` lines, `function … with`) | 1.20.2 | reported as unavailable before |

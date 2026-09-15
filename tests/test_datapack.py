@@ -83,8 +83,12 @@ def test_missing_files_are_reported(tmp_path):
 def test_overlay_applies_by_version_and_is_ignored_before_1_20_2(make_pack):
     root = make_pack(
         {
+            # before 1.21 the game reads functions/, from 1.21 on function/
             "data/test/function/tick.mcfunction": "say modern\n",
-            "legacy/data/test/function/tick.mcfunction": "say legacy\n",
+            "data/test/functions/tick.mcfunction": "say modern\n",
+            "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "legacy/data/test/functions/tick.mcfunction": "say legacy\n",
         },
         mcmeta={
             "pack": {"pack_format": 61, "supported_formats": [10, 71]},

@@ -254,16 +254,18 @@ class Layer:
 class PackView:
     """A datapack flattened for one pack format: base plus matching overlays."""
 
-    def __init__(self, layers: list[Layer], pack_format: Format | None):
+    def __init__(self, layers: list[Layer], pack_format: Format | None, singular: bool = True):
         self.pack_format = pack_format
         self.layers = layers
+        #: whether this view reads `function/` (1.21+) or `functions/` folders
+        self.singular = singular
         #: registry -> resource id -> resource (later layers win)
         self.registries: dict[str, dict[str, Resource]] = {}
         self.namespaces: dict[str, list[Namespace]] = {}
         for layer in layers:
             for namespace in layer.namespaces.values():
                 self.namespaces.setdefault(namespace.name, []).append(namespace)
-                for registry, bucket in namespace.registries.items():
+                for registry, bucket in namespace.registries_for(singular).items():
                     self.registries.setdefault(registry, {}).update(bucket)
 
     # -- accessors --------------------------------------------------------
@@ -339,8 +341,8 @@ class Datapack:
         self.base: Layer = Layer(directory="data", path=self.path / "data")
         self.overlays: list[Layer] = []
         self.errors: list[str] = []
-        #: merged views per (pack format, overlays allowed); cleared on reload
-        self._views: dict[tuple[Format | None, bool], PackView] = {}
+        #: merged views per (pack format, overlays allowed, singular folders)
+        self._views: dict[tuple[Format | None, bool, bool], PackView] = {}
 
     # -- loading ----------------------------------------------------------
 
@@ -408,7 +410,12 @@ class Datapack:
 
     # -- views ------------------------------------------------------------
 
-    def view(self, pack_format: Format | None = None, allow_overlays: bool = True) -> PackView:
+    def view(
+        self,
+        pack_format: Format | None = None,
+        allow_overlays: bool = True,
+        singular: bool | None = None,
+    ) -> PackView:
         """Merge the base pack with the overlays that apply at ``pack_format``.
 
         Cached on the instance: an ``lru_cache`` on the method would be shared
@@ -416,18 +423,24 @@ class Datapack:
         whenever one reloads.
         """
         target = pack_format or (self.mcmeta.format_tuple if self.mcmeta else None)
-        key = (target, allow_overlays)
+        if singular is None:
+            singular = versions.singular_registries_for_format(target)
+        key = (target, allow_overlays, singular)
         cached = self._views.get(key)
         if cached is None:
             layers = [self.base]
             if allow_overlays:
                 layers += [layer for layer in self.overlays if layer.applies_to(target)]
-            cached = self._views[key] = PackView(layers, target)
+            cached = self._views[key] = PackView(layers, target, singular)
         return cached
 
     def view_for(self, version: Version) -> PackView:
         """The pack as ``version`` would read it (pre-1.20.2 ignores overlays)."""
-        return self.view(version.format, versions.supports_overlays(version))
+        return self.view(
+            version.format,
+            versions.supports_overlays(version),
+            versions.uses_singular_registries(version),
+        )
 
     # -- accessors --------------------------------------------------------
 

@@ -180,6 +180,7 @@ def since_of(feature: str) -> Version | None:
 
 #: ``data/<ns>/functions`` became ``data/<ns>/function`` (24w21a / pack_format 45)
 SINGULAR_REGISTRIES_SINCE = "1.21"
+SINGULAR_REGISTRIES_FORMAT = (45, 0)
 #: ``pack.mcmeta`` gained ``overlays`` and ``supported_formats`` (23w32a)
 OVERLAYS_SINCE = "1.20.2"
 #: ``pack.mcmeta`` gained ``min_format`` / ``max_format`` (25w31a)
@@ -190,6 +191,11 @@ MACROS_SINCE = "1.20.2"
 
 def uses_singular_registries(version: Version) -> bool:
     return version >= parse(SINGULAR_REGISTRIES_SINCE)
+
+
+def singular_registries_for_format(pack_format: tuple[int, int] | None) -> bool:
+    """Folder spelling when only a pack format is known (no format: modern)."""
+    return pack_format is None or pack_format >= SINGULAR_REGISTRIES_FORMAT
 
 
 def supports_overlays(version: Version) -> bool:

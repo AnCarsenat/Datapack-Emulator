@@ -4,7 +4,12 @@ from src.emulator import CallGraph, Datapack, TestEngine, versions
 def test_matrix_flags_commands_a_version_lacks(make_pack):
     pack = Datapack.load(
         make_pack(
-            {"data/test/function/tick.mcfunction": "damage @s 1\n"},
+            {
+                "data/test/function/tick.mcfunction": "damage @s 1\n",
+                "data/test/functions/tick.mcfunction": "damage @s 1\n",
+                "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+                "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
+            },
             mcmeta={"pack": {"pack_format": 61, "supported_formats": [6, 61]}},
         )
     )
