@@ -1,17 +1,22 @@
 """Vanilla command feedback, word for word.
 
-The strings are the real ones from ``assets/minecraft/lang/en_us.json`` (taken
-from https://github.com/misode/mcmeta, ``assets`` branch), so what the log
-shows is what a Minecraft server would send back.  Each entry keeps its
-translation key, which the UI shows on the record and which makes the
-transcription auditable.
+The baked-in strings are the real ones from
+``assets/minecraft/lang/en_us.json`` (via https://github.com/misode/mcmeta), so
+what the log shows is what a Minecraft server would send back.  Each entry
+keeps its translation key, which the UI shows on the record and which makes
+the transcription auditable.
+
+When a client jar is loaded (see :mod:`src.emulator.vanilla`), a
+:class:`MessageCatalogue` built from *that version's* ``en_us.json`` takes
+priority, so the wording follows the version being emulated instead of the
+snapshot below.
 
 ``%s`` placeholders are filled positionally by :func:`message`.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 #: translation key -> en_us string
 VANILLA: dict[str, str] = {
@@ -29,6 +34,12 @@ VANILLA: dict[str, str] = {
     "argument.entity.selector.unknown": "Unknown selector type '%s'",
     "argument.scoreHolder.empty": "No relevant score holders could be found",
     "arguments.objective.notFound": "Unknown scoreboard objective '%s'",
+    # registry ids (checked against the client jar, when one is loaded)
+    "argument.id.unknown": "Unknown ID: %s",
+    "argument.block.id.invalid": "Unknown block type '%s'",
+    "argument.item.id.invalid": "Unknown item '%s'",
+    "argument.entity.options.type.invalid": "Invalid or unknown entity type '%s'",
+    "argument.resource_or_id.no_such_element": "Can't find element '%s' in registry '%s'",
     # functions and macros
     "arguments.function.unknown": "Unknown function %s",
     "arguments.function.tag.unknown": "Unknown function tag '%s'",
@@ -91,9 +102,33 @@ OURS: dict[str, str] = {
 }
 
 
+class MessageCatalogue:
+    """The strings of one version: its ``en_us.json`` over the baked-in table."""
+
+    def __init__(self, lang: Optional[dict[str, str]] = None, source: str = "built-in"):
+        self.lang: dict[str, str] = lang or {}
+        self.source = source
+
+    def template(self, key: str) -> Optional[str]:
+        return self.lang.get(key) or VANILLA.get(key) or OURS.get(key)
+
+    def render(self, key: str, *arguments: Any) -> str:
+        return _render(self.template(key), key, *arguments)
+
+    def __repr__(self) -> str:
+        return f"<MessageCatalogue {self.source} strings={len(self.lang)}>"
+
+
+#: used when no client jar is loaded
+DEFAULT = MessageCatalogue()
+
+
 def message(key: str, *arguments: Any) -> str:
-    """Render ``key`` with ``arguments``; unknown keys fall back to the key."""
-    template = VANILLA.get(key) or OURS.get(key)
+    """Render ``key`` with ``arguments`` from the built-in table."""
+    return DEFAULT.render(key, *arguments)
+
+
+def _render(template: Optional[str], key: str, *arguments: Any) -> str:
     if template is None:
         return f"{key} {' '.join(str(argument) for argument in arguments)}".strip()
     # vanilla uses both "%s" and positional "%1$s" forms
@@ -107,6 +142,8 @@ def message(key: str, *arguments: Any) -> str:
         return template
 
 
-def unknown_command(command_name: str) -> str:
+def unknown_command(command_name: str, catalogue: Optional["MessageCatalogue"] = None) -> str:
     """What the game prints for a command it cannot parse, ``<--[HERE]`` and all."""
-    return f"{message('command.unknown.command')}\n{command_name}{message('command.context.here')}"
+    catalogue = catalogue or DEFAULT
+    head = catalogue.render("command.unknown.command")
+    return f"{head}\n{command_name}{catalogue.render('command.context.here')}"

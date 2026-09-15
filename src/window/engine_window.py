@@ -30,6 +30,7 @@ from src.emulator import versions
 from src.emulator.datapack import Datapack
 from src.emulator.engine import TestEngine, VersionRun
 from src.emulator.runtime.output import LogLevel, LogSource, OutputBus
+from src.emulator.vanilla import default_library
 from src.settings import EMULATION, PATHS
 from src.window.panels import (
     LEVELS,
@@ -44,9 +45,10 @@ UI_FILE = Path(__file__).with_name("engine.ui")
 
 
 class EngineWindow(QMainWindow):
-    def __init__(self, datapack: Datapack, parent=None):
+    def __init__(self, datapack: Datapack, parent=None, library=None):
         super().__init__(parent)
         self.datapack = datapack
+        self.library = library or default_library()
         self.results = ResultsTableModel(self)
         self.records = LogTableModel(self)
         self._runs: list[VersionRun] = []
@@ -191,6 +193,7 @@ class EngineWindow(QMainWindow):
             ticks=self.spin_ticks.value(),
             players=self.spin_players.value(),
             seed=self.spin_seed.value(),
+            library=self.library,
         )
         self.results.clear()
         self.records.clear()

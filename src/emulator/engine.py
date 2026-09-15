@@ -28,6 +28,7 @@ from src.emulator.datapack import Datapack, PackView
 from src.emulator.namespace import PLURAL_REGISTRIES
 from src.emulator.runtime.emulator import Emulator
 from src.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
+from src.emulator.vanilla import VanillaLibrary
 from src.emulator.versions import Version
 
 Progress = Callable[[int, int, Version], None]
@@ -40,6 +41,7 @@ class VersionRun:
     version: Version
     supported: bool
     overlays: list[str] = field(default_factory=list)
+    vanilla: str = ""
     ticks: int = 0
     commands: int = 0
     total_us: float = 0.0
@@ -101,11 +103,16 @@ class TestEngine:
         ticks: int = 20,
         players: int = 1,
         seed: int = 0,
+        library: Optional[VanillaLibrary] = None,
+        allow_download: bool = False,
     ):
         self.datapack = datapack
         self.ticks = ticks
         self.players = players
         self.seed = seed
+        #: client jars to check ids and message wording against, per version
+        self.library = library
+        self.allow_download = allow_download
 
     # -- choosing versions ------------------------------------------------
 
@@ -142,10 +149,17 @@ class TestEngine:
         first_record = len(bus.records)
 
         view = self.datapack.view_for(version)
+        assets = None
+        if self.library is not None:
+            try:
+                assets = self.library.load(version.id, allow_download=self.allow_download)
+            except Exception as exc:  # a missing jar must not stop the matrix
+                bus.app(f"no client jar for {version.id}: {exc}", level=LogLevel.WARNING)
         run = VersionRun(
             version=version,
             supported=self.datapack.supports(version),
             overlays=view.active_overlays,
+            vanilla=str(assets.jar_path) if assets else "",
         )
 
         bus.app(
@@ -153,6 +167,8 @@ class TestEngine:
             f"(pack_format {version.format_string})",
             version=version.id,
         )
+        if assets is not None:
+            bus.app(f"vanilla assets: {assets.summary}", version=version.id)
         self.static_checks(view, version, bus, run)
 
         emulator = Emulator(
@@ -161,6 +177,7 @@ class TestEngine:
             players=self.players,
             output=bus,
             seed=self.seed,
+            vanilla=assets,
         )
         emulator.run(ticks=self.ticks)
 

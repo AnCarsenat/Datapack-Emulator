@@ -15,6 +15,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox,
+    QMessageBox,
     QComboBox,
     QDockWidget,
     QFileDialog,
@@ -38,6 +39,7 @@ from src.emulator.datapack import Datapack
 from src.emulator.resources import Resource
 from src.emulator.runtime.emulator import Emulator
 from src.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
+from src.emulator.vanilla import VanillaAssets, default_library
 from src.settings import EMULATION, PATHS, WINDOW
 from src.window.engine_window import EngineWindow
 from src.window.panels import (
@@ -68,6 +70,8 @@ class MainWindow(QMainWindow):
         self.call_graph: Optional[CallGraph] = None
         self.output = OutputBus()
         self.logs = LogTableModel(self)
+        self.library = default_library()
+        self.vanilla: Optional[VanillaAssets] = None
         self.engine_window: Optional[EngineWindow] = None
         self._highlighter = None
 
@@ -95,6 +99,7 @@ class MainWindow(QMainWindow):
         self.chat_view: QPlainTextEdit = find(QPlainTextEdit, "chatView")
         self.web_view: QWebEngineView = find(QWebEngineView, "webEngineView")
         self.pack_label: QLabel = find(QLabel, "labelPack")
+        self.vanilla_label: QLabel = find(QLabel, "labelVanilla")
         self.graph_label: QLabel = find(QLabel, "labelGraph")
         self.source_label: QLabel = find(QLabel, "labelSource")
         self.log_counts: QLabel = find(QLabel, "labelLogCounts")
@@ -157,6 +162,8 @@ class MainWindow(QMainWindow):
             "actionrun_profiler": self.run_profiler,
             "actionrun_graphview": self.run_graphview,
             "actionopen_engine": self.open_engine,
+            "actionload_vanilla": self.load_vanilla_jar,
+            "actiondownload_vanilla": self.download_vanilla_jar,
             "actionexport_dot": self.export_dot,
             "actionprofile": lambda: self.tabs.setCurrentIndex(TAB_PROFILER),
             "actiongraphview": lambda: self.tabs.setCurrentIndex(TAB_GRAPH),
@@ -204,6 +211,7 @@ class MainWindow(QMainWindow):
             self.output.app(error, level=LogLevel.ERROR)
 
         self._select_pack_version(datapack)
+        self.autoload_vanilla()
         self._rebuild_emulator()
         self.call_graph = None
         self.show_datapack(datapack)
@@ -228,11 +236,75 @@ class MainWindow(QMainWindow):
             version=self.version,
             players=self.spin_players.value(),
             output=self.output,
+            vanilla=self.vanilla,
         )
+
+    # -- base game --------------------------------------------------------
+
+    def use_vanilla(self, assets: Optional[VanillaAssets]) -> None:
+        """Adopt base-game assets: registries to check ids, strings to quote."""
+        self.vanilla = assets
+        if assets is None:
+            self.vanilla_label.setText("no client jar")
+            self.vanilla_label.setToolTip(
+                "file > load client jar to check ids against the base game"
+            )
+        else:
+            self.vanilla_label.setText(f"client.jar {assets.version_id}")
+            self.vanilla_label.setToolTip(assets.summary)
+            self.output.app(f"vanilla assets: {assets.summary}")
+        self._rebuild_emulator()
+
+    def autoload_vanilla(self) -> None:
+        """Pick up a client jar for the current version if one is installed."""
+        try:
+            assets = self.library.load(self.version.id, allow_download=False)
+        except Exception as exc:  # a broken jar must not stop the app
+            self.output.app(f"cannot read client jar: {exc}", level=LogLevel.ERROR)
+            return
+        if assets is not None:
+            self.use_vanilla(assets)
+        elif self.vanilla is not None and self.vanilla.version_id != self.version.id:
+            self.output.app(
+                f"client jar loaded is {self.vanilla.version_id}, emulating {self.version.id}",
+                level=LogLevel.WARNING,
+            )
+
+    def load_vanilla_jar(self) -> None:
+        start = self.library.cache_dir if self.library.cache_dir.is_dir() else Path.home()
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "select a Minecraft client.jar", str(start), "Minecraft client (*.jar)"
+        )
+        if not chosen:
+            return
+        try:
+            self.use_vanilla(self.library.load_jar(Path(chosen)))
+        except Exception as exc:
+            QMessageBox.warning(self, "client jar", f"cannot read {chosen}:\n{exc}")
+
+    def download_vanilla_jar(self) -> None:
+        version = self.version
+        answer = QMessageBox.question(
+            self,
+            "download client jar",
+            f"Download the Minecraft {version.id} client.jar from Mojang "
+            f"into {self.library.cache_dir}?\n\nThis is roughly 25 MB.",
+        )
+        if answer != QMessageBox.Yes:
+            return
+        self.statusBar().showMessage(f"downloading {version.id} client.jar…")
+        try:
+            path = self.library.download(version.id, progress=self.output.app)
+            self.use_vanilla(self.library.load_jar(path))
+            self.statusBar().showMessage(f"client jar ready: {path}")
+        except Exception as exc:
+            self.statusBar().showMessage("download failed")
+            QMessageBox.warning(self, "download failed", str(exc))
 
     def _on_version_changed(self, _text: str) -> None:
         if self.datapack is None:
             return
+        self.autoload_vanilla()
         self._rebuild_emulator()
         self.output.app(f"version set to {self.version.id}")
         self.show_datapack(self.datapack)
@@ -336,7 +408,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("load a datapack first")
             return
         if self.engine_window is None:
-            self.engine_window = EngineWindow(self.datapack, parent=self)
+            self.engine_window = EngineWindow(self.datapack, parent=self, library=self.library)
         else:
             self.engine_window.set_datapack(self.datapack)
         self.engine_window.show()

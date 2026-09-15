@@ -151,10 +151,17 @@ class World:
         arguments = selector.arguments
         for raw in arguments.get("type", []):
             negated = raw.startswith("!")
-            wanted = normalise_id(raw.lstrip("!"))
-            if wanted.startswith("#"):  # entity type tag, not modelled
+            token = raw.lstrip("!")
+            if token.startswith("#"):
+                # an entity type tag: resolved from the client jar when one is
+                # loaded, otherwise there is nothing to match against
+                members = self._tag_members(context, token)
+                if members is None:
+                    continue
+                if (entity.type in members) == negated:
+                    return False
                 continue
-            if (entity.type == wanted) == negated:
+            if (entity.type == normalise_id(token)) == negated:
                 return False
         for raw in arguments.get("tag", []):
             negated = raw.startswith("!")
@@ -177,6 +184,13 @@ class World:
             if not in_range(distance, raw):
                 return False
         return True
+
+    @staticmethod
+    def _tag_members(context: "ExecutionContext", tag: str) -> Optional[set[str]]:
+        assets = getattr(context.emulator, "vanilla", None)
+        if assets is None:
+            return None
+        return assets.resolve_tag("entity_type", tag)
 
     def _matches_scores(self, entity: Entity, raw: str) -> bool:
         body = raw.strip().lstrip("{").rstrip("}")

@@ -1,8 +1,9 @@
 """Headless runner.
 
-    python -m src.emulator run     samples/hat --ticks 20 --version 1.21.4
-    python -m src.emulator matrix  samples/hat --from 1.20.4 --to 1.21.6
+    python -m src.emulator run      samples/hat --ticks 20 --version 1.21.4
+    python -m src.emulator matrix   samples/hat --from 1.20.4 --to 1.21.6
     python -m src.emulator versions
+    python -m src.emulator vanilla  --download 1.21.4
 """
 
 from __future__ import annotations
@@ -19,12 +20,36 @@ from src.emulator.datapack import Datapack  # noqa: E402
 from src.emulator.engine import TestEngine  # noqa: E402
 from src.emulator.runtime.emulator import Emulator  # noqa: E402
 from src.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus  # noqa: E402
+from src.emulator.vanilla import VanillaAssets, default_library  # noqa: E402
 
 LEVELS = {"debug": LogLevel.DEBUG, "info": LogLevel.INFO, "warn": LogLevel.WARNING, "error": LogLevel.ERROR}
 
 
 def _print_record(record: LogRecord) -> None:
     print(record.format())
+
+
+def _vanilla(arguments: argparse.Namespace):
+    """Client-jar assets for this run, if the user asked for any."""
+    requested = getattr(arguments, "vanilla", None)
+    if requested is None and not getattr(arguments, "download", False):
+        return None
+    library = default_library()
+    target = requested or ""
+    if target and Path(target).is_file():
+        return library.load_jar(Path(target))
+    version = target or arguments.version or versions.LATEST.id
+    assets = library.load(
+        versions.parse(version).id,
+        allow_download=getattr(arguments, "download", False),
+        progress=lambda text: print(text, file=sys.stderr),
+    )
+    if assets is None:
+        print(
+            f"no client jar for {version}; pass --download to fetch it",
+            file=sys.stderr,
+        )
+    return assets
 
 
 def _load(path: Path) -> Datapack:
@@ -46,8 +71,15 @@ def command_run(arguments: argparse.Namespace) -> int:
         if record.source in wanted and record.level >= minimum
         else None
     )
+    assets = _vanilla(arguments)
+    if assets is not None:
+        print(f"vanilla assets: {assets.summary}", file=sys.stderr)
     emulator = Emulator(
-        datapack, version=arguments.version, players=arguments.players, output=bus
+        datapack,
+        version=arguments.version,
+        players=arguments.players,
+        output=bus,
+        vanilla=assets,
     )
     profiler = emulator.run(ticks=arguments.ticks)
 
@@ -87,7 +119,13 @@ def command_matrix(arguments: argparse.Namespace) -> int:
     datapack = _load(arguments.datapack)
     if not datapack.namespaces:
         return 1
-    engine = TestEngine(datapack, ticks=arguments.ticks, players=arguments.players)
+    engine = TestEngine(
+        datapack,
+        ticks=arguments.ticks,
+        players=arguments.players,
+        library=default_library() if arguments.vanilla else None,
+        allow_download=arguments.download,
+    )
 
     if arguments.versions:
         chosen = [versions.parse(item) for item in arguments.versions]
@@ -129,6 +167,39 @@ def command_matrix(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def command_vanilla(arguments: argparse.Namespace) -> int:
+    """List, download and inspect client jars."""
+    library = default_library()
+    if arguments.download:
+        path = library.download(
+            versions.parse(arguments.download).id,
+            progress=lambda text: print(text, file=sys.stderr),
+        )
+        print(f"downloaded {path}")
+    if arguments.inspect:
+        path = Path(arguments.inspect)
+        assets = (
+            VanillaAssets.from_jar(path)
+            if path.is_file()
+            else library.load(versions.parse(arguments.inspect).id)
+        )
+        if assets is None:
+            print(f"no client jar for {arguments.inspect}", file=sys.stderr)
+            return 1
+        print(assets.summary)
+        for registry, ids in sorted(assets.registries.items()):
+            print(f"  {registry:16} {len(ids):5d}  e.g. {', '.join(sorted(ids)[:3])}")
+        return 0
+
+    jars = library.local_jars()
+    print(f"{len(jars)} client jar(s) found")
+    for version_id, path in sorted(jars.items()):
+        print(f"  {version_id:10} {path}")
+    if not jars:
+        print("  (pass --download <version> to fetch one)")
+    return 0
+
+
 def command_versions(arguments: argparse.Namespace) -> int:
     print(f"{'version':10} {'format':8} {'data version':>12}")
     for version in versions.VERSIONS:
@@ -150,6 +221,15 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--html", type=Path, default=Path("generated/index.html"))
     run.add_argument("--dot", action="store_true")
     run.add_argument("--level", choices=sorted(LEVELS), default="info")
+    run.add_argument(
+        "--vanilla",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="VERSION|JAR",
+        help="check ids and message wording against a client jar",
+    )
+    run.add_argument("--download", action="store_true", help="fetch the jar if missing")
     run.add_argument(
         "--sources",
         nargs="+",
@@ -174,10 +254,19 @@ def main(argv: list[str] | None = None) -> int:
     matrix.add_argument("--ticks", type=int, default=20)
     matrix.add_argument("--players", type=int, default=1)
     matrix.add_argument("--html", type=Path, default=Path("generated/matrix.html"))
+    matrix.add_argument(
+        "--vanilla", action="store_true", help="use client jars, one per version"
+    )
+    matrix.add_argument("--download", action="store_true", help="fetch missing jars")
     matrix.set_defaults(handler=command_matrix)
 
     listing = subparsers.add_parser("versions", help="list known versions")
     listing.set_defaults(handler=command_versions)
+
+    vanilla = subparsers.add_parser("vanilla", help="manage client jars")
+    vanilla.add_argument("--download", metavar="VERSION", default=None)
+    vanilla.add_argument("--inspect", metavar="VERSION|JAR", default=None)
+    vanilla.set_defaults(handler=command_vanilla)
 
     arguments = parser.parse_args(argv)
     logging.basicConfig(

@@ -22,4 +22,7 @@ class EMULATION:
 class PATHS:
     ROOT = ROOT
     SAMPLES = ROOT / "samples"
+    PROJECTS = ROOT / "projects"
     GENERATED = ROOT / "generated"
+    CACHE = ROOT / ".cache"
+    VANILLA_CACHE = ROOT / ".cache" / "vanilla"

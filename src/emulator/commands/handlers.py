@@ -62,6 +62,29 @@ def _require_targets(context: ExecutionContext, token: str) -> list[Entity]:
     return found
 
 
+def _known_id(context: ExecutionContext, registry: str, resource_id: str) -> bool:
+    """Check an id against the loaded client jar; ``True`` when nothing to check.
+
+    Without vanilla assets there is no registry to check against, so the
+    command is let through rather than guessed at.
+    """
+    assets = context.emulator.vanilla
+    if assets is None or resource_id.startswith(("#", "$", "@")):
+        return True
+    known = assets.knows(registry, resource_id)
+    return True if known is None else known
+
+
+def _require_id(
+    context: ExecutionContext, registry: str, resource_id: str, key: str = "argument.id.unknown"
+) -> bool:
+    """Same, but reports the vanilla error for an id the version does not have."""
+    if _known_id(context, registry, resource_id):
+        return True
+    context.game_error(key, resource_id)
+    return False
+
+
 def _holders(context: ExecutionContext, token: str) -> list[str]:
     """Score holders: entities from a selector, or a fake player name."""
     if token.startswith("@"):
@@ -296,6 +319,8 @@ def cmd_summon(command: Command, context: ExecutionContext) -> CommandResult:
     if not command.arguments:
         return CommandResult.failure()
     entity_type = normalise_id(command.arguments[0])
+    if not _require_id(context, "entity_type", entity_type):
+        return CommandResult.failure()
     position = resolve_position(command.arguments[1:4], context.position)
     nbt: dict[str, Any] = {}
     tags: set[str] = set()
@@ -524,6 +549,36 @@ def cmd_noop(command: Command, context: ExecutionContext) -> CommandResult:
     return CommandResult(success=True, value=1)
 
 
+def _checking(registry: str, index: int, key: str) -> Handler:
+    """A no-op handler that still checks the id at ``index`` against the jar."""
+
+    def handler(command: Command, context: ExecutionContext) -> CommandResult:
+        if len(command.arguments) > index:
+            if not _require_id(context, registry, command.arguments[index], key):
+                return CommandResult.failure()
+        return CommandResult(success=True, value=1)
+
+    return handler
+
+
+def cmd_effect(command: Command, context: ExecutionContext) -> CommandResult:
+    """``effect give <targets> <effect>`` / ``effect clear``."""
+    arguments = command.arguments
+    if len(arguments) >= 3 and arguments[0] == "give":
+        if not _require_id(context, "mob_effect", arguments[2]):
+            return CommandResult.failure()
+    return CommandResult(success=True, value=1)
+
+
+def cmd_setblock(command: Command, context: ExecutionContext) -> CommandResult:
+    """Only the block id is checked; there is no block model to change."""
+    if len(command.arguments) >= 4:
+        block = command.arguments[3].split("[")[0].split("{")[0]
+        if not _require_id(context, "block", block, "argument.block.id.invalid"):
+            return CommandResult.failure()
+    return CommandResult(success=True, value=1)
+
+
 # ---------------------------------------------------------------------------
 # execute
 # ---------------------------------------------------------------------------
@@ -733,21 +788,21 @@ HANDLERS: dict[str, Handler] = {
     "advancement": cmd_noop,
     "attribute": cmd_noop,
     "bossbar": cmd_noop,
-    "clear": cmd_noop,
+    "clear": _checking("item", 1, "argument.item.id.invalid"),
     "clone": cmd_noop,
     "damage": cmd_noop,
     "difficulty": cmd_noop,
-    "effect": cmd_noop,
+    "effect": cmd_effect,
     "enchant": cmd_noop,
     "experience": cmd_noop,
     "fill": cmd_noop,
     "fillbiome": cmd_noop,
     "forceload": cmd_noop,
     "gamemode": cmd_noop,
-    "give": cmd_noop,
+    "give": _checking("item", 1, "argument.item.id.invalid"),
     "item": cmd_noop,
-    "loot": cmd_noop,
-    "particle": cmd_noop,
+    "loot": cmd_noop,  # "loot give @s loot <id>" needs the whole grammar to check
+    "particle": _checking("particle", 0, "argument.id.unknown"),
     "place": cmd_noop,
     "playsound": cmd_noop,
     "random": cmd_noop,
@@ -755,7 +810,7 @@ HANDLERS: dict[str, Handler] = {
     "replaceitem": cmd_noop,
     "ride": cmd_noop,
     "rotate": cmd_noop,
-    "setblock": cmd_noop,
+    "setblock": cmd_setblock,
     "setworldspawn": cmd_noop,
     "spawnpoint": cmd_noop,
     "spectate": cmd_noop,

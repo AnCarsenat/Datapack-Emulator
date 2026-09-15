@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
-from src.emulator.runtime.messages import message
 from src.emulator.runtime.output import LogLevel, LogRecord, LogSource
 from src.emulator.runtime.world import Entity, World
 
@@ -57,21 +56,23 @@ class ExecutionContext:
         """Something a player would read in chat."""
         return self.emulator.output.game(text, **self._fields(**extra))
 
+    def render(self, key: str, *arguments: Any) -> str:
+        """Render a message with the catalogue of the version being emulated."""
+        return self.emulator.messages.render(key, *arguments)
+
     def feedback(self, key: str, *arguments: Any) -> LogRecord:
         """Vanilla command feedback, shown when sendCommandFeedback is on."""
-        level = (
-            LogLevel.DEBUG
-            if self.world.gamerules.get("sendCommandFeedback", "true") == "true"
-            else LogLevel.DEBUG
-        )
         return self.emulator.output.log(
-            LogSource.GAME, level, message(key, *arguments), **self._fields(key=key)
+            LogSource.GAME,
+            LogLevel.DEBUG,
+            self.render(key, *arguments),
+            **self._fields(key=key),
         )
 
     def game_error(self, key: str, *arguments: Any) -> LogRecord:
         """The red text a server sends back when a command fails."""
         return self.emulator.output.game_error(
-            message(key, *arguments), **self._fields(key=key)
+            self.render(key, *arguments), **self._fields(key=key)
         )
 
     def note(self, text: str, level: LogLevel = LogLevel.WARNING) -> LogRecord:
@@ -83,5 +84,5 @@ class ExecutionContext:
     ) -> LogRecord:
         """Same, but rendered from the message catalogue."""
         return self.emulator.output.emulator(
-            message(key, *arguments), level=level, **self._fields(key=key)
+            self.render(key, *arguments), level=level, **self._fields(key=key)
         )

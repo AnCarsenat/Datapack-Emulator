@@ -61,6 +61,19 @@ QMenuBar::item:selected {
        </widget>
       </item>
       <item>
+       <widget class="QLabel" name="labelVanilla">
+        <property name="text">
+         <string>no client jar</string>
+        </property>
+        <property name="toolTip">
+         <string>base-game registries and messages read from a Minecraft client.jar</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">color: #7f8c8d;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <spacer name="controlSpacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -432,6 +445,9 @@ QMenuBar::item:selected {
     <addaction name="actionimport_datapack"/>
     <addaction name="actionreload_datapack"/>
     <addaction name="separator"/>
+    <addaction name="actionload_vanilla"/>
+    <addaction name="actiondownload_vanilla"/>
+    <addaction name="separator"/>
     <addaction name="actionquit"/>
    </widget>
    <widget class="QMenu" name="menuedit">
@@ -655,6 +671,22 @@ QMenuBar::item:selected {
    </property>
    <property name="shortcut">
     <string>Ctrl+R</string>
+   </property>
+  </action>
+  <action name="actionload_vanilla">
+   <property name="text">
+    <string>load client jar…</string>
+   </property>
+   <property name="toolTip">
+    <string>read base-game registries and messages from a Minecraft client.jar</string>
+   </property>
+  </action>
+  <action name="actiondownload_vanilla">
+   <property name="text">
+    <string>download client jar for this version</string>
+   </property>
+   <property name="toolTip">
+    <string>fetch the jar from Mojang into .cache/vanilla</string>
    </property>
   </action>
   <action name="actionquit">

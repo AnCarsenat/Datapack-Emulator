@@ -18,9 +18,10 @@ from src.emulator.commands.registry import CommandSet
 from src.emulator.common import normalise_id
 from src.emulator.datapack import Datapack, PackView
 from src.emulator.runtime.context import ExecutionContext
-from src.emulator.runtime.messages import unknown_command
+from src.emulator.runtime.messages import MessageCatalogue, unknown_command
 from src.emulator.runtime.output import LogLevel, OutputBus
 from src.emulator.runtime.world import World
+from src.emulator.vanilla import VanillaAssets
 from src.emulator.versions import Version
 
 log = logging.getLogger(__name__)
@@ -39,11 +40,18 @@ class Emulator:
         players: int = 1,
         output: Optional[OutputBus] = None,
         seed: int = 0,
+        vanilla: Optional[VanillaAssets] = None,
     ):
         self.datapack = datapack
         self.version: Version = versions.parse(version)
         self.pack: PackView = datapack.view_for(self.version)
         self.commands: CommandSet = command_set(self.version)
+        #: base-game content read from a client jar, when one was loaded
+        self.vanilla = vanilla
+        self.messages = MessageCatalogue(
+            vanilla.lang if vanilla else None,
+            source=f"{vanilla.version_id} client.jar" if vanilla else "built-in",
+        )
         self.output = output or OutputBus()
         self.players = players
         self.seed = seed
@@ -149,7 +157,7 @@ class Emulator:
                 + (f", removed in {spec.removed.id}" if spec.removed else "")
             )
             self.output.game_error(
-                unknown_command(command.name),
+                unknown_command(command.name, self.messages),
                 function=inner.function_id,
                 line=command.line,
                 command=command.raw,
