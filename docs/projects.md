@@ -1,7 +1,7 @@
 # Projects
 
-A project remembers what you were working on: the datapack, the environment
-tab's settings and its tests. It is saved as one **`.dpemu` file** in
+A project remembers what you were working on: the datapacks it analyzes, the
+environment tab's settings, its tests and your notes. It is saved as one **`.dpemu` file** in
 `projects/`, next to `samples/` (in the per-user data folder when the package
 is installed without a checkout, see [architecture](architecture.md)).
 
@@ -11,8 +11,10 @@ A `.dpemu` file is a zip archive:
 
 ```
 hat.dpemu
-├── project.json        settings and tests
-└── datapack/           a copy of the pack: pack.mcmeta, data/, overlays…
+├── project.json        settings, tests, notes
+└── datapacks/          a copy of every analyzed pack, in load order
+    ├── 0/hat/          pack.mcmeta, data/, overlays…
+    └── 1/extras/
 ```
 
 `.git`, `__pycache__`, `.DS_Store` and symbolic links (logged as a warning)
@@ -24,7 +26,7 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 ```json
 {
   "name": "hat",
-  "datapack": "datapack",
+  "datapacks": ["datapacks/0/hat", "datapacks/1/extras"],
   "version": "1.21.4",
   "ticks": 20,
   "players": 1,
@@ -45,7 +47,7 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 | field | meaning |
 | --- | --- |
 | `name` | shown in the window title |
-| `datapack` | `datapack` when the archive holds the pack, empty when the project has none |
+| `datapacks` | the folders of the packs inside the archive, in load order (empty when the project has none) |
 | `version` | the version selected in the environment tab |
 | `ticks`, `players`, `seed` | run settings |
 | `speed` | `fast` or `realtime` |
@@ -59,9 +61,10 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 ### Opening and saving
 
 Opening a `.dpemu` unpacks it into the cache
-(`.cache/projects/<name>-<hash>/`, or the per-user cache folder) and loads the
-datapack from there. Saving writes the archive again from the datapack that is
-open, so edits made to the unpacked files (for example with *open in external
+(`.cache/projects/<name>-<hash>/`, or the per-user cache folder) and loads its
+datapacks from there, **in place of whatever was open** — the sample pack
+included. Saving writes the archive again from the datapacks that are open,
+so edits made to the unpacked files (for example with *open in external
 editor*) are kept once you save. Reopening an archive replaces its unpacked
 copy: **the `.dpemu` file is what counts.**
 
@@ -74,21 +77,25 @@ whose `project.json` is not a valid project.
 
 Projects saved before archives existed are plain `project.json` files that
 point at the pack where it is. They still open; saving one writes a `.dpemu`
-beside it (`hat.json` → `hat.dpemu`) and leaves the `.json` alone.
+beside it (`hat.json` → `hat.dpemu`) and leaves the `.json` alone. Archives
+made before several datapacks were supported (`"archive_format": 1`, one
+`datapack/` folder) open too and are saved in the new layout.
 
 ## In the window
 
 | menu | does |
 | --- | --- |
 | file › new project (Ctrl+N) | asks for a name, saves the current state under it |
-| file › open project… (Ctrl+Shift+O) | restores settings and tests, then opens the pack |
+| file › open project… (Ctrl+Shift+O) | restores settings, tests and notes, then opens the project's datapacks in place of the open ones |
+| file › add datapack… (Ctrl+O) | adds a pack to the ones analyzed; it loads after them |
+| file › remove datapack | removes one pack (also: right-click its root in the explorer); with no project open, removing the last one opens the default pack |
 | file › save project (Ctrl+S) | writes the file the project came from; a project never saved goes to `projects/<name>.dpemu` (the pack name if untitled), or asks for a name when that file already belongs to another project |
 | file › save project as… (Ctrl+Shift+S) | same, under another name or path; if it fails, the project keeps its current file |
 
 The shortcuts work while the main window has focus.
 
 The title bar shows the project name, `(unsaved)` until the first save, the
-file it lives in, and a `*` when settings, tests, notes, the datapack or the
+file it lives in, and a `*` when settings, tests, notes, the datapacks or the
 client jar changed since the last save. Closing the window or opening another project with unsaved
 changes asks whether to save them first. A test cell still being typed in when
 you save is included.
@@ -102,8 +109,8 @@ from pathlib import Path
 
 from datapack_emulator.project import Project, list_projects
 
-project = Project(name="hat", datapack=Path("samples/hat"), version="1.21.4")
-project.save()                      # projects/hat.dpemu, datapack included
+project = Project(name="hat", datapacks=[Path("samples/hat")], version="1.21.4")
+project.save()                      # projects/hat.dpemu, datapacks included
 again = Project.load(list_projects()[0])
-again.datapack                      # .cache/projects/hat-<hash>/datapack
+again.datapacks                     # [.cache/projects/hat-<hash>/datapacks/0/hat]
 ```

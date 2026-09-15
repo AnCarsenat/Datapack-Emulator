@@ -55,6 +55,8 @@ class LogTableModel(QAbstractTableModel):
         self._sources: set[LogSource] = set(LogSource)
         self._level: LogLevel = LogLevel.INFO
         self._text: str = ""
+        #: "" for every record, otherwise only the chat this player reads
+        self._reader: str = ""
 
     # -- data -------------------------------------------------------------
 
@@ -157,7 +159,10 @@ class LogTableModel(QAbstractTableModel):
         sources: set[LogSource] | None = None,
         level: LogLevel | None = None,
         text: str | None = None,
+        reader: str | None = None,
     ) -> None:
+        if reader is not None:
+            self._reader = reader
         if sources is not None:
             self._sources = sources
         if level is not None:
@@ -176,6 +181,7 @@ class LogTableModel(QAbstractTableModel):
             record.source in self._sources
             and record.level >= self._level
             and (not self._text or self._text in record.message.lower())
+            and (not self._reader or record.recipient in ("*", self._reader))
         )
 
     # -- summary ----------------------------------------------------------

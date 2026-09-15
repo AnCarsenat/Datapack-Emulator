@@ -13,6 +13,7 @@ Rows = list[tuple[str, str]]
 #: what an inspector row means, by label (or the start of the label)
 ROW_HELP: dict[str, str] = {
     "path": "the datapack folder",
+    "datapacks": "the packs analyzed together; later ones win on shared ids, tags add up",
     "pack_format": "the format pack.mcmeta declares; before 1.20.2 it is the only one read",
     "supported": "the format range the pack claims (supported_formats, min_format/max_format)",
     "matches versions": "releases whose pack format is in that range",
@@ -56,7 +57,7 @@ ROW_HELP: dict[str, str] = {
 
 def row_help(label: str) -> str:
     """The explanation of an inspector row, matching the longest known prefix."""
-    stripped = label.removeprefix("run › ")
+    stripped = label.rsplit(" › ", 1)[-1]
     best = ""
     for key in ROW_HELP:
         if stripped.startswith(key) and len(key) > len(best):
@@ -72,7 +73,30 @@ def _format(value) -> str:
     return str(value)
 
 
-def describe_datapack(datapack: Datapack, version: Version | None = None) -> Rows:
+def describe_datapack(datapack, version: Version | None = None) -> Rows:
+    """A pack, or a set of packs (a summary, then each pack's rows)."""
+    packs = getattr(datapack, "packs", None)
+    if packs is not None:
+        if len(packs) == 1:
+            return describe_datapack(packs[0], version)
+        rows: Rows = [("datapacks", " + ".join(pack.name for pack in packs) + " (load order)")]
+        if version is not None:
+            view = datapack.view_for(version)
+            rows += [
+                ("emulating", f"{version.id} (pack_format {version.format_string})"),
+                ("functions", str(len(view.functions))),
+                ("function tags", str(len(view.function_tags))),
+            ]
+        for index, pack in enumerate(packs, start=1):
+            rows += [
+                (f"{index}. {pack.name} › {key}", value)
+                for key, value in describe_datapack(pack, version)
+            ]
+        return rows
+    return _describe_pack(datapack, version)
+
+
+def _describe_pack(datapack: Datapack, version: Version | None = None) -> Rows:
     minimum, maximum = datapack.format_range
     rows: Rows = [
         ("path", str(datapack.path)),

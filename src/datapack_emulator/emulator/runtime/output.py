@@ -18,6 +18,7 @@ UI can filter and sort without re-parsing text.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum, IntEnum
@@ -58,6 +59,9 @@ class LogRecord:
     #: a command failed; set whatever the level (silent failures inside a
     #: function are DEBUG, typed commands ERROR)
     failure: bool = False
+    #: who reads it in game: a player name, "*" for everyone (say, me), or ""
+    #: for records that are not chat
+    recipient: str = ""
 
     @property
     def origin(self) -> str:
@@ -120,17 +124,9 @@ class OutputBus:
         if seen > self.repeat_limit:
             if seen != self.repeat_limit + 1:
                 return record
-            record = LogRecord(
-                source=record.source,
-                level=record.level,
+            record = dataclasses.replace(
+                record,
                 message=f"{record.message}  (repeated; further copies suppressed this tick)",
-                tick=record.tick,
-                function=record.function,
-                line=record.line,
-                command=record.command,
-                version=record.version,
-                key=record.key,
-                failure=record.failure,
             )
 
         self.records.append(record)

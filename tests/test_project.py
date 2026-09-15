@@ -31,7 +31,12 @@ def test_archive_carries_settings_tests_and_the_datapack(repo):
     pack = _pack(repo / "samples" / "hat")
     tests = [{"command": "function hat:tick", "at_tick": 3, "expect": "hi", "enabled": True}]
     saved = Project(
-        name="hat", datapack=pack, version="1.21.4", ticks=7, engine_versions=["1.21"], tests=tests
+        name="hat",
+        datapacks=[pack],
+        version="1.21.4",
+        ticks=7,
+        engine_versions=["1.21"],
+        tests=tests,
     ).save()
 
     assert saved == repo / "projects" / "hat.dpemu"
@@ -40,15 +45,15 @@ def test_archive_carries_settings_tests_and_the_datapack(repo):
         manifest = json.loads(archive.read("project.json"))
     assert {
         "project.json",
-        "datapack/pack.mcmeta",
-        "datapack/data/hat/function/tick.mcfunction",
+        "datapacks/0/hat/pack.mcmeta",
+        "datapacks/0/hat/data/hat/function/tick.mcfunction",
     } <= names
     assert not any(".git" in name for name in names)
-    assert manifest["datapack"] == "datapack" and manifest["archive_format"] == 1
+    assert manifest["datapacks"] == ["datapacks/0/hat"] and manifest["archive_format"] == 2
 
     loaded = Project.load(saved)
     assert loaded.path == saved
-    assert loaded.datapack == unpacked_dir(saved) / "datapack"
+    assert loaded.datapacks == [unpacked_dir(saved) / "datapacks" / "0" / "hat"]
     assert (
         loaded.datapack / "data" / "hat" / "function" / "tick.mcfunction"
     ).read_text() == "say hi\n"
@@ -57,13 +62,13 @@ def test_archive_carries_settings_tests_and_the_datapack(repo):
 
 
 def test_saving_again_writes_edits_made_to_the_unpacked_pack(repo):
-    saved = Project(name="hat", datapack=_pack(repo / "samples" / "hat")).save()
+    saved = Project(name="hat", datapacks=[_pack(repo / "samples" / "hat")]).save()
     loaded = Project.load(saved)
     (loaded.datapack / "data" / "hat" / "function" / "tick.mcfunction").write_text("say edited\n")
     loaded.save()
 
     with zipfile.ZipFile(saved) as archive:
-        assert archive.read("datapack/data/hat/function/tick.mcfunction") == b"say edited\n"
+        assert archive.read("datapacks/0/hat/data/hat/function/tick.mcfunction") == b"say edited\n"
     assert not saved.with_name(saved.name + ".part").exists()
 
 
@@ -120,7 +125,7 @@ def test_default_sample_is_first_pack(repo):
 
 def test_an_archive_saved_inside_its_own_pack_does_not_contain_itself(repo):
     pack = _pack(repo / "samples" / "hat")
-    project = Project(name="hat", datapack=pack)
+    project = Project(name="hat", datapacks=[pack])
     first = project.save(pack / "hat.dpemu")
     size = first.stat().st_size
     project.save()
@@ -135,16 +140,16 @@ def test_symlinks_are_left_out_and_a_failed_save_leaves_no_part_file(repo, tmp_p
     outside.write_text("outside the pack")
     (pack / "data" / "hat" / "link.mcfunction").symlink_to(outside)
     (pack / "data" / "linked_folder").symlink_to(pack / "data" / "hat", target_is_directory=True)
-    saved = Project(name="hat", datapack=pack).save()
+    saved = Project(name="hat", datapacks=[pack]).save()
     with zipfile.ZipFile(saved) as archive:
         names = archive.namelist()
-    assert "datapack/data/hat/function/tick.mcfunction" in names
+    assert "datapacks/0/hat/data/hat/function/tick.mcfunction" in names
     assert not any("link" in name for name in names)
 
     (pack / "data" / "hat" / "function" / "tick.mcfunction").chmod(0)
     try:
         with pytest.raises(OSError):
-            Project(name="broken", datapack=pack).save()
+            Project(name="broken", datapacks=[pack]).save()
     finally:
         (pack / "data" / "hat" / "function" / "tick.mcfunction").chmod(0o644)
     assert not list((repo / "projects").glob("*.part"))
@@ -161,3 +166,23 @@ def test_malformed_manifests_are_value_errors(repo, tmp_path, manifest):
     legacy.write_text(manifest)
     with pytest.raises(ValueError):
         Project.load(legacy)
+
+
+def test_archives_hold_several_datapacks_in_order_and_old_ones_still_open(repo, tmp_path):
+    first = _pack(repo / "samples" / "hat")
+    second = repo / "samples" / "extra"
+    (second / "data" / "extra" / "function").mkdir(parents=True)
+    (second / "pack.mcmeta").write_text('{"pack": {"pack_format": 61, "description": ""}}')
+    (second / "data" / "extra" / "function" / "go.mcfunction").write_text("say go\n")
+    saved = Project(name="both", datapacks=[first, second]).save()
+    loaded = Project.load(saved)
+    assert [path.name for path in loaded.datapacks] == ["hat", "extra"]
+    assert (loaded.datapacks[1] / "data" / "extra" / "function" / "go.mcfunction").is_file()
+
+    old = tmp_path / "old.dpemu"
+    with zipfile.ZipFile(old, "w") as archive:
+        archive.writestr(
+            "project.json", json.dumps({"name": "old", "datapack": "datapack", "archive_format": 1})
+        )
+        archive.writestr("datapack/pack.mcmeta", "{}")
+    assert Project.load(old).datapacks == [unpacked_dir(old) / "datapack"]

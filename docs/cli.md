@@ -17,7 +17,7 @@ python -m datapack_emulator.emulator run samples/hat --version 1.21.4 --ticks 20
 
 | option | default | |
 | --- | --- | --- |
-| `datapack` | | folder holding `pack.mcmeta` |
+| `datapack` | | one or more folders holding `pack.mcmeta`, analyzed together in that order |
 | `--version` | latest | release id (`1.21` means 1.21 itself); a prefix that is not a release, like `26`, means its newest release |
 | `--ticks` | 20 | |
 | `--players` | 1 | |

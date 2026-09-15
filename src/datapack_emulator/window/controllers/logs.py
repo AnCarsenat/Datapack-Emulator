@@ -29,6 +29,7 @@ class LogController(Controller):
         window.log_table.horizontalHeader().setStretchLastSection(True)
         window.clear_logs_button.clicked.connect(self.clear)
         window.combo_level.currentTextChanged.connect(self.apply_filter)
+        window.combo_seen_by.currentTextChanged.connect(self.apply_filter)
         window.edit_filter.textChanged.connect(self.apply_filter)
         for box in (window.check_app, window.check_emulator, window.check_game):
             box.toggled.connect(self.apply_filter)
@@ -65,9 +66,34 @@ class LogController(Controller):
             sources=sources,
             level=LEVELS.get(window.combo_level.currentText(), LogLevel.INFO),
             text=window.edit_filter.text(),
+            reader=self.reader,
         )
         window.log_counts.setText(self.model.summary())
         window.log_table.resizeColumnsToContents()
+
+    #: the "seen by" entry that shows every record
+    EVERYONE = "everyone"
+
+    @property
+    def reader(self) -> str:
+        text = self.window.combo_seen_by.currentText()
+        return "" if text in ("", self.EVERYONE) else text
+
+    def refresh_readers(self) -> None:
+        """Offer every player of the current world (or of the players setting)."""
+        window = self.window
+        combo = window.combo_seen_by
+        current = combo.currentText() or self.EVERYONE
+        if window.emulator is not None:
+            names = [entity.name for entity in window.emulator.world.players]
+        else:
+            names = [f"Player{index + 1}" for index in range(window.spin_players.value())]
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems([self.EVERYONE, *names])
+        combo.setCurrentText(current if current in (self.EVERYONE, *names) else self.EVERYONE)
+        combo.blockSignals(False)
+        self.apply_filter()
 
     # -- acting on a record -----------------------------------------------
 
@@ -93,6 +119,10 @@ class LogController(Controller):
             lines.append(f"key: {record.key}")
         if record.version:
             lines.append(f"version: {record.version}")
+        if record.recipient:
+            lines.append(
+                "seen by: " + ("everyone" if record.recipient == "*" else record.recipient)
+            )
         self.window.navigation.copy_text("\n".join(lines), what="the record")
 
     def command_of(self, record: LogRecord) -> str | None:

@@ -240,7 +240,7 @@ class EngineWindow(QMainWindow):
         if not self._runs:
             self.statusBar().showMessage("run the matrix first")
             return
-        target = PATHS.GENERATED / f"{self.datapack.name}-matrix.html"
+        target = PATHS.GENERATED / f"{self.datapack.name.replace(' + ', '+')}-matrix.html"
         TestEngine.write_html(self._runs, target, self.datapack.name)
         self.statusBar().showMessage(f"wrote {target}")
 

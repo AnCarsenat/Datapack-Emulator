@@ -78,14 +78,25 @@ class FunctionLibrary:
             if tag is None or tag_id in stack:  # missing or cyclic
                 return None
             entries = tag.entries
-            if not optional_allowed and any(entry.written_as_object for entry in entries):
-                self.tag_failures[tag_id] = LoadFailure(
-                    tag_id,
-                    f"Couldn't read tag list {tag_id[1:]}",
-                    detail=f"{self.version.id} only accepts plain strings in tag values",
-                )
-                resolved[tag_id] = None
-                return None
+            if not optional_allowed:
+                # each file is read on its own: an unreadable one is skipped, the
+                # files of other packs still count (a merged tag keeps them all)
+                readable = []
+                for source in getattr(tag, "sources", [tag]):
+                    if any(entry.written_as_object for entry in source.entries):
+                        self.tag_failures[tag_id] = LoadFailure(
+                            tag_id,
+                            f"Couldn't read tag list {tag_id[1:]}",
+                            detail=f"{self.version.id} only accepts plain strings in tag values",
+                        )
+                    else:
+                        readable.append(source)
+                if not readable:
+                    resolved[tag_id] = None
+                    return None
+                entries = []
+                for source in readable:
+                    entries = list(source.entries) if source.replace else entries + source.entries
             members: list[str] = []
             missing: list[str] = []
             for entry in entries:

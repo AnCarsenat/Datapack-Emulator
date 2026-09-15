@@ -48,7 +48,7 @@ def test_opening_a_project_keeps_its_version(window, make_pack):
     from datapack_emulator.project import Project
 
     pack = make_pack({"data/test/function/tick.mcfunction": "say hi\n"})
-    project = Project(name="p", datapack=pack, version="1.20.4")
+    project = Project(name="p", datapacks=[pack], version="1.20.4")
     window.projects.apply(project)
     assert window.version.id == "1.20.4"
 
@@ -298,7 +298,10 @@ def test_ctrl_s_saves_tests_into_a_dpemu_and_open_restores_them(app, window, mak
     assert saved is not None and saved.suffix == ".dpemu" and saved.parent == PATHS.PROJECTS
     assert not window.projects.modified and "*" not in window.windowTitle()
     with zipfile.ZipFile(saved) as archive:
-        assert "datapack/pack.mcmeta" in archive.namelist()
+        assert any(
+            name.endswith("/pack.mcmeta") and name.startswith("datapacks/0/")
+            for name in archive.namelist()
+        )
 
     window.environment.set_tests([])
     window.projects.mark_saved()
@@ -362,7 +365,7 @@ def test_a_project_restores_the_engine_selection(window, make_pack):
     from datapack_emulator.project import Project
 
     pack = _hat_like_pack(make_pack)
-    window.projects.apply(Project(name="p", datapack=pack, engine_versions=["1.20.4", "1.21.4"]))
+    window.projects.apply(Project(name="p", datapacks=[pack], engine_versions=["1.20.4", "1.21.4"]))
     window.runs.open_engine()
     engine = window.engine_window
     assert [v.id for v in engine.selected_versions()] == ["1.20.4", "1.21.4"]
@@ -372,7 +375,7 @@ def test_a_project_restores_the_engine_selection(window, make_pack):
     assert [v.id for v in engine.selected_versions()] == ["1.21"]
     assert window.projects.capture().engine_versions == ["1.21"]
 
-    window.projects.apply(Project(name="q", datapack=pack, engine_versions=["26.2", "nope"]))
+    window.projects.apply(Project(name="q", datapacks=[pack], engine_versions=["26.2", "nope"]))
     assert [v.id for v in engine.selected_versions()] == ["26.2"]
     engine.close()
 
@@ -833,3 +836,116 @@ def test_world_dock_shows_inventories(window):
     player.setExpanded(True)
     keys = [player.child(i).text(0) for i in range(player.childCount())]
     assert "Inventory" in keys and "SelectedItem" in keys
+
+
+def test_several_datapacks_are_analyzed_and_removed_one_by_one(app, window, make_pack, tmp_path):
+    from datapack_emulator.project import Project
+    from datapack_emulator.settings import PATHS
+    from datapack_emulator.window.panels import PACK_INDEX_ROLE
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    extra = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["extra:tick"]},
+            "data/extra/function/tick.mcfunction": "say extra\n",
+        },
+        name="extra",
+    )
+    window.datapacks.add(extra)
+    packs = window.datapack
+    assert [pack.name for pack in packs] == ["hat", "extra"]
+    model = window.tree.model()
+    assert model.rowCount() == 2 and model.item(1).data(PACK_INDEX_ROLE) == 1
+    assert window.project.datapacks == packs.paths and window.projects.modified
+
+    window.spin_ticks.setValue(1)
+    window.runs.run_emulator()
+    window.runs.wait()
+    view = window.datapack.view_for(window.version)
+    assert view.resolve_function_tag("#minecraft:tick") == ["hat:tick", "extra:tick"]
+
+    saved = window.projects.capture().save(tmp_path / "two.dpemu")
+    window.datapacks.remove(0)
+    assert [pack.name for pack in window.datapack] == ["extra"]
+    window.datapacks.remove(0)
+    assert window.datapack is None and window.emulator is None
+    assert window.tree.model().rowCount() == 1  # the "no datapack" row
+
+    window.datapacks.load(PATHS.SAMPLES / "hat_v2")  # like the sample opened at start
+    window.projects.mark_saved()
+    assert window.projects.open_path(saved)
+    assert [pack.name for pack in window.datapack] == ["hat", "extra"]  # the project's own packs
+    assert all(".cache" in str(path) for path in window.datapack.paths)  # unpacked from the archive
+
+    window.remove_datapack_menu.aboutToShow.emit()
+    labels = [action.text() for action in window.remove_datapack_menu.actions()]
+    assert labels == ["1. hat", "2. extra"]
+    window.datapacks.move(1, -1)
+    assert [pack.name for pack in window.datapack] == ["extra", "hat"]
+    assert (
+        Project.load(window.projects.capture().save(tmp_path / "moved.dpemu")).datapacks[0].name
+        == "extra"
+    )
+
+
+def test_shared_ids_inspect_the_clicked_file_and_the_engine_follows(app, window, make_pack):
+    first = make_pack({"data/test/function/tick.mcfunction": "say one\n"}, name="p1")
+    second = make_pack({"data/test/function/tick.mcfunction": "say two\nsay again\n"}, name="p2")
+    window.datapacks.load_many([first, second])
+    later = second / "data" / "test" / "function" / "tick.mcfunction"
+    resource = window.datapacks.find_resource("test:tick", str(later))
+    assert resource.path == later and len(resource.content) == 2
+
+    window.runs.open_engine()
+    window.datapacks.remove(1)
+    assert window.engine_window.datapack.name == "p1"
+    window.engine_window.close()
+
+
+def test_logs_show_what_each_player_reads(app, window, make_pack):
+    pack = make_pack(
+        {
+            "data/test/function/tick.mcfunction": (
+                'tellraw @a {"text":"to all"}\n'
+                'tellraw Player2 {"text":"only two"}\n'
+                'title Player1 actionbar {"text":"bar"}\n'
+                "say everyone hears this\n"
+                'tellraw @a {"translate":"missing.key","fallback":"fallback text"}\n'
+                'data modify storage t:m note set value "stored"\n'
+                'tellraw Player1 {"nbt":"note","storage":"t:m"}\n'
+            )
+        }
+    )
+    window.spin_players.setValue(2)
+    window.datapacks.load(pack)
+    window.spin_ticks.setValue(1)
+    window.runs.run_emulator()
+    window.runs.wait()
+    model = window.log_view.model
+
+    def shown():
+        return [model.record_at(row).message for row in range(model.rowCount())]
+
+    assert {"to Player1: to all", "to Player2: to all", "to Player2: only two"} <= set(shown())
+    assert "to Player1: fallback text" in shown() and "to Player1: stored" in shown()
+    assert [window.combo_seen_by.itemText(i) for i in range(window.combo_seen_by.count())] == [
+        "everyone",
+        "Player1",
+        "Player2",
+    ]
+    window.combo_seen_by.setCurrentText("Player2")
+    assert shown() == [
+        "to Player2: to all",
+        "to Player2: only two",
+        "[Server] everyone hears this",
+        "to Player2: fallback text",
+    ]
+
+
+def test_removing_every_pack_without_a_project_opens_the_default_pack(window, make_pack):
+    from datapack_emulator.project import default_sample
+
+    window.datapacks.load(make_pack({"data/test/function/tick.mcfunction": "say x\n"}))
+    assert window.project.path is None
+    window.datapacks.remove(0)
+    assert window.datapack is not None and window.datapack.paths == [default_sample()]

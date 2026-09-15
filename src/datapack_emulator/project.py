@@ -1,15 +1,16 @@
 """Projects: what you were working on, saved next to ``samples/``.
 
 A project is saved as one ``.dpemu`` file: a zip holding ``project.json``
-and a copy of the datapack under ``datapack/``, so one file carries the
-settings, the tests and the pack. Older plain ``.json`` projects, which point
-at the datapack where it is, still open; saving them writes a ``.dpemu``.
+and a copy of every datapack it analyzes under ``datapacks/<n>/<name>/`` (in
+load order), so one file carries the settings, the tests and the packs. Older
+archives with a single ``datapack/`` and plain ``.json`` projects, which point
+at the datapack where it is, still open; saving them writes the new layout.
 
 ``project.json`` looks like:
 
     {
       "name": "hat",
-      "datapack": "samples/hat",
+      "datapacks": ["datapacks/0/hat", "datapacks/1/extras"],
       "version": "1.21.4",
       "ticks": 20, "players": 1, "seed": 0,
       "engine_versions": ["1.20.4", "1.21.4"],
@@ -18,7 +19,7 @@ at the datapack where it is, still open; saving them writes a ``.dpemu``.
       "tests": [{"command": "function hat:tick", "at_tick": 5, "expect": "", "enabled": true}]
     }
 
-An archive is unpacked into the cache when opened; the datapack is used from
+An archive is unpacked into the cache when opened; the datapacks are used from
 there and written back into the archive, with everything else, when saved.
 """
 
@@ -44,9 +45,11 @@ SUFFIX = ".dpemu"
 LEGACY_SUFFIX = ".json"
 SUFFIXES = (SUFFIX, LEGACY_SUFFIX)
 ARCHIVE_MANIFEST = "project.json"
+#: archive format 1 held one pack here
 ARCHIVE_DATAPACK = "datapack"
-#: bumped when the archive layout changes incompatibly
-ARCHIVE_FORMAT = 1
+ARCHIVE_DATAPACKS = "datapacks"
+#: bumped when the archive layout changes incompatibly (2: several datapacks)
+ARCHIVE_FORMAT = 2
 #: never copied into an archive
 SKIPPED_NAMES = frozenset({".git", "__pycache__", ".DS_Store"})
 
@@ -85,7 +88,8 @@ class Project:
     """Everything the window needs to pick up where it left off."""
 
     name: str = "untitled"
-    datapack: Path | None = None
+    #: the datapacks analyzed together, in load order (later packs win)
+    datapacks: list[Path] = field(default_factory=list)
     version: str = ""
     ticks: int = EMULATION.DEFAULT_TICKS
     players: int = EMULATION.DEFAULT_PLAYERS
@@ -109,7 +113,7 @@ class Project:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "datapack": _relative(self.datapack),
+            "datapacks": [_relative(path) for path in self.datapacks],
             "version": self.version,
             "ticks": self.ticks,
             "players": self.players,
@@ -127,7 +131,7 @@ class Project:
     def from_dict(cls, data: dict[str, Any], path: Path | None = None) -> Project:
         return cls(
             name=str(data.get("name") or (path.stem if path else "untitled")),
-            datapack=_absolute(str(data.get("datapack", ""))),
+            datapacks=_datapack_paths(data),
             version=str(data.get("version", "")),
             ticks=int(data.get("ticks", EMULATION.DEFAULT_TICKS)),
             players=int(data.get("players", EMULATION.DEFAULT_PLAYERS)),
@@ -170,22 +174,35 @@ class Project:
         log.info("saved project %s", target)
         return target
 
+    @property
+    def datapack(self) -> Path | None:
+        """The first datapack (older code and single-pack projects)."""
+        return self.datapacks[0] if self.datapacks else None
+
     def _write_archive(self, target: Path) -> None:
         data = self.to_dict()
         data["archive_format"] = ARCHIVE_FORMAT
-        pack = self.datapack if self.datapack and self.datapack.is_dir() else None
-        data["datapack"] = ARCHIVE_DATAPACK if pack else ""
+        packs = [path for path in self.datapacks if path.is_dir()]
+        folders = [
+            f"{ARCHIVE_DATAPACKS}/{index}/{_safe_name(path.name)}"
+            for index, path in enumerate(packs)
+        ]
+        data["datapacks"] = folders
         # write next to the target and swap, so a failed save keeps the old file
         partial = target.with_name(target.name + ".part")
         # listed before the .part exists; an archive saved inside its own pack
         # must not swallow itself
-        files = [] if pack is None else _pack_files(pack, exclude={target, partial})
+        contents = [
+            (folder, pack, _pack_files(pack, exclude={target, partial}))
+            for folder, pack in zip(folders, packs, strict=True)
+        ]
         try:
             with zipfile.ZipFile(partial, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr(ARCHIVE_MANIFEST, _dump(data))
-                for file in files:
-                    name = PurePosixPath(ARCHIVE_DATAPACK, *file.relative_to(pack).parts)
-                    archive.write(file, str(name))
+                for folder, pack, files in contents:
+                    for file in files:
+                        name = PurePosixPath(folder, *file.relative_to(pack).parts)
+                        archive.write(file, str(name))
             os.replace(partial, target)
         except BaseException:
             partial.unlink(missing_ok=True)
@@ -232,8 +249,21 @@ class Project:
                 archive.extractall(target)
         except (zipfile.BadZipFile, KeyError) as exc:
             raise ValueError(f"not a project archive: {exc}") from exc
-        pack = target / ARCHIVE_DATAPACK
-        data["datapack"] = str(pack) if data.get("datapack") and pack.is_dir() else ""
+        if version < 2:  # one pack under datapack/
+            folders = [ARCHIVE_DATAPACK] if data.get("datapack") else []
+        else:
+            folders = [
+                str(entry) for entry in data.get("datapacks") or [] if isinstance(entry, str)
+            ]
+        data.pop("datapack", None)
+        root = target.resolve()
+        for folder in folders:
+            resolved = (root / folder).resolve()
+            if resolved == root or root not in resolved.parents:
+                raise ValueError(f"unsafe datapack path in the project: {folder}")
+        data["datapacks"] = [
+            str(target / folder) for folder in folders if (target / folder).is_dir()
+        ]
         return cls._parse(data, path)
 
     def renamed(self, name: str) -> Project:
@@ -245,7 +275,16 @@ class Project:
         return self.name if self.path else f"{self.name} (unsaved)"
 
     def __repr__(self) -> str:
-        return f"<Project {self.name} datapack={self.datapack}>"
+        return f"<Project {self.name} datapacks={[path.name for path in self.datapacks]}>"
+
+
+def _datapack_paths(data: dict[str, Any]) -> list[Path]:
+    """``datapacks`` (a list), or the single ``datapack`` of older projects."""
+    entries = data.get("datapacks")
+    if not isinstance(entries, list):
+        entries = [data.get("datapack", "")]
+    paths = [_absolute(str(entry)) for entry in entries if isinstance(entry, str) and entry]
+    return [path for path in paths if path is not None]
 
 
 def unpacked_dir(archive: Path) -> Path:

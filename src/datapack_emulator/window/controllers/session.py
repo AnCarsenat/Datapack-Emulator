@@ -41,6 +41,7 @@ class SessionController(Controller):
         window = self.window
         window.recent_projects_menu.aboutToShow.connect(self._fill_recent_projects)
         window.recent_datapacks_menu.aboutToShow.connect(self._fill_recent_datapacks)
+        window.remove_datapack_menu.aboutToShow.connect(self._fill_remove_datapack)
 
     # -- saving and restoring -------------------------------------------------
 
@@ -123,7 +124,21 @@ class SessionController(Controller):
 
     def _fill_recent_datapacks(self) -> None:
         window = self.window
-        self._fill(window.recent_datapacks_menu, self.recent_datapacks, window.datapacks.load)
+        self._fill(window.recent_datapacks_menu, self.recent_datapacks, window.datapacks.add)
+
+    def _fill_remove_datapack(self) -> None:
+        window = self.window
+        menu = window.remove_datapack_menu
+        menu.clear()
+        packs = list(window.datapack) if window.datapack is not None else []
+        if not packs:
+            menu.addAction("no datapack analyzed").setEnabled(False)
+            return
+        for index, pack in enumerate(packs):
+            action = menu.addAction(
+                f"{index + 1}. {pack.name}", lambda i=index: window.datapacks.remove(i)
+            )
+            action.setStatusTip(str(pack.path))
 
     # -- focus ------------------------------------------------------------------
 

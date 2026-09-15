@@ -63,7 +63,13 @@ def flatten_text_component(component: Any, resolve: TextResolver | None = None) 
     elif "selector" in component:
         text = resolve("selector", component["selector"]) if resolve else ""
     elif "translate" in component:
-        text = str(component.get("fallback", component["translate"]))
+        text = (
+            resolve("translate", component)
+            if resolve
+            else str(component.get("fallback", component["translate"]))
+        )
+    elif "nbt" in component:
+        text = resolve("nbt", component) if resolve else ""
     elif "keybind" in component:
         text = str(component["keybind"])
     else:

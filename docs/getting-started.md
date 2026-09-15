@@ -31,7 +31,8 @@ src/main.sh                      # same, without installing the package
 and puts `src/` on `PYTHONPATH`; `src/main.sh --cli …` runs the
 [command line](cli.md) instead.
 
-On a cold start the first datapack in `samples/` opens by itself, the version
+On a cold start the first datapack in `samples/` opens by itself (and again
+whenever no project is open and the last datapack is removed), the version
 combo jumps to the newest stable release the pack declares whose server reads
 its `pack.mcmeta` cleanly (hat_v2: 1.21.8), and a matching client jar is
 picked up if one is installed.
@@ -60,9 +61,11 @@ To compare many versions at once, open the **engine** window (Ctrl+E) — see
 
 ## Use your own pack
 
-*file › import datapack* (Ctrl+O) and pick the folder holding `pack.mcmeta`.
-Then *file › save project* (Ctrl+S) to find it again next time: one `.dpemu`
-file holds the settings, the tests and a copy of the datapack — see
+*file › add datapack* (Ctrl+O) and pick the folder holding `pack.mcmeta`;
+add more to run several packs together, and remove them one by one from
+*file › remove datapack* or the explorer. Then *file › save project* (Ctrl+S)
+to find them again next time: one `.dpemu` file holds the settings, the tests
+and a copy of every datapack — see
 [projects.md](projects.md).
 
 ## Without the window

@@ -6,6 +6,7 @@ nothing here creates docks or menus.
 
 from datapack_emulator.window.panels.explorer import (
     OVERLAY_ROLE,
+    PACK_INDEX_ROLE,
     PATH_ROLE,
     RESOURCE_ROLE,
     build_explorer_model,
@@ -34,6 +35,7 @@ __all__ = [
     "LogTableModel",
     "McFunctionHighlighter",
     "OVERLAY_ROLE",
+    "PACK_INDEX_ROLE",
     "PATH_ROLE",
     "RESOURCE_ROLE",
     "ResultsTableModel",

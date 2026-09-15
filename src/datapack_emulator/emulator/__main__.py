@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.datapack import Datapack
+from datapack_emulator.emulator.datapack import DatapackSet
 from datapack_emulator.emulator.engine import TestEngine
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import (
@@ -60,8 +60,9 @@ def _vanilla(arguments: argparse.Namespace):
     return assets
 
 
-def _load(path: Path) -> Datapack:
-    datapack = Datapack.load(path)
+def _load(paths: list[Path]) -> DatapackSet:
+    """One or more datapacks, analyzed together in the order given."""
+    datapack = DatapackSet.load(paths)
     for error in datapack.errors:
         print(f"error: {error}", file=sys.stderr)
     return datapack
@@ -123,7 +124,8 @@ def command_run(arguments: argparse.Namespace) -> int:
     for name in graph.unreachable():
         print(f"  never called: {name}")
     if arguments.dot:
-        print(f"dot: {graph.write_dot(arguments.html.parent / f'{datapack.name}.dot')}")
+        dot_name = datapack.name.replace(" + ", "+")
+        print(f"dot: {graph.write_dot(arguments.html.parent / f'{dot_name}.dot')}")
     return 0
 
 
@@ -230,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="mode", required=True)
 
     run = subparsers.add_parser("run", help="emulate the pack for one version")
-    run.add_argument("datapack", type=Path)
+    run.add_argument("datapack", type=Path, nargs="+", help="one or more datapacks, in load order")
     run.add_argument("--version", default=None, help="Minecraft version (default: latest)")
     run.add_argument("--ticks", type=int, default=20)
     run.add_argument("--players", type=int, default=1)
@@ -255,7 +257,9 @@ def main(argv: list[str] | None = None) -> int:
     run.set_defaults(handler=command_run)
 
     matrix = subparsers.add_parser("matrix", help="run the pack across versions")
-    matrix.add_argument("datapack", type=Path)
+    matrix.add_argument(
+        "datapack", type=Path, nargs="+", help="one or more datapacks, in load order"
+    )
     matrix.add_argument("--from", dest="start", default=None)
     matrix.add_argument("--to", dest="end", default=None)
     matrix.add_argument("--versions", nargs="+", default=None)

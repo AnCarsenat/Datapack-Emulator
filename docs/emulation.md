@@ -1,6 +1,10 @@
 # What is emulated
 
-One `Emulator` is one pack, one version and one world. `run(ticks)` runs
+One `Emulator` is one version and one world, running one datapack or a
+`DatapackSet` — several packs enabled together, like a world's datapack list:
+in load order, a resource with the same id comes from the last pack that has
+it, and tags add their values across packs unless a later tag has
+`"replace": true` (overlays still apply inside each pack). `run(ticks)` runs
 `#minecraft:load` once, then each tick `#minecraft:tick` followed by the
 schedules that became due (see *Tick order* below). On 1.16.1–1.19.2 the
 first tick runs `#minecraft:tick` before `#minecraft:load`, as those servers
@@ -85,7 +89,7 @@ setting through a filter with no match adds the element).
 | `enchant` | adds the enchantment to the held item in the version's format (`Enchantments`, `enchantments.levels`, `enchantments`); which items accept it is not checked |
 | `loot` | `give` (what does not fit is lost), `spawn` and `replace entity <targets> <slot> [count]` (numbered slots from that one) with a `loot <table>` source, from the pack or the client jar: rolls (uniform ranges inclusive), weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`, stacks split to their limit; returns the number of stacks. Conditions count as passing and other functions are skipped (noted). `fish`, `kill`, `mine` and `insert` are noted |
 | `data` | on one entity or a storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data") |
-| `say me msg tell w tellraw title teammsg` | logged as `game` output; text components in JSON or (1.21.5+) SNBT, with `score` and `selector` parts resolved per recipient |
+| `say me msg tell w tellraw title teammsg` | logged as `game` output, one record per player who reads it: `[Player1] hi` / `* Player1 waves` for everyone (say, me), `to Player2: text` (tellraw), `to Player1 (actionbar): text` (title), `Server whispers to Player2: text` (msg). Each record names its reader (`recipient`). Text components in JSON or (1.21.5+) SNBT, with `score`, `selector`, `nbt` (storage and entity) and `translate` (with its `with` arguments, from the client jar's language file, else the fallback) resolved per reader |
 | `gamerule` | |
 
 **Checked, no state change:** `setblock`, `effect`, `particle` validate their
@@ -118,7 +122,7 @@ vanilla string — the translation key.
 | --- | --- | --- |
 | `app` | this program | loaded a pack, wrote a report, which overlays are active |
 | `emulator` | the emulation engine | command not in this version, unemulated condition, tick over budget, folders this version ignores |
-| `game` | Minecraft | chat (`[Player1] hello`), command feedback, red errors |
+| `game` | Minecraft | chat (`[Player1] hello`, `to Player2: …`), command feedback, red errors |
 
 Game strings are vanilla's own (`runtime/messages.py`, or the loaded jar's
 `en_us.json`): `No entity was found`, `Unknown scoreboard objective 'x'`,

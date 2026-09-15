@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -323,11 +323,49 @@ class PackView:
     def active_overlays(self) -> list[str]:
         return [layer.directory for layer in self.layers if layer.entry is not None]
 
+    @classmethod
+    def merged(cls, views: list[PackView]) -> PackView:
+        """Several packs enabled together, in load order.
+
+        Resources with the same id come from the last pack that has them, like
+        the game; tags are the exception: their values add up across packs,
+        unless a later pack's tag says ``"replace": true``.
+        """
+        if len(views) == 1:
+            return views[0]
+        first = views[0]
+        combined = cls(
+            [layer for view in views for layer in view.layers], first.pack_format, first.singular
+        )
+        for registry in [name for name in combined.registries if name.startswith("tags/")]:
+            tags: dict[str, Resource] = {}
+            for view in views:
+                for resource_id, tag in view.registries.get(registry, {}).items():
+                    earlier = tags.get(resource_id)
+                    if isinstance(earlier, Tag) and isinstance(tag, Tag):
+                        tags[resource_id] = _merge_tags(earlier, tag)
+                    else:
+                        tags[resource_id] = tag
+            combined.registries[registry] = tags
+        return combined
+
     def __repr__(self) -> str:
         return (
             f"<PackView format={self.pack_format} functions={len(self.functions)} "
             f"overlays={self.active_overlays}>"
         )
+
+
+def _merge_tags(earlier: Tag, later: Tag) -> Tag:
+    """The same tag from two packs: the earlier values then the later ones, or
+    only the later ones when it says ``replace``. ``sources`` keeps every file,
+    in order, for loaders that read each file on its own (1.16.1)."""
+    merged = Tag(later.path, later.namespace, later.registry, later.resource_path)
+    merged.overlay = later.overlay
+    earlier_values = [] if later.replace else earlier.content.get("values", [])
+    merged.content = {"values": [*earlier_values, *later.content.get("values", [])]}
+    merged.sources = [*getattr(earlier, "sources", [earlier]), later]
+    return merged
 
 
 class Datapack:
@@ -511,6 +549,193 @@ class Datapack:
 
     def __repr__(self) -> str:
         return f"<Datapack {self.name} namespaces={list(self.namespaces)}>"
+
+
+class DatapackSet:
+    """Several datapacks enabled in one world, in load order (later ones win).
+
+    Offers what the emulator, the engine and the window read from a
+    :class:`Datapack`, so a single pack and a set are used the same way. What
+    only makes sense for one pack (``pack.mcmeta``, the icon) comes from the
+    first pack; compatibility looks at every pack.
+    """
+
+    def __init__(self, packs: Iterable[Datapack] = ()):
+        self.packs: list[Datapack] = list(packs)
+        self._views: dict[tuple[Any, ...], PackView] = {}
+
+    @classmethod
+    def load(cls, paths: Iterable[Path | str]) -> DatapackSet:
+        return cls(Datapack.load(path) for path in paths)
+
+    # -- editing ---------------------------------------------------------------
+
+    def add(self, pack: Datapack) -> None:
+        self.packs.append(pack)
+        self._views.clear()
+
+    def remove(self, index: int) -> Datapack:
+        self._views.clear()
+        return self.packs.pop(index)
+
+    def move(self, index: int, step: int) -> bool:
+        target = index + step
+        if not (0 <= index < len(self.packs) and 0 <= target < len(self.packs)):
+            return False
+        self.packs[index], self.packs[target] = self.packs[target], self.packs[index]
+        self._views.clear()
+        return True
+
+    def reload(self) -> DatapackSet:
+        for pack in self.packs:
+            pack.reload()
+        self._views.clear()
+        return self
+
+    def index_of(self, path: Path | str) -> int | None:
+        wanted = Path(path).resolve()
+        for index, pack in enumerate(self.packs):
+            if pack.path.resolve() == wanted:
+                return index
+        return None
+
+    def __len__(self) -> int:
+        return len(self.packs)
+
+    def __iter__(self) -> Iterator[Datapack]:
+        return iter(self.packs)
+
+    def __bool__(self) -> bool:
+        return bool(self.packs)
+
+    # -- what a single pack offers ---------------------------------------------
+
+    @property
+    def primary(self) -> Datapack:
+        return self.packs[0]
+
+    @property
+    def name(self) -> str:
+        return " + ".join(pack.name for pack in self.packs) or "no datapack"
+
+    @property
+    def path(self) -> Path:
+        return self.primary.path
+
+    @property
+    def paths(self) -> list[Path]:
+        return [pack.path for pack in self.packs]
+
+    @property
+    def errors(self) -> list[str]:
+        if len(self.packs) == 1:
+            return list(self.primary.errors)
+        return [f"{pack.name}: {error}" for pack in self.packs for error in pack.errors]
+
+    @property
+    def mcmeta(self) -> PackMCMETA | None:
+        return self.primary.mcmeta
+
+    @property
+    def icon(self) -> PackPNG | None:
+        return self.primary.icon
+
+    @property
+    def base(self) -> Layer:
+        return self.primary.base
+
+    @property
+    def overlays(self) -> list[Layer]:
+        return [layer for pack in self.packs for layer in pack.overlays]
+
+    @property
+    def namespaces(self) -> dict[str, Namespace]:
+        out: dict[str, Namespace] = {}
+        for pack in self.packs:
+            out.update(pack.namespaces)
+        return out
+
+    @property
+    def pack_format(self) -> float | None:
+        return self.primary.pack_format
+
+    @property
+    def format_range(self) -> tuple[Format | None, Format | None]:
+        return self.primary.format_range
+
+    @property
+    def minecraft_version(self) -> str:
+        return self.primary.minecraft_version
+
+    @property
+    def description(self) -> str:
+        return self.primary.description
+
+    def declared_versions(self) -> list[Version]:
+        """Versions every pack declares; the first pack's when they share none."""
+        if len(self.packs) == 1:
+            return self.primary.declared_versions()
+        common = [set(pack.declared_versions()) for pack in self.packs if pack.declared_versions()]
+        shared = sorted(set.intersection(*common)) if common else []
+        return shared or self.primary.declared_versions()
+
+    def compatibility(self, version: Version) -> Compatibility:
+        """The first pack ``version`` does not list as compatible, else the first
+        pack's; ``server_log`` holds what the server logs about every pack."""
+        results = [(pack, pack.compatibility(version)) for pack in self.packs]
+        if len(results) == 1:
+            return results[0][1]
+        server_log = [
+            f"{pack.name}: {line}" for pack, result in results for line in result.server_log
+        ]
+        for pack, result in results:
+            if not result.compatible:
+                return replace(
+                    result, reason=f"{pack.name}: {result.reason}", server_log=server_log
+                )
+        return replace(results[0][1], server_log=server_log)
+
+    def supports(self, version: Version) -> bool:
+        return all(pack.supports(version) for pack in self.packs)
+
+    def view(
+        self,
+        pack_format: Format | None = None,
+        allow_overlays: bool = True,
+        singular: bool | None = None,
+    ) -> PackView:
+        key = ("view", pack_format, allow_overlays, singular)
+        if key not in self._views:
+            self._views[key] = PackView.merged(
+                [pack.view(pack_format, allow_overlays, singular) for pack in self.packs]
+            )
+        return self._views[key]
+
+    def view_for(self, version: Version) -> PackView:
+        key = ("version", version)
+        if key not in self._views:
+            self._views[key] = PackView.merged([pack.view_for(version) for pack in self.packs])
+        return self._views[key]
+
+    @property
+    def functions(self) -> dict[str, Function]:
+        return self.view().functions
+
+    @property
+    def function_tags(self) -> dict[str, Tag]:
+        return self.view().function_tags
+
+    def resources(self) -> Iterator[Resource]:
+        return self.view().resources()
+
+    def function(self, function_id: str) -> Function | None:
+        return self.view().function(function_id)
+
+    def resolve_function_tag(self, tag_id: str) -> list[str]:
+        return self.view().resolve_function_tag(tag_id)
+
+    def __repr__(self) -> str:
+        return f"<DatapackSet {self.name}>"
 
 
 #: 1.20.2 reads supported_formats; 1.21.9 (25w31a) requires min_format/max_format
