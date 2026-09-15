@@ -3,7 +3,7 @@
 GENERATED FILE — do not edit by hand.  Rebuilt from misode/mcmeta:
   versions:  https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json
   commands:  https://raw.githubusercontent.com/misode/mcmeta/<version>-summary/commands/data.json
-Snapshot taken 2026-09-15; newest release covered: 26.2.
+Snapshot taken 2026-09-15; newest version covered: 26.3-rc-3.
 
 ``RELEASES`` holds every release from 1.14 on (mcmeta carries no command tree
 for 1.13, which shares pack_format 4 with 1.14).  ``FEATURE_SINCE`` maps a
@@ -66,6 +66,11 @@ RELEASES: tuple[tuple[str, int, int, int], ...] = (
     ("26.2", 107, 1, 4903),
 )
 
+#: the newest pre-release / release candidate of an unreleased version, if any
+PRERELEASES: tuple[tuple[str, int, int, int], ...] = (
+    ("26.3-rc-3", 121, 0, 5022),
+)
+
 FEATURE_SINCE: dict[str, str] = {
     "command:advancement": "1.14",
     "command:attribute": "1.16",
@@ -75,6 +80,7 @@ FEATURE_SINCE: dict[str, str] = {
     "command:bossbar": "1.14",
     "command:clear": "1.14",
     "command:clone": "1.14",
+    "command:compute": "26.3-rc-3",
     "command:damage": "1.19.4",
     "command:data": "1.14",
     "command:datapack": "1.14",
@@ -114,6 +120,7 @@ FEATURE_SINCE: dict[str, str] = {
     "command:place": "1.19",
     "command:placefeature": "1.18.2",
     "command:playsound": "1.14",
+    "command:posteffect": "26.3-rc-3",
     "command:publish": "1.14",
     "command:random": "1.20.2",
     "command:recipe": "1.14",
@@ -173,6 +180,7 @@ FEATURE_SINCE: dict[str, str] = {
     "condition:loaded": "1.19.4",
     "condition:predicate": "1.15",
     "condition:score": "1.14",
+    "condition:slots": "26.3-rc-3",
     "condition:stopwatch": "1.21.11",
     "execute:align": "1.14",
     "execute:anchored": "1.14",

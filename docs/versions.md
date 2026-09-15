@@ -16,7 +16,14 @@ data-generator output for every release:
 
 The generator walks every release from 1.14 on, extracts feature keys from
 each command tree, and records the first release that has each key and the
-first release that dropped it. 1.13 has no tree in mcmeta; it is added by hand
+first release that dropped it.
+
+It also takes the newest pre-release or release candidate of a version that
+has not shipped yet (for example `26.3-rc-3` before 26.3), marked
+`stable=False`. It sorts before its final release, `parse("26.3")` resolves to
+it until the release exists, and `LATEST` stays the newest *stable* release
+(`NEWEST` includes the pre-release). Re-running the generator after the release
+replaces it. 1.13 has no tree in mcmeta; it is added by hand
 with pack format 4 and answered as 1.14 for features.
 
 ### Feature keys

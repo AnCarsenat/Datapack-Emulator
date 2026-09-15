@@ -209,7 +209,11 @@ def command_versions(arguments: argparse.Namespace) -> int:
     print(f"{'version':10} {'format':8} {'data version':>12}")
     for version in versions.VERSIONS:
         print(f"{version.id:10} {version.format_string:8} {version.data_version:12d}")
-    print(f"\n{len(versions.VERSIONS)} releases, newest {versions.LATEST.id}")
+    prereleases = [version.id for version in versions.VERSIONS if not version.stable]
+    print(
+        f"\n{len(versions.VERSIONS) - len(prereleases)} releases, newest {versions.LATEST.id}"
+        + (f"; upcoming: {', '.join(prereleases)}" if prereleases else "")
+    )
     return 0
 
 

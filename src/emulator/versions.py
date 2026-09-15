@@ -16,7 +16,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from functools import cache
 
-from src.emulator.version_data import FEATURE_SINCE, FEATURE_UNTIL, RELEASES
+from src.emulator.version_data import FEATURE_SINCE, FEATURE_UNTIL, PRERELEASES, RELEASES
 
 #: mcmeta has no command tree before this release, so feature answers for
 #: older versions are answered as if they were this one.
@@ -30,10 +30,20 @@ EXTRA_RELEASES: tuple[tuple[str, int, int, int], ...] = (
 )
 
 
+_ID_RE = re.compile(r"^(?P<number>\d+(?:\.\d+)*)(?:-(?P<stage>pre|rc)-(?P<build>\d+))?$")
+_STAGES = {"pre": 0, "rc": 1, None: 2}  # a release sorts after its pre-releases
+
+
 def _key(identifier: str) -> tuple[int, ...]:
-    """``"1.21.10"`` -> ``(1, 21, 10)`` so versions sort numerically."""
-    parts = re.findall(r"\d+", identifier)
-    return tuple(int(part) for part in parts) or (0,)
+    """Sort key: ``"1.21.10"`` -> ``(1, 21, 10, 2, 0)``, ``"26.3-rc-3"`` ->
+    ``(26, 3, 0, 1, 3)`` — numerically, and pre-releases before their release."""
+    match = _ID_RE.match(identifier)
+    if match is None:
+        parts = re.findall(r"\d+", identifier)
+        return tuple(int(part) for part in parts) or (0,)
+    numbers = [int(part) for part in match.group("number").split(".")]
+    numbers += [0] * (3 - len(numbers))
+    return (*numbers, _STAGES[match.group("stage")], int(match.group("build") or 0))
 
 
 @dataclass(frozen=True, order=True)
@@ -45,6 +55,8 @@ class Version:
     pack_format: int = field(compare=False, default=0)
     pack_format_minor: int = field(compare=False, default=0)
     data_version: int = field(compare=False, default=0)
+    #: False for a pre-release or release candidate
+    stable: bool = field(compare=False, default=True)
 
     @property
     def format(self) -> tuple[int, int]:
@@ -61,10 +73,11 @@ class Version:
 
 
 def _build() -> tuple[Version, ...]:
-    rows = list(EXTRA_RELEASES) + list(RELEASES)
+    rows = [(row, True) for row in (*EXTRA_RELEASES, *RELEASES)]
+    rows += [(row, False) for row in PRERELEASES]
     versions = [
-        Version(_key(identifier), identifier, pack_format, minor, data_version)
-        for identifier, pack_format, minor, data_version in rows
+        Version(_key(identifier), identifier, pack_format, minor, data_version, stable)
+        for (identifier, pack_format, minor, data_version), stable in rows
     ]
     return tuple(sorted(versions))
 
@@ -73,7 +86,10 @@ def _build() -> tuple[Version, ...]:
 VERSIONS: tuple[Version, ...] = _build()
 BY_ID: dict[str, Version] = {version.id: version for version in VERSIONS}
 OLDEST: Version = VERSIONS[0]
-LATEST: Version = VERSIONS[-1]
+#: the newest stable release — what "latest" and the default version mean
+LATEST: Version = [version for version in VERSIONS if version.stable][-1]
+#: the newest version known at all, pre-releases included
+NEWEST: Version = VERSIONS[-1]
 
 
 def parse(spec: str | Version | None) -> Version:
@@ -87,18 +103,22 @@ def parse(spec: str | Version | None) -> Version:
     text = str(spec).strip()
     if text in BY_ID:
         return BY_ID[text]
-    # not a release id: a line like "26" resolves to its newest release ("26.2");
-    # an exact id always wins, so "1.21" is 1.21, not 1.21.11
-    candidates = [version for version in VERSIONS if version.id.startswith(text + ".")]
-    if candidates:
-        return candidates[-1]
+    # not a release id: a line like "26" resolves to its newest release ("26.2"),
+    # and an unreleased "26.3" to its newest pre-release ("26.3-rc-3"); an exact
+    # id always wins, so "1.21" is 1.21, not 1.21.11
+    candidates = [
+        version for version in VERSIONS if version.id.startswith((text + ".", text + "-"))
+    ]
+    stable = [version for version in candidates if version.stable]
+    if stable or candidates:
+        return (stable or candidates)[-1]
     raise KeyError(f"unknown Minecraft version {spec!r}")
 
 
 def version_range(start: str | Version | None, end: str | Version | None) -> list[Version]:
     """Every release between ``start`` and ``end``, inclusive."""
     low = parse(start) if start is not None else OLDEST
-    high = parse(end) if end is not None else LATEST
+    high = parse(end) if end is not None else NEWEST
     if high < low:
         low, high = high, low
     return [version for version in VERSIONS if low <= version <= high]
