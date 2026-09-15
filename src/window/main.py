@@ -154,8 +154,11 @@ class MainWindow(QMainWindow):
         self.combo_version.blockSignals(True)
         self.combo_version.clear()
         for version in reversed(versions.VERSIONS):
-            self.combo_version.addItem(f"{version.id}  ({version.format_string})", version.id)
-        self.combo_version.setCurrentIndex(0)
+            label = f"{version.id}  ({version.format_string})"
+            if not version.stable:
+                label += "  pre-release"
+            self.combo_version.addItem(label, version.id)
+        self.combo_version.setCurrentIndex(max(self.combo_version.findData(versions.LATEST.id), 0))
         self.combo_version.blockSignals(False)
 
     def _action(self, name: str) -> QAction | None:
@@ -370,8 +373,13 @@ class MainWindow(QMainWindow):
         )
 
     def _select_pack_version(self, datapack: Datapack) -> None:
-        """Default the version combo to what the pack declares."""
-        target = versions.closest_to_pack_format(datapack.pack_format)
+        """Default the version combo to the newest release the pack declares.
+
+        A multi-version pack's pack_format is often its oldest target (hat_v2:
+        5, but supported up to 121), so it is only the fallback.
+        """
+        declared = datapack.declared_versions()
+        target = declared[-1] if declared else versions.closest_to_pack_format(datapack.pack_format)
         index = self.combo_version.findData(target.id)
         if index >= 0:
             self.combo_version.setCurrentIndex(index)

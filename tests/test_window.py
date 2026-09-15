@@ -72,3 +72,12 @@ def test_reload_keeps_the_selected_version(window, make_pack):
     window.reload_datapack()
     assert window.version.id == "1.20.4"
     assert window.emulator is not None and window.emulator.version.id == "1.20.4"
+
+
+def test_imported_pack_defaults_to_its_newest_declared_version(window, make_pack):
+    pack = make_pack(
+        {"data/test/function/tick.mcfunction": "say hi\n"},
+        mcmeta={"pack": {"pack_format": 5, "supported_formats": [5, 61]}},
+    )
+    window.load_datapack(pack)
+    assert window.version.id == "1.21.4"
