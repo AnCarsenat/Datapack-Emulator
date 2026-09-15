@@ -194,6 +194,7 @@ class MainWindow(QMainWindow):
         self.tree_entities: QTreeWidget = find(QTreeWidget, "treeEntities")
         self.tree_storage: QTreeWidget = find(QTreeWidget, "treeStorage")
         self.edit_console: QLineEdit = find(QLineEdit, "editConsole")
+        self.check_step_on_command: QCheckBox = find(QCheckBox, "checkStepOnCommand")
         self.console_run_button: QPushButton = find(QPushButton, "buttonConsoleRun")
 
         # the only widget the .ui cannot describe: the pyqtgraph canvas

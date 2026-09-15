@@ -102,6 +102,8 @@ class Project:
     tests: list[dict[str, Any]] = field(default_factory=list)
     #: run the tests during run all / run emulator / step
     tests_during_runs: bool = False
+    #: step one tick after each command sent from the logs' command line
+    step_on_command: bool = False
     #: the user's own notes: about the project, and per function id
     notes: str = ""
     function_notes: dict[str, str] = field(default_factory=dict)
@@ -123,6 +125,7 @@ class Project:
             "speed": self.speed,
             "tests": [dict(test) for test in self.tests],
             "tests_during_runs": self.tests_during_runs,
+            "step_on_command": self.step_on_command,
             "notes": self.notes,
             "function_notes": dict(sorted(self.function_notes.items())),
         }
@@ -141,6 +144,7 @@ class Project:
             speed=str(data.get("speed", "fast")),
             tests=[dict(test) for test in data.get("tests", []) if isinstance(test, dict)],
             tests_during_runs=bool(data.get("tests_during_runs", False)),
+            step_on_command=bool(data.get("step_on_command", False)),
             notes=str(data.get("notes", "")),
             function_notes={
                 str(key): str(value)

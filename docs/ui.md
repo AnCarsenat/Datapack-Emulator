@@ -157,7 +157,9 @@ All four are open by default and can be toggled from *view*.
   Below the table, a **command line** (Ctrl+L) runs any command in the
   current world, as the server console would (`execute as Player1 run
   trigger hat` to act as a player). Enter runs it, ↑/↓ walk the history, a
-  leading `/` is optional; *add as test* (Ctrl+T) turns it into a test. A
+  leading `/` is optional; *add as test* (Ctrl+T) turns it into a test, and
+  *step on sent command* runs one more tick after each command, like step
+  (F7). A
   world that has not ticked yet runs its first tick first, like a server
   that is up. The command's feedback and errors appear in the logs, and the
   world dock updates.

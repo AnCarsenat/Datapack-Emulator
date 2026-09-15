@@ -54,6 +54,7 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 | `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `expect_value`, `enabled` — results are not saved |
 | `notes`, `function_notes` | your notes on the project, and per function id |
 | `tests_during_runs` | whether runs and steps also run the tests |
+| `step_on_command` | whether a command sent from the logs' command line is followed by one tick |
 | `engine_versions` | versions ticked in the engine window when the project was saved; ticked again when it is opened |
 | `vanilla_jar` | the client jar in use when the project was saved (picked by hand or found automatically); loaded again on open if the file still exists. Jars are never put in the archive |
 | `archive_format` | layout version; archives from a newer emulator are refused rather than misread |
