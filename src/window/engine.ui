@@ -1,0 +1,384 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>EngineWindow</class>
+ <widget class="QMainWindow" name="EngineWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1180</width>
+    <height>740</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Version test engine</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">background-color: rgb(255, 255, 255);
+alternate-background-color: rgb(246, 246, 246);
+color: rgb(0, 0, 0);
+selection-color: rgb(0, 0, 255);
+selection-background-color: rgb(228, 251, 255);</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="rootLayout">
+    <item>
+     <widget class="QGroupBox" name="groupSelection">
+      <property name="title">
+       <string>versions to test</string>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>320</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <layout class="QVBoxLayout" name="selectionLayout">
+       <item>
+        <layout class="QHBoxLayout" name="rangeLayout">
+         <item>
+          <widget class="QLabel" name="labelFrom">
+           <property name="text">
+            <string>from</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboFrom"/>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelTo">
+           <property name="text">
+            <string>to</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboTo"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="rangeButtonsLayout">
+         <item>
+          <widget class="QPushButton" name="buttonSelectRange">
+           <property name="text">
+            <string>select range</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="buttonSelectDeclared">
+           <property name="text">
+            <string>declared</string>
+           </property>
+           <property name="toolTip">
+            <string>the range pack.mcmeta says it supports</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="quickSelectLayout">
+         <item>
+          <widget class="QPushButton" name="buttonSelectBoundaries">
+           <property name="text">
+            <string>one per format</string>
+           </property>
+           <property name="toolTip">
+            <string>keep only the first release of each pack_format</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="buttonSelectAll">
+           <property name="text">
+            <string>all</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="buttonSelectNone">
+           <property name="text">
+            <string>none</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QListWidget" name="listVersions">
+         <property name="alternatingRowColors">
+          <bool>true</bool>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">QListWidget { font-family: monospace; font-size: 12px; }</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QFormLayout" name="parameterLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelTicks">
+           <property name="text">
+            <string>ticks</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QSpinBox" name="spinTicks">
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>72000</number>
+           </property>
+           <property name="value">
+            <number>20</number>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelPlayers">
+           <property name="text">
+            <string>players</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QSpinBox" name="spinPlayers">
+           <property name="maximum">
+            <number>200</number>
+           </property>
+           <property name="value">
+            <number>1</number>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelSeed">
+           <property name="text">
+            <string>seed</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QSpinBox" name="spinSeed">
+           <property name="maximum">
+            <number>1000000</number>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="runLayout">
+         <item>
+          <widget class="QPushButton" name="buttonRun">
+           <property name="text">
+            <string>run matrix</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="buttonExport">
+           <property name="text">
+            <string>export html</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QProgressBar" name="progressBar">
+         <property name="value">
+          <number>0</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QSplitter" name="resultSplitter">
+      <property name="orientation">
+       <enum>Qt::Vertical</enum>
+      </property>
+      <widget class="QWidget" name="resultsPane" native="true">
+       <layout class="QVBoxLayout" name="resultsLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="labelResults">
+          <property name="text">
+           <string>results — pick versions on the left and run</string>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">font-weight: bold;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableView" name="tableResults">
+          <property name="alternatingRowColors">
+           <bool>true</bool>
+          </property>
+          <property name="showGrid">
+           <bool>false</bool>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QTableView { font-family: monospace; font-size: 11px; }</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="detailPane" native="true">
+       <layout class="QVBoxLayout" name="detailLayout">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <layout class="QHBoxLayout" name="detailFilterLayout">
+          <item>
+           <widget class="QLabel" name="labelDetail">
+            <property name="text">
+             <string>records for the selected version</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">font-weight: bold;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="detailSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="checkApp">
+            <property name="text">
+             <string>app</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="checkEmulator">
+            <property name="text">
+             <string>emulator</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="checkGame">
+            <property name="text">
+             <string>game</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboLevel">
+            <property name="currentIndex">
+             <number>1</number>
+            </property>
+            <item>
+             <property name="text">
+              <string>debug</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>info</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>warning</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>error</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="editFilter">
+            <property name="placeholderText">
+             <string>filter text…</string>
+            </property>
+            <property name="clearButtonEnabled">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QTableView" name="tableRecords">
+          <property name="alternatingRowColors">
+           <bool>true</bool>
+          </property>
+          <property name="showGrid">
+           <bool>false</bool>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QTableView { font-family: monospace; font-size: 11px; }</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
