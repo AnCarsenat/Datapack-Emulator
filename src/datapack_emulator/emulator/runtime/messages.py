@@ -61,6 +61,10 @@ VANILLA: dict[str, str] = {
     "commands.trigger.failed.unprimed": "You cannot trigger this objective yet",
     "commands.trigger.failed.invalid": "You can only trigger objectives that are 'trigger' type",
     "commands.trigger.simple.success": "Triggered %s",
+    "commands.trigger.set.success": "Triggered %s (set value to %s)",
+    "commands.trigger.add.success": "Triggered %s (added %s to value)",
+    "permissions.requires.player": "A player is required to run this command here",
+    "parsing.int.invalid": "Invalid integer '%s'",
     # tags
     "commands.tag.add.success.single": "Added tag '%s' to %s",
     "commands.tag.add.failed": "Target either already has the tag or has too many tags",

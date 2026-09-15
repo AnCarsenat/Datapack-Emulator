@@ -1,8 +1,14 @@
 """Command tests: run a command in a fresh world and check what happened.
 
-A test is what you would type into a server console after the pack loaded —
-``function hat:tick``, ``say hi``, ``scoreboard players get #global counter`` —
-optionally at a later tick and with text the game output must contain.
+A test is what you would type into a server console, or into chat as a player,
+once the pack is running — ``function hat:tick``, ``say hi``, ``trigger hat``,
+``scoreboard players get #global counter`` — optionally at a later tick and
+with text the game output must contain.
+
+Timing follows the game: commands typed by a player or on the console are
+handled *after* the functions of the server tick they arrive in. A test at tick
+N therefore runs in server tick N once ``#minecraft:tick`` (and, in tick 0,
+``#minecraft:load``) has run — tick functions have run N + 1 times.
 
 It passes when:
 
@@ -19,7 +25,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.commands.parser import Command
+from datapack_emulator.emulator.commands.parser import Command, Selector
+from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.datapack import Datapack
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
@@ -38,11 +45,13 @@ def _as_int(value: Any, default: int = 0) -> int:
 @dataclass
 class CommandTest:
     command: str
-    #: 0 runs right after #minecraft:load; N runs after N ticks
+    #: the server tick it runs in, after that tick's functions (0 = the first tick)
     at_tick: int = 0
     #: text the game output of the command must contain ("" = no check)
     expect: str = ""
     enabled: bool = True
+    #: who types it: "" for the server console, or a player name / selector
+    run_as: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -54,6 +63,7 @@ class CommandTest:
             at_tick=max(0, _as_int(data.get("at_tick"))),
             expect=str(data.get("expect", "")),
             enabled=bool(data.get("enabled", True)),
+            run_as=str(data.get("run_as", "")).strip(),
         )
 
 
@@ -89,7 +99,7 @@ def run_tests(
         seed=seed,
         vanilla=vanilla,
     )
-    emulator.run(ticks=0)  # start the server and run #minecraft:load
+    emulator.start()
 
     results: dict[int, TestResult] = {}
     ordered = sorted(
@@ -97,7 +107,8 @@ def run_tests(
         key=lambda pair: pair[1].at_tick,
     )
     for index, test in ordered:
-        while emulator.world.tick < test.at_tick:
+        # the game time is N + 1 once server tick N has run its functions
+        while emulator.world.tick <= test.at_tick:
             emulator.run_tick()
         results[index] = run_one(emulator, test)
     return [results[index] for index in sorted(results)]
@@ -108,8 +119,9 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
     if command is None:
         return TestResult(test, False, "nothing to run: the command is empty or a comment")
     first = len(emulator.output.records)
-    emulator.output.app(f"test: {test.command} (tick {emulator.world.tick})")
-    result = emulator.run_command(command, emulator.root_context())
+    who = f" as {test.run_as}" if test.run_as else ""
+    emulator.output.app(f"test: {test.command}{who} (tick {test.at_tick})")
+    result = run_as(emulator, command, test.run_as)
     records = emulator.output.records[first:]
 
     visible = [r for r in records if r.failure and r.level >= LogLevel.ERROR]
@@ -128,3 +140,34 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
         )
     detail = f"passed (value {result.value})"
     return TestResult(test, True, detail, result.value, records)
+
+
+def run_as(emulator: Emulator, command: Command, who: str = "") -> CommandResult:
+    """Run ``command`` the way it would be typed: on the console (``who`` empty)
+    or by each entity ``who`` selects, at its position — like ``execute as <who>
+    at @s run <command>``."""
+    root = emulator.root_context()
+    if not who:
+        return emulator.run_command(command, root)
+    selector = Selector.parse(who)
+    found = emulator.world.select(selector, root)
+    if not found:
+        key = (
+            "argument.entity.notfound.player"
+            if selector.is_player_only or selector.kind == "literal"
+            else "argument.entity.notfound.entity"
+        )
+        root.game_error(key)
+        return CommandResult.failure()
+    successes = total = 0
+    for entity in found:
+        context = root.branch(
+            executor=entity,
+            position=list(entity.position),
+            rotation=list(entity.rotation),
+            dimension=entity.dimension,
+        )
+        result = emulator.run_command(command, context)
+        successes += int(result.success)
+        total += result.value
+    return CommandResult(success=successes > 0, value=total if total else successes)

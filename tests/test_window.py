@@ -140,8 +140,8 @@ def test_tests_table_runs_commands_and_saves_with_the_project(window, make_pack,
     )
     results = window.environment.run()
     assert [result.passed for result in results] == [True, False]
-    assert window.table_tests.item(0, 3).text().startswith("✔")
-    assert window.table_tests.item(1, 3).text().startswith("✘")
+    assert window.table_tests.item(0, 4).text().startswith("✔")
+    assert window.table_tests.item(1, 4).text().startswith("✘")
     assert window.test_summary.text().startswith("1/2 passed")
 
     window.spin_seed.setValue(42)
@@ -285,7 +285,7 @@ def test_ctrl_s_saves_tests_into_a_dpemu_and_open_restores_them(app, window, mak
 
     # a cell still being edited when Ctrl+S is pressed is kept
     table = window.table_tests
-    table.editItem(table.item(0, 1))
+    table.editItem(table.item(0, 2))
     app.processEvents()
     editor = next(w for w in table.viewport().findChildren(QLineEdit) if w.isVisible())
     editor.setText("function test:tick")
@@ -374,3 +374,13 @@ def test_a_project_restores_the_engine_selection(window, make_pack):
     window.projects.apply(Project(name="q", datapack=pack, engine_versions=["26.2", "nope"]))
     assert [v.id for v in engine.selected_versions()] == ["26.2"]
     engine.close()
+
+
+def test_tests_table_runs_as_a_player(window):
+    from datapack_emulator.emulator.testing import CommandTest
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.environment.set_tests([CommandTest("trigger hat", run_as="Player1")])
+    assert window.environment.tests()[0].run_as == "Player1"
+    assert [result.passed for result in window.environment.run()] == [True]

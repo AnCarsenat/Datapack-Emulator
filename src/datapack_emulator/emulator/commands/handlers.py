@@ -305,7 +305,11 @@ def _apply_operation(operator: str, left: int, right: int) -> int:
 
 
 def cmd_trigger(command: Command, context: ExecutionContext) -> CommandResult:
-    if not command.arguments or context.executor is None:
+    if not command.arguments:
+        return CommandResult.failure()
+    if context.executor is None or not context.executor.is_player:
+        # the console, a command block or a non-player entity cannot trigger
+        context.game_error("permissions.requires.player")
         return CommandResult.failure()
     objective = command.arguments[0]
     board = context.world.scoreboard
@@ -320,15 +324,34 @@ def cmd_trigger(command: Command, context: ExecutionContext) -> CommandResult:
     if (holder, objective) not in board.enabled_triggers:
         context.game_error("commands.trigger.failed.unprimed")
         return CommandResult.failure()
-    if len(command.arguments) >= 3 and command.arguments[1] == "set":
-        board.set(holder, objective, int(command.arguments[2]))
-    elif len(command.arguments) >= 3 and command.arguments[1] == "add":
-        board.add(holder, objective, int(command.arguments[2]))
+    mode = command.arguments[1] if len(command.arguments) >= 3 else ""
+    amount = _integer(context, command.arguments[2]) if mode in ("set", "add") else 1
+    if amount is None:
+        return CommandResult.failure()
+    board.enabled_triggers.discard((holder, objective))
+    if mode == "set":
+        board.set(holder, objective, amount)
+        context.feedback("commands.trigger.set.success", objective, amount)
+    elif mode == "add":
+        board.add(holder, objective, amount)
+        context.feedback("commands.trigger.add.success", objective, amount)
     else:
         board.add(holder, objective, 1)
-    board.enabled_triggers.discard((holder, objective))
-    context.feedback("commands.trigger.simple.success", objective)
+        context.feedback("commands.trigger.simple.success", objective)
     return CommandResult(success=True, value=1)
+
+
+def _integer(context: ExecutionContext, token: str) -> int | None:
+    """A Java int argument; vanilla rejects anything else before running."""
+    try:
+        value = int(token)
+    except ValueError:
+        context.game_error("parsing.int.invalid", token)
+        return None
+    if not -(2**31) <= value < 2**31:
+        context.game_error("parsing.int.invalid", token)
+        return None
+    return value
 
 
 # ---------------------------------------------------------------------------

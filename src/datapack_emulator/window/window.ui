@@ -341,7 +341,7 @@ QMenuBar::item:selected {
                <item>
                 <widget class="QLabel" name="labelTestsHelp">
                  <property name="text">
-                  <string>Each test runs a command as the server — e.g. "function hat:tick" or "say hi" — after #minecraft:load (tick 0) or at a later tick, in a fresh world. It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
+                  <string>Each test runs a command in a fresh world, on the server console or — with "run as" set to a player such as Player1 — typed by that player, e.g. "trigger hat". Like in game, it runs in its tick after that tick's functions (tick 0 is the first tick, where #minecraft:load runs too). It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
@@ -371,6 +371,14 @@ QMenuBar::item:selected {
                  <column>
                   <property name="text">
                    <string>tick</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>run as</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>empty: the server console; a player name or selector (Player1, @a) types it in chat</string>
                   </property>
                  </column>
                  <column>

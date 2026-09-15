@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QAbstractItemDelegate, QTableWidgetItem, QWidget
 from datapack_emulator.emulator.testing import CommandTest, TestResult, run_tests
 from datapack_emulator.window.controllers.base import TAB_ENVIRONMENT, Controller
 
-COLUMN_TICK, COLUMN_COMMAND, COLUMN_EXPECT, COLUMN_RESULT = range(4)
+COLUMN_TICK, COLUMN_AS, COLUMN_COMMAND, COLUMN_EXPECT, COLUMN_RESULT = range(5)
 PASS_COLOUR = QColor("#1e6f3d")
 FAIL_COLOUR = QColor("#c0392b")
 
@@ -36,6 +36,7 @@ class EnvironmentController(Controller):
         tick.setCheckState(Qt.Checked if test.enabled else Qt.Unchecked)
         tick.setToolTip("uncheck to skip this test")
         table.setItem(row, COLUMN_TICK, tick)
+        table.setItem(row, COLUMN_AS, QTableWidgetItem(test.run_as))
         table.setItem(row, COLUMN_COMMAND, QTableWidgetItem(test.command))
         table.setItem(row, COLUMN_EXPECT, QTableWidgetItem(test.expect))
         result = QTableWidgetItem("")
@@ -45,7 +46,7 @@ class EnvironmentController(Controller):
 
     def _fit_columns(self) -> None:
         table = self.window.table_tests
-        for column in (COLUMN_TICK, COLUMN_COMMAND, COLUMN_EXPECT):
+        for column in (COLUMN_TICK, COLUMN_AS, COLUMN_COMMAND, COLUMN_EXPECT):
             table.resizeColumnToContents(column)
             table.setColumnWidth(column, min(max(table.columnWidth(column), 80), 360))
 
@@ -77,6 +78,7 @@ class EnvironmentController(Controller):
                     at_tick=at_tick,
                     expect=_text(table.item(row, COLUMN_EXPECT)),
                     enabled=tick_item is None or tick_item.checkState() == Qt.Checked,
+                    run_as=_text(table.item(row, COLUMN_AS)),
                 )
             )
         return tests

@@ -36,7 +36,8 @@ def test_command_tests_pass_fail_and_run_at_their_tick(make_pack):
     assert by_command["function test:greet"].passed
     assert not by_command["say hi"].passed and "expected output" in by_command["say hi"].reason
     ticks = by_command["scoreboard players get #ticks t"]
-    assert ticks.passed and ticks.value == 5
+    # tick 5 runs after that tick's functions: #minecraft:tick has run 6 times
+    assert ticks.passed and ticks.value == 6
     assert "none is set" in by_command["scoreboard players get #nobody t"].reason
     assert "Unknown function" in by_command["function test:missing"].reason
     assert not by_command["# just a comment"].passed
@@ -45,5 +46,46 @@ def test_command_tests_pass_fail_and_run_at_their_tick(make_pack):
 
 
 def test_command_tests_round_trip_through_dicts():
-    test = CommandTest("function hat:tick", at_tick=3, expect="Hat", enabled=False)
+    test = CommandTest("function hat:tick", at_tick=3, expect="Hat", enabled=False, run_as="@p")
     assert CommandTest.from_dict(test.to_dict()) == test
+
+
+def test_any_hat_trigger_works_from_the_first_tick_as_a_player():
+    """Reported: `trigger hat` failed with "You cannot trigger this objective yet"
+    although it works in game, where chat commands run after the tick functions."""
+    from pathlib import Path
+
+    pack = Datapack.load(Path(__file__).parents[1] / "samples" / "hat")
+    results = run_tests(
+        pack,
+        [
+            CommandTest("trigger hat", run_as="Player1"),
+            CommandTest("trigger hat", run_as="Player1", at_tick=3),
+            CommandTest("trigger hat"),
+            CommandTest("trigger hat", run_as="Nobody"),
+        ],
+        version="26.2",
+    )
+    assert results[0].passed and results[1].passed, [r.reason for r in results]
+    assert results[2].reason == "A player is required to run this command here"
+    assert results[3].reason == "No player was found"
+
+
+def test_a_trigger_is_used_up_until_enabled_again(make_pack):
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+                "data/test/function/load.mcfunction": (
+                    "scoreboard objectives add t trigger\nscoreboard players enable @a t\n"
+                ),
+            }
+        )
+    )
+    results = run_tests(
+        pack,
+        [CommandTest("trigger t set 4", run_as="@a"), CommandTest("trigger t", run_as="@a")],
+        version="1.21.4",
+    )
+    assert results[0].passed and "set value to 4" in results[0].records[-1].message
+    assert results[1].reason == "You cannot trigger this objective yet"
