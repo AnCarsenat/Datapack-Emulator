@@ -50,7 +50,9 @@ Without a jar nothing is rejected: ids are let through rather than guessed at.
   equivalents)
 * `~/.local/share/PrismLauncher/libraries/com/mojang/minecraft/<v>/`
   (also MultiMC and the Prism Flatpak)
-* `.cache/vanilla/<v>/` in this repository (downloads)
+* the download cache (downloads): `.cache/vanilla/<v>/` in a checkout, the
+  per-user cache folder (`~/.cache/datapack-emulator/vanilla/<v>/` on Linux)
+  for an installed copy — see [architecture](architecture.md)
 
 The main window loads the jar for the selected version automatically when one
 is found. *file › load client jar…* picks any jar by hand.
@@ -68,15 +70,19 @@ python -m datapack_emulator.emulator vanilla --download 1.21.4
 
 The version is looked up in Mojang's
 `piston-meta.mojang.com/mc/game/version_manifest_v2.json`, and its client jar
-is streamed to `.cache/vanilla/<version>/…jar.part`. When the transfer ends
+is streamed to `<download cache>/<version>/…jar.part`. When the transfer ends
 the file's SHA-1 is compared with the one Mojang publishes and only then
 renamed into place; a cancelled, interrupted or corrupt download deletes the
-partial file. Nothing is downloaded unless you ask. `.cache/` is git-ignored.
+partial file. Nothing is downloaded unless you ask. In a checkout `.cache/` is git-ignored.
 
 ## From code
 
 ```python
+from datapack_emulator.emulator import Datapack, Emulator
+from datapack_emulator.emulator.engine import TestEngine
 from datapack_emulator.emulator.vanilla import default_library
+
+pack = Datapack.load("samples/hat")
 
 library = default_library()
 assets = library.load("26.2", allow_download=False)   # None if not installed

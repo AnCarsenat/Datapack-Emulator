@@ -54,7 +54,8 @@ tools/generate_version_data.py
 tests/       pytest suite; conftest.py builds synthetic packs and client jars
 .github/     CI workflow, Dependabot, issue and pull request templates
 docs/
-samples/     example packs: hat (single version), hat_v2 (1.16.1 → 26.3)
+samples/     example packs: hat (formats 6–107.1, 1.16.2 → 26.2) and hat_v2
+             (formats 5–121, runs cleanly from 1.16.1 to 26.3)
 projects/    saved .dpemu projects (git-ignored)
 generated/   reports and .dot files (git-ignored)
 .cache/      downloaded client jars, unpacked projects (git-ignored)

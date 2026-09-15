@@ -6,7 +6,7 @@ checked against the real base game read out of a `client.jar`.
 
 * emulates `#minecraft:load` / `#minecraft:tick`, scoreboards, selectors,
   `execute`, macros, schedules, storage
-* knows which commands exist in each release from 1.13 to 26.2, and which
+* knows which commands exist in each version from 1.13 to 26.3 (26.3-rc-3), and which
   `pack.mcmeta` overlays apply
 * prints Minecraft's own error messages, kept apart from the app's own logs
 * profiler with per-function estimated cost, call-graph DAG, version matrix

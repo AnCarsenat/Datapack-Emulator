@@ -47,8 +47,8 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 | `ticks`, `players`, `seed` | run settings |
 | `speed` | `fast` or `realtime` |
 | `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `enabled` (results are not saved) |
-| `engine_versions` | versions ticked in the engine window when the project was saved |
-| `vanilla_jar` | a client jar picked by hand; empty when it was found automatically. Jars are never put in the archive |
+| `engine_versions` | versions ticked in the engine window when the project was saved; ticked again when it is opened |
+| `vanilla_jar` | the client jar in use when the project was saved (picked by hand or found automatically); loaded again on open if the file still exists. Jars are never put in the archive |
 | `archive_format` | layout version; archives from a newer emulator are refused rather than misread |
 
 ### Opening and saving
@@ -93,6 +93,8 @@ you save is included.
 ## From code
 
 ```python
+from pathlib import Path
+
 from datapack_emulator.project import Project, list_projects
 
 project = Project(name="hat", datapack=Path("samples/hat"), version="1.21.4")
