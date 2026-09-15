@@ -105,18 +105,62 @@ def run_tests(
             vanilla=vanilla,
         )
     emulator.start()
+    schedule = TestSchedule(tests)
+    while not schedule.done:
+        tick = emulator.world.tick
+        emulator.run_tick()
+        schedule.after_tick(emulator, tick)
+    return schedule.results()
 
-    results: dict[int, TestResult] = {}
-    ordered = sorted(
-        ((index, test) for index, test in enumerate(tests) if test.enabled),
-        key=lambda pair: pair[1].at_tick,
-    )
-    for index, test in ordered:
-        # the game time is N + 1 once server tick N has run its functions
-        while emulator.world.tick <= test.at_tick:
-            emulator.run_tick()
-        results[index] = run_one(emulator, test)
-    return [results[index] for index in sorted(results)]
+
+class TestSchedule:
+    """Tests waiting for their tick while something else drives the ticks — a
+    run in the window, a version in the engine, or :func:`run_tests`.
+
+    Call :meth:`after_tick` once server tick N has run (the game time was N when
+    it started): every enabled test at tick N, or an earlier one not run yet,
+    runs then.
+    """
+
+    #: not a pytest test class, despite the name
+    __test__ = False
+
+    def __init__(self, tests: list[CommandTest]):
+        self.tests = list(tests)
+        self._pending = sorted(
+            ((index, test) for index, test in enumerate(self.tests) if test.enabled),
+            key=lambda pair: pair[1].at_tick,
+        )
+        self._results: dict[int, TestResult] = {}
+
+    @property
+    def done(self) -> bool:
+        return not self._pending
+
+    def after_tick(self, emulator: Emulator, tick: int) -> list[int]:
+        """Run the tests due after server tick ``tick``; their indexes in ``tests``."""
+        ran = []
+        while self._pending and self._pending[0][1].at_tick <= tick:
+            index, test = self._pending.pop(0)
+            self._results[index] = run_one(emulator, test)
+            ran.append(index)
+        return ran
+
+    def by_index(self, include_unreached: bool = True) -> dict[int, TestResult]:
+        """Results keyed by position in ``tests``; tests the run never reached
+        fail with "not reached" (disabled tests have no entry)."""
+        results = dict(self._results)
+        if include_unreached:
+            for index, test in self._pending:
+                results[index] = TestResult(
+                    test, False, f"not reached: the run ended before tick {test.at_tick}"
+                )
+        return results
+
+    def results(self) -> list[TestResult]:
+        """One result per enabled test, in input order."""
+        results = self.by_index()
+        return [results[index] for index in sorted(results)]
 
 
 def run_one(emulator: Emulator, test: CommandTest) -> TestResult:

@@ -170,6 +170,16 @@ selection-background-color: rgb(228, 251, 255);</string>
            </property>
           </widget>
          </item>
+         <item row="3" column="1">
+          <widget class="QCheckBox" name="checkRunTests">
+           <property name="text">
+            <string>run tests</string>
+           </property>
+           <property name="toolTip">
+            <string>run the environment tab's tests in every version, each in its tick; the tests column shows how many passed</string>
+           </property>
+          </widget>
+         </item>
         </layout>
        </item>
        <item>

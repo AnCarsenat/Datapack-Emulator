@@ -29,6 +29,7 @@ from datapack_emulator.emulator.datapack import Datapack, PackView
 from datapack_emulator.emulator.namespace import PLURAL_REGISTRIES
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
+from datapack_emulator.emulator.testing import CommandTest, TestResult, TestSchedule
 from datapack_emulator.emulator.vanilla import VanillaLibrary
 from datapack_emulator.emulator.versions import Version
 
@@ -58,6 +59,8 @@ class VersionRun:
     cycles: list[list[str]] = field(default_factory=list)
     profiler: Profiler | None = None
     graph: CallGraph | None = None
+    #: command tests run during the ticks, when the engine was given any
+    tests: list[TestResult] = field(default_factory=list)
 
     # -- summaries --------------------------------------------------------
 
@@ -83,14 +86,24 @@ class VersionRun:
         ]
 
     @property
+    def tests_passed(self) -> int:
+        return sum(1 for result in self.tests if result.passed)
+
+    @property
+    def tests_summary(self) -> str:
+        return f"{self.tests_passed}/{len(self.tests)}" if self.tests else "-"
+
+    @property
     def status(self) -> str:
-        """errors > warnings > unsupported > ok.
+        """errors > tests failed > warnings > unsupported > ok.
 
         "unsupported" only means the pack's metadata does not claim this version:
         the game still loads it, so real problems take precedence.
         """
         if self.errors:
             return "errors"
+        if self.tests_passed < len(self.tests):
+            return "tests failed"
         if self.warnings:
             return "warnings"
         if not self.supported:
@@ -115,8 +128,11 @@ class TestEngine:
         seed: int = 0,
         library: VanillaLibrary | None = None,
         allow_download: bool = False,
+        tests: list[CommandTest] | None = None,
     ):
         self.datapack = datapack
+        #: command tests to run in every version, each in its tick
+        self.tests = list(tests or [])
         self.ticks = ticks
         self.players = players
         self.seed = seed
@@ -189,7 +205,17 @@ class TestEngine:
             seed=self.seed,
             vanilla=assets,
         )
-        emulator.run(ticks=self.ticks)
+        schedule = TestSchedule(self.tests) if self.tests else None
+        emulator.start()
+        if self.ticks <= 0:
+            emulator.run(ticks=0)
+        for _ in range(self.ticks):
+            tick = emulator.world.tick
+            emulator.run_tick()
+            if schedule is not None:
+                schedule.after_tick(emulator, tick)
+        if schedule is not None:
+            run.tests = schedule.results()
 
         # functions the version could not parse were logged by the emulator as
         # load failures; keep what they needed for the summary columns
@@ -309,6 +335,7 @@ class TestEngine:
             "warnings": "#b9770e",
             "errors": "#c0392b",
             "unsupported": "#7f8c8d",
+            "tests failed": "#8e44ad",
         }
         for run in results:
             rows.append(
@@ -321,6 +348,7 @@ class TestEngine:
                 f"<td>{run.worst_tick_us / 1000:.2f}</td>"
                 f"<td>{run.warnings}</td>"
                 f"<td>{run.errors}</td>"
+                f"<td>{run.tests_summary}</td>"
                 f"<td class='id'>{escape(', '.join(sorted(run.unknown_commands))) or '-'}</td>"
                 f"<td class='id'>{escape(', '.join(run.overlays)) or '-'}</td>"
                 "</tr>"
@@ -340,10 +368,11 @@ class TestEngine:
 <h2>{title}</h2>
 <table>
 <thead><tr><th>version</th><th>format</th><th>status</th><th>commands</th><th>total ms</th>
-<th>worst ms</th><th>warnings</th><th>errors</th><th>unknown commands</th><th>overlays</th></tr>
+<th>worst ms</th><th>warnings</th><th>errors</th><th>tests</th><th>unknown commands</th>
+<th>overlays</th></tr>
 </thead>
 <tbody>
-{chr(10).join(rows) or "<tr><td colspan='10'>no runs</td></tr>"}
+{chr(10).join(rows) or "<tr><td colspan='11'>no runs</td></tr>"}
 </tbody>
 </table>
 </body>

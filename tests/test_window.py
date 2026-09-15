@@ -8,6 +8,7 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication, QLineEdit  # noqa: E402
 
 
@@ -451,3 +452,52 @@ def test_world_dock_shows_scores_entities_and_storage(app, window):
     storage = window.tree_storage
     assert storage.topLevelItem(0).text(0) == "test:mem"
     assert "entities" in window.world_label.text()
+
+
+def test_tests_run_during_runs_and_steps_when_ticked(window, make_pack, tmp_path):
+    from datapack_emulator.emulator.testing import CommandTest
+    from datapack_emulator.project import Project
+
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.environment.set_tests(
+        [
+            CommandTest("scoreboard players get #ticks t", at_tick=2),
+            CommandTest("say never", at_tick=50),
+        ]
+    )
+    window.check_tests_during_runs.setChecked(True)
+    window.spin_ticks.setValue(5)
+    window.runs.run_emulator()
+    window.runs.wait()
+    assert window.table_tests.item(0, 4).text() == "✔ passed (value 3)"
+    assert window.table_tests.item(1, 4).text().startswith("✘ not reached")
+    assert window.emulator.world.tick == 5  # the tests ran inside the run's world
+
+    window.runs.step()  # tick 5: no test is due, the results stay
+    assert window.table_tests.item(0, 4).text() == "✔ passed (value 3)"
+    window.environment.set_tests([CommandTest("scoreboard players get #ticks t", at_tick=6)])
+    window.runs.step()  # tick 6
+    assert window.table_tests.item(0, 4).text() == "✔ passed (value 7)"
+
+    saved = window.projects.capture().save(tmp_path / "p.dpemu")
+    assert Project.load(saved).tests_during_runs is True
+
+
+def test_engine_window_runs_the_environment_tests(window, make_pack):
+    from datapack_emulator.emulator.testing import CommandTest
+
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.environment.set_tests([CommandTest("scoreboard players get #ticks t", at_tick=1)])
+    window.runs.open_engine()
+    engine = window.engine_window
+    # the pack uses 1.21's function/ folders: 1.20.4 loads none of it
+    engine.select_ids(["1.20.4", "1.21.4"])
+    engine.check_run_tests.setChecked(True)
+    engine.run_matrix()
+    assert [run.tests_summary for run in engine._runs] == ["0/1", "1/1"]
+    assert engine._runs[0].status in ("errors", "tests failed")
+    headers = [
+        engine.results.headerData(c, Qt.Horizontal) for c in range(engine.results.columnCount())
+    ]
+    assert "tests" in headers
+    engine.close()

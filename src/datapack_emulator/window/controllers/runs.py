@@ -4,11 +4,13 @@ profiler report, the call graph, the dot export and the engine window."""
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 from PySide6.QtCore import QTimer, QUrl
 
 from datapack_emulator.emulator.analysis.graph import CallGraph
 from datapack_emulator.emulator.runtime.output import LogLevel
+from datapack_emulator.emulator.testing import TestSchedule
 from datapack_emulator.settings import PATHS
 from datapack_emulator.window.controllers.base import TAB_GRAPH, TAB_PROFILER, Controller
 from datapack_emulator.window.engine_window import EngineWindow
@@ -31,6 +33,8 @@ class RunController(Controller):
         self.remaining: int | None = 0
         self.running = False
         self._rebuild_graph = False
+        #: tests waiting for their tick in the current run ("run tests during runs")
+        self.schedule: TestSchedule | None = None
 
     def connect(self) -> None:
         window = self.window
@@ -82,6 +86,7 @@ class RunController(Controller):
         ticks = window.spin_ticks.value()
         self.remaining = None if ticks < 0 else ticks
         self._rebuild_graph = graph
+        self.schedule = self._test_schedule()
         self._set_running(True)
         if self.remaining == 0:
             window.emulator.run(ticks=0)  # just start the server and run load
@@ -102,6 +107,7 @@ class RunController(Controller):
             return
         self.timer.stop()
         self._set_running(False)
+        self.schedule = None
         self.window.log_view.flush()
         self.show_tick()
         if self.window.emulator is not None:
@@ -122,7 +128,9 @@ class RunController(Controller):
             window.datapacks.rebuild_emulator()
         assert window.emulator is not None
         window.emulator.start()
+        tick = window.emulator.world.tick
         window.emulator.run_tick()
+        self._run_tests_at(tick)
         window.log_view.flush()
         self.show_tick()
         window.world_view.refresh()
@@ -139,7 +147,12 @@ class RunController(Controller):
         deadline = time.monotonic() + self.BATCH_BUDGET_S
         realtime = self.speed == "realtime" and self.timer.isActive()
         while self.remaining is None or self.remaining > 0:
+            tick = emulator.world.tick
             emulator.run_tick()
+            if self.schedule is not None and self.schedule.after_tick(emulator, tick):
+                self.window.environment.show_results(
+                    self.schedule.by_index(include_unreached=False), pending="waiting for its tick"
+                )
             if self.remaining is not None:
                 self.remaining -= 1
             if realtime or time.monotonic() >= deadline:
@@ -154,6 +167,9 @@ class RunController(Controller):
         self.timer.stop()
         self._set_running(False)
         window.log_view.flush()
+        if self.schedule is not None:
+            window.environment.show_results(self.schedule.by_index())
+            self.schedule = None
         if window.emulator is None:
             return
         profiler = window.emulator.profiler
@@ -173,6 +189,33 @@ class RunController(Controller):
                 else ""
             )
         )
+
+    # -- tests during runs ----------------------------------------------------
+
+    def _test_schedule(self) -> TestSchedule | None:
+        window = self.window
+        if not window.check_tests_during_runs.isChecked():
+            return None
+        tests = window.environment.tests()
+        if not any(test.enabled for test in tests):
+            return None
+        window.environment.show_results({}, pending="waiting for its tick")
+        return TestSchedule(tests)
+
+    def _run_tests_at(self, tick: int) -> None:
+        """Step: the enabled tests of exactly this tick run after it."""
+        window = self.window
+        if not window.check_tests_during_runs.isChecked() or window.emulator is None:
+            return
+        tests = [
+            test if test.at_tick == tick else replace(test, enabled=False)
+            for test in window.environment.tests()
+        ]
+        schedule = TestSchedule(tests)
+        if schedule.after_tick(window.emulator, tick):
+            window.environment.show_results(
+                schedule.by_index(include_unreached=False), pending=f"not at tick {tick}"
+            )
 
     def _set_running(self, running: bool) -> None:
         window = self.window
@@ -259,7 +302,10 @@ class RunController(Controller):
             return
         if window.engine_window is None:
             window.engine_window = EngineWindow(
-                window.datapack, parent=window, library=window.library
+                window.datapack,
+                parent=window,
+                library=window.library,
+                tests_provider=window.environment.tests,
             )
             if window.project.engine_versions:
                 window.engine_window.select_ids(window.project.engine_versions)

@@ -139,6 +139,7 @@ class MainWindow(QMainWindow):
         self.spin_players: QSpinBox = find(QSpinBox, "spinPlayers")
         self.spin_seed: QSpinBox = find(QSpinBox, "spinSeed")
         self.combo_speed: QComboBox = find(QComboBox, "comboSpeed")
+        self.check_tests_during_runs: QCheckBox = find(QCheckBox, "checkTestsDuringRuns")
         self.tick_label: QLabel = find(QLabel, "labelTickStatus")
         self.table_tests: QTableWidget = find(QTableWidget, "tableTests")
         self.add_test_button: QPushButton = find(QPushButton, "buttonAddTest")

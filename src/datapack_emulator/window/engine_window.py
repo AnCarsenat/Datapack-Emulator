@@ -44,9 +44,11 @@ UI_FILE = Path(__file__).with_name("engine.ui")
 
 
 class EngineWindow(QMainWindow):
-    def __init__(self, datapack: Datapack, parent=None, library=None):
+    def __init__(self, datapack: Datapack, parent=None, library=None, tests_provider=None):
         super().__init__(parent)
         self.datapack = datapack
+        #: returns the tests to run when "run tests" is ticked (the main window's)
+        self.tests_provider = tests_provider or list
         self.library = library or default_library()
         self.results = ResultsTableModel(self)
         self.records = LogTableModel(self)
@@ -78,6 +80,7 @@ class EngineWindow(QMainWindow):
         self.check_app: QCheckBox = find(QCheckBox, "checkApp")
         self.check_emulator: QCheckBox = find(QCheckBox, "checkEmulator")
         self.check_game: QCheckBox = find(QCheckBox, "checkGame")
+        self.check_run_tests: QCheckBox = find(QCheckBox, "checkRunTests")
 
         self.spin_ticks.setValue(EMULATION.DEFAULT_TICKS)
         self.spin_players.setValue(EMULATION.DEFAULT_PLAYERS)
@@ -190,12 +193,17 @@ class EngineWindow(QMainWindow):
             self.statusBar().showMessage("select at least one version")
             return
 
+        tests = self.tests_provider() if self.check_run_tests.isChecked() else []
+        if self.check_run_tests.isChecked() and not any(test.enabled for test in tests):
+            self.statusBar().showMessage("no enabled tests: add some in the environment tab")
+            return
         engine = TestEngine(
             self.datapack,
             ticks=self.spin_ticks.value(),
             players=self.spin_players.value(),
             seed=self.spin_seed.value(),
             library=self.library,
+            tests=tests,
         )
         self.results.clear()
         self.records.clear()
@@ -214,7 +222,9 @@ class EngineWindow(QMainWindow):
             self.repaint()
 
         self.progress.setValue(len(chosen))
-        worst = [run for run in self._runs if run.status in ("errors", "unsupported")]
+        worst = [
+            run for run in self._runs if run.status in ("errors", "tests failed", "unsupported")
+        ]
         self.label_results.setText(
             f"results — {len(self._runs)} version(s), {len(worst)} with problems"
         )
@@ -245,6 +255,7 @@ class EngineWindow(QMainWindow):
         self.label_detail.setText(
             f"{run.version.id} — {run.status}, {run.commands} command(s), "
             f"worst tick {run.worst_tick_us / 1000:.2f} ms"
+            + (f", tests {run.tests_summary}" if run.tests else "")
             + (f", overlays: {', '.join(run.overlays)}" if run.overlays else "")
         )
 

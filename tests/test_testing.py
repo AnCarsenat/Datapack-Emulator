@@ -89,3 +89,23 @@ def test_a_trigger_is_used_up_until_enabled_again(make_pack):
     )
     assert results[0].passed and "set value to 4" in results[0].records[-1].message
     assert results[1].reason == "You cannot trigger this objective yet"
+
+
+def test_engine_runs_tests_in_every_version_and_reports_them(make_pack):
+    from datapack_emulator.emulator.engine import TestEngine
+
+    engine = TestEngine(
+        _pack(make_pack),
+        ticks=3,
+        tests=[
+            CommandTest("scoreboard players get #ticks t", at_tick=1),
+            CommandTest("say late", at_tick=10),
+            CommandTest("say off", enabled=False),
+        ],
+    )
+    (run,) = engine.run(["1.21.4"])
+    assert [result.passed for result in run.tests] == [True, False]
+    assert run.tests[0].value == 2
+    assert run.tests[1].reason == "not reached: the run ended before tick 10"
+    assert run.tests_summary == "1/2" and run.status == "tests failed"
+    assert "<td>1/2</td>" in TestEngine.to_html([run])

@@ -16,6 +16,7 @@ COLUMNS = (
     "worst ms",
     "warnings",
     "errors",
+    "tests",
     "unknown commands",
     "overlays",
 )
@@ -25,6 +26,7 @@ STATUS_COLOURS = {
     "warnings": QColor("#b9770e"),
     "errors": QColor("#c0392b"),
     "unsupported": QColor("#7f8c8d"),
+    "tests failed": QColor("#8e44ad"),
 }
 
 
@@ -58,6 +60,7 @@ class ResultsTableModel(QAbstractTableModel):
                 f"{run.worst_tick_us / 1000:.2f}",
                 str(run.warnings),
                 str(run.errors),
+                run.tests_summary,
                 ", ".join(sorted(run.unknown_commands)) or "-",
                 ", ".join(run.overlays) or "-",
             )[index.column()]

@@ -112,21 +112,21 @@ class EnvironmentController(Controller):
         window.log_view.flush()
         window.runs.show_tick()
         window.world_view.refresh()
-        self._show_results(tests, results)
+        enabled_rows = [row for row, test in enumerate(tests) if test.enabled]
+        self.show_results(dict(zip(enabled_rows, results, strict=True)))
         window.tabs.setCurrentWidget(window.tab_page(TAB_ENVIRONMENT))
         return results
 
-    def _show_results(self, tests: list[CommandTest], results: list[TestResult]) -> None:
+    def show_results(self, by_row: dict[int, TestResult], pending: str = "skipped") -> None:
+        """Fill the result column; rows without a result show ``pending``."""
         table = self.window.table_tests
-        # run_tests returns one result per enabled test, in table order
-        enabled_rows = [row for row, test in enumerate(tests) if test.enabled]
-        by_row = dict(zip(enabled_rows, results, strict=True))
         passed = 0
         for row in range(table.rowCount()):
             item = table.item(row, COLUMN_RESULT)
             result = by_row.get(row)
             if result is None:
-                item.setText("skipped")
+                item.setText(pending)
+                item.setToolTip("")
                 item.setForeground(QBrush(QColor("#7f8c8d")))
                 continue
             passed += result.passed
@@ -134,10 +134,9 @@ class EnvironmentController(Controller):
             item.setToolTip("\n".join(record.format() for record in result.records))
             item.setForeground(QBrush(PASS_COLOUR if result.passed else FAIL_COLOUR))
         self._fit_columns()
-        self.window.test_summary.setText(
-            f"{passed}/{len(results)} passed on {self.window.version.id}"
-        )
-        self.status(f"tests: {passed}/{len(results)} passed on {self.window.version.id}")
+        summary = f"{passed}/{len(by_row)} passed on {self.window.version.id}"
+        self.window.test_summary.setText(summary)
+        self.status(f"tests: {summary}")
 
 
 def _text(item: QTableWidgetItem | None) -> str:
