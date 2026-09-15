@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
 from src.emulator.commands.parser import Command
 
@@ -15,14 +16,14 @@ log = logging.getLogger(__name__)
 class Resource:
     """Any file inside ``data/<namespace>/``."""
 
-    extension: Optional[str] = None
+    extension: str | None = None
 
     def __init__(self, path: Path, namespace: str, registry: str, resource_path: str):
         self.path = Path(path)
         self.namespace = namespace
         self.registry = registry  # e.g. "function", "tags/function"
         self.resource_path = resource_path  # e.g. "sub/load"
-        self.error: Optional[str] = None
+        self.error: str | None = None
         #: "" for the base pack, otherwise the overlay directory it came from
         self.overlay: str = ""
 

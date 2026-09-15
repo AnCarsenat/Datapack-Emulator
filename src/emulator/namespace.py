@@ -10,9 +10,9 @@ so the version checker can warn about them.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator, Optional
 
 from src.emulator.resources import Function, Resource, Tag, resource_class
 
@@ -58,15 +58,15 @@ class DirectoryNode:
     name: str
     path: Path
     is_dir: bool
-    children: list["DirectoryNode"] = field(default_factory=list)
-    resource: Optional[Resource] = None
+    children: list[DirectoryNode] = field(default_factory=list)
+    resource: Resource | None = None
 
-    def walk(self) -> Iterator["DirectoryNode"]:
+    def walk(self) -> Iterator[DirectoryNode]:
         yield self
         for child in self.children:
             yield from child.walk()
 
-    def find(self, relative: str) -> Optional["DirectoryNode"]:
+    def find(self, relative: str) -> DirectoryNode | None:
         node: DirectoryNode = self
         for part in Path(relative).parts:
             for child in node.children:
@@ -100,7 +100,7 @@ class Namespace:
 
     # -- loading ----------------------------------------------------------
 
-    def load(self) -> "Namespace":
+    def load(self) -> Namespace:
         self.registries.clear()
         self.plural_folders.clear()
         self.raw_folders.clear()
@@ -138,7 +138,7 @@ class Namespace:
         rest[-1] = Path(rest[-1]).stem
         return (normalise_registry(raw_registry), raw_registry, "/".join(rest))
 
-    def _make_resource(self, file_path: Path) -> Optional[Resource]:
+    def _make_resource(self, file_path: Path) -> Resource | None:
         registry, raw_registry, resource_path = self._registry_of(file_path)
         if not registry:
             return None

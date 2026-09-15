@@ -36,15 +36,25 @@ def test_execute_chain_and_run_child():
 
 
 def test_features_cover_subcommands_conditions_and_macros():
-    command = Command.parse("$execute on vehicle if items entity @s weapon * run return run say $(x)")
+    command = Command.parse(
+        "$execute on vehicle if items entity @s weapon * run return run say $(x)"
+    )
     features = command.features()
-    assert {"command:execute", "execute:on", "condition:items", "return:run", "function:with"} <= features
+    assert {
+        "command:execute",
+        "execute:on",
+        "condition:items",
+        "return:run",
+        "function:with",
+    } <= features
 
 
 def test_calls_report_function_schedule_and_condition_edges():
     assert Command.parse("function test:a").calls() == [("test:a", "call")]
     assert Command.parse("schedule function test:b 5t").calls() == [("test:b", "schedule")]
-    assert Command.parse("execute if function #test:c run say x").calls() == [("#test:c", "condition")]
+    assert Command.parse("execute if function #test:c run say x").calls() == [
+        ("#test:c", "condition")
+    ]
     assert Command.parse("function test:d with storage test:s").calls() == [("test:d", "macro")]
 
 
@@ -68,7 +78,11 @@ def test_helpers():
     assert parse_duration("2t") == 2
     assert parse_duration("1d") == 24000
     assert in_range(5, "1..5") and not in_range(6, "..5") and in_range(3, "3")
-    assert parse_snbt('{Tags:["a"],NoGravity:1b,x:1.5d}') == {"Tags": ["a"], "NoGravity": 1, "x": 1.5}
+    assert parse_snbt('{Tags:["a"],NoGravity:1b,x:1.5d}') == {
+        "Tags": ["a"],
+        "NoGravity": 1,
+        "x": 1.5,
+    }
 
 
 def test_text_components_in_json_and_snbt():

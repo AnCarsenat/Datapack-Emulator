@@ -18,9 +18,9 @@ UI can filter and sort without re-parsing text.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import Callable, Iterable, Optional
 
 
 class LogSource(str, Enum):
@@ -48,7 +48,7 @@ class LogRecord:
     source: LogSource
     level: LogLevel
     message: str
-    tick: Optional[int] = None
+    tick: int | None = None
     function: str = ""
     line: int = 0
     command: str = ""
@@ -79,11 +79,11 @@ class OutputBus:
         #: identical messages past this count are dropped within one tick
         self.repeat_limit = 5
         self._repeats: dict[str, int] = {}
-        self._tick: Optional[int] = None
+        self._tick: int | None = None
 
     # -- emitting ---------------------------------------------------------
 
-    def set_tick(self, tick: Optional[int]) -> None:
+    def set_tick(self, tick: int | None) -> None:
         if tick != self._tick:
             self._repeats.clear()
         self._tick = tick
@@ -143,7 +143,7 @@ class OutputBus:
 
     def filtered(
         self,
-        sources: Optional[Iterable[LogSource]] = None,
+        sources: Iterable[LogSource] | None = None,
         min_level: LogLevel = LogLevel.DEBUG,
         text: str = "",
     ) -> list[LogRecord]:

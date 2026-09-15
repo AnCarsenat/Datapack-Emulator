@@ -18,7 +18,9 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "emulator" / "version_data.py"
 VERSIONS_URL = "https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json"
-COMMANDS_URL = "https://raw.githubusercontent.com/misode/mcmeta/{version}-summary/commands/data.json"
+COMMANDS_URL = (
+    "https://raw.githubusercontent.com/misode/mcmeta/{version}-summary/commands/data.json"
+)
 
 
 def fetch(url: str, target: pathlib.Path) -> pathlib.Path:
@@ -35,8 +37,11 @@ arguments = parser.parse_args()
 work = arguments.work_dir
 
 versions = json.loads(fetch(VERSIONS_URL, work / "versions.json").read_text())
-releases = [v for v in versions if v.get("type") == "release" and (v.get("data_pack_version") or 0) >= 4]
+releases = [
+    v for v in versions if v.get("type") == "release" and (v.get("data_pack_version") or 0) >= 4
+]
 releases = list(reversed(releases))
+
 
 def features(tree):
     children = tree["children"]
@@ -55,22 +60,27 @@ def features(tree):
         out.add(f"schedule:{name}")
     for name in children.get("return", {}).get("children", {}):
         out.add(f"return:{name}")
+
     def walk(node, depth=0):
         if depth > 3:
             return
         for key, value in (node.get("children") or {}).items():
             yield key
             yield from walk(value, depth + 1)
+
     if "with" in set(walk(children.get("function", {}))):
         out.add("function:with")
     return out
+
 
 since, until, previous, last = {}, {}, set(), None
 rows = []
 for release in releases:
     identifier = release["id"]
     tree = json.loads(
-        fetch(COMMANDS_URL.format(version=identifier), work / "trees" / f"{identifier}.json").read_text()
+        fetch(
+            COMMANDS_URL.format(version=identifier), work / "trees" / f"{identifier}.json"
+        ).read_text()
     )
     current = features(tree)
     for name in sorted(current - previous):
@@ -81,8 +91,12 @@ for release in releases:
     previous = current
     last = identifier
     rows.append(
-        (identifier, release["data_pack_version"], release.get("data_pack_version_minor", 0),
-         release["data_version"])
+        (
+            identifier,
+            release["data_pack_version"],
+            release.get("data_pack_version_minor", 0),
+            release["data_version"],
+        )
     )
 
 lines = [
@@ -98,7 +112,7 @@ lines = [
     "feature key to the first release that has it, ``FEATURE_UNTIL`` to the first",
     "release that dropped it again.  Keys look like ``command:say``, ``execute:on``,",
     "``condition:items``, ``store:storage``, ``schedule:clear``, ``return:run`` and",
-    '``function:with``.',
+    "``function:with``.",
     '"""',
     "",
     "from __future__ import annotations",

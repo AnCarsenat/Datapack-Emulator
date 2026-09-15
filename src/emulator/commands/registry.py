@@ -15,8 +15,7 @@ version, not a guess.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Optional
+from functools import cache
 
 from src.emulator import versions
 from src.emulator.commands.handlers import HANDLERS, Handler
@@ -26,10 +25,10 @@ from src.emulator.versions import Version
 @dataclass(frozen=True)
 class CommandSpec:
     name: str
-    handler: Optional[Handler]
+    handler: Handler | None
     available: bool
-    since: Optional[Version]
-    removed: Optional[Version]
+    since: Version | None
+    removed: Version | None
 
     @property
     def emulated(self) -> bool:
@@ -61,7 +60,7 @@ class CommandSet:
         return spec
 
     @staticmethod
-    def _removed(feature: str) -> Optional[Version]:
+    def _removed(feature: str) -> Version | None:
         from src.emulator.version_data import FEATURE_UNTIL
 
         until = FEATURE_UNTIL.get(feature)
@@ -72,9 +71,9 @@ class CommandSet:
     def supports(self, feature: str) -> bool:
         return versions.supports(self.version, feature)
 
-    def missing_features(self, needed: set[str]) -> list[tuple[str, Optional[Version]]]:
+    def missing_features(self, needed: set[str]) -> list[tuple[str, Version | None]]:
         """``(feature, version that introduced it)`` for everything unsupported."""
-        out: list[tuple[str, Optional[Version]]] = []
+        out: list[tuple[str, Version | None]] = []
         for feature in sorted(needed):
             if not self.supports(feature):
                 out.append((feature, versions.since_of(feature)))
@@ -92,6 +91,6 @@ class CommandSet:
         return f"<CommandSet {self.version.id} commands={len(self._vanilla)}>"
 
 
-@lru_cache(maxsize=None)
+@cache
 def command_set(version: Version) -> CommandSet:
     return CommandSet(version)

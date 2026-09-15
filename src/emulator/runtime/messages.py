@@ -16,7 +16,7 @@ snapshot below.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 #: translation key -> en_us string
 VANILLA: dict[str, str] = {
@@ -105,11 +105,11 @@ OURS: dict[str, str] = {
 class MessageCatalogue:
     """The strings of one version: its ``en_us.json`` over the baked-in table."""
 
-    def __init__(self, lang: Optional[dict[str, str]] = None, source: str = "built-in"):
+    def __init__(self, lang: dict[str, str] | None = None, source: str = "built-in"):
         self.lang: dict[str, str] = lang or {}
         self.source = source
 
-    def template(self, key: str) -> Optional[str]:
+    def template(self, key: str) -> str | None:
         return self.lang.get(key) or VANILLA.get(key) or OURS.get(key)
 
     def render(self, key: str, *arguments: Any) -> str:
@@ -128,7 +128,7 @@ def message(key: str, *arguments: Any) -> str:
     return DEFAULT.render(key, *arguments)
 
 
-def _render(template: Optional[str], key: str, *arguments: Any) -> str:
+def _render(template: str | None, key: str, *arguments: Any) -> str:
     if template is None:
         return f"{key} {' '.join(str(argument) for argument in arguments)}".strip()
     # vanilla uses both "%s" and positional "%1$s" forms
@@ -142,7 +142,7 @@ def _render(template: Optional[str], key: str, *arguments: Any) -> str:
         return template
 
 
-def unknown_command(command_name: str, catalogue: Optional["MessageCatalogue"] = None) -> str:
+def unknown_command(command_name: str, catalogue: MessageCatalogue | None = None) -> str:
     """What the game prints for a command it cannot parse, ``<--[HERE]`` and all."""
     catalogue = catalogue or DEFAULT
     head = catalogue.render("command.unknown.command")

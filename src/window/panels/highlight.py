@@ -38,12 +38,49 @@ def _format(colour: str, bold: bool = False, italic: bool = False) -> QTextCharF
 
 
 #: ``execute`` subcommands and other structural keywords
-KEYWORDS = (
-    "align anchored as at facing if in on positioned rotated run store summon unless "
-    "block blocks biome data dimension entity function items loaded predicate score "
-    "result success add remove set merge append prepend insert get enable operation "
-    "players objectives with matches"
-).split()
+KEYWORDS = [
+    "align",
+    "anchored",
+    "as",
+    "at",
+    "facing",
+    "if",
+    "in",
+    "on",
+    "positioned",
+    "rotated",
+    "run",
+    "store",
+    "summon",
+    "unless",
+    "block",
+    "blocks",
+    "biome",
+    "data",
+    "dimension",
+    "entity",
+    "function",
+    "items",
+    "loaded",
+    "predicate",
+    "score",
+    "result",
+    "success",
+    "add",
+    "remove",
+    "set",
+    "merge",
+    "append",
+    "prepend",
+    "insert",
+    "get",
+    "enable",
+    "operation",
+    "players",
+    "objectives",
+    "with",
+    "matches",
+]
 
 
 class McFunctionHighlighter(QSyntaxHighlighter):

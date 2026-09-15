@@ -27,10 +27,10 @@ import json
 import logging
 import urllib.request
 import zipfile
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from typing import Callable, Iterable, Optional
 
 log = logging.getLogger(__name__)
 
@@ -39,10 +39,25 @@ MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 #: where launchers keep their client jars
 SEARCH_DIRS: tuple[Path, ...] = (
     Path.home() / ".minecraft" / "versions",
-    Path.home() / ".local" / "share" / "PrismLauncher" / "libraries" / "com" / "mojang" / "minecraft",
+    Path.home()
+    / ".local"
+    / "share"
+    / "PrismLauncher"
+    / "libraries"
+    / "com"
+    / "mojang"
+    / "minecraft",
     Path.home() / ".local" / "share" / "multimc" / "libraries" / "com" / "mojang" / "minecraft",
-    Path.home() / ".var" / "app" / "org.prismlauncher.PrismLauncher" / "data"
-    / "PrismLauncher" / "libraries" / "com" / "mojang" / "minecraft",
+    Path.home()
+    / ".var"
+    / "app"
+    / "org.prismlauncher.PrismLauncher"
+    / "data"
+    / "PrismLauncher"
+    / "libraries"
+    / "com"
+    / "mojang"
+    / "minecraft",
     Path.home() / "Library" / "Application Support" / "minecraft" / "versions",
     Path.home() / "AppData" / "Roaming" / ".minecraft" / "versions",
 )
@@ -110,7 +125,7 @@ class VanillaAssets:
     # -- loading ----------------------------------------------------------
 
     @classmethod
-    def from_jar(cls, jar_path: Path | str) -> "VanillaAssets":
+    def from_jar(cls, jar_path: Path | str) -> VanillaAssets:
         jar_path = Path(jar_path)
         assets = cls(jar_path=jar_path)
         with zipfile.ZipFile(jar_path) as archive:
@@ -180,16 +195,14 @@ class VanillaAssets:
 
     # -- queries ----------------------------------------------------------
 
-    def knows(self, registry: str, resource_id: str) -> Optional[bool]:
+    def knows(self, registry: str, resource_id: str) -> bool | None:
         """``True``/``False``, or ``None`` when that registry was not found."""
         ids = self.registries.get(registry)
         if not ids:
             return None
         return _qualify(resource_id) in ids
 
-    def resolve_tag(
-        self, registry: str, tag_id: str, _seen: Optional[set[str]] = None
-    ) -> set[str]:
+    def resolve_tag(self, registry: str, tag_id: str, _seen: set[str] | None = None) -> set[str]:
         """Flatten ``#minecraft:skeletons`` into the ids it contains."""
         seen = _seen if _seen is not None else set()
         tag_id = _qualify(tag_id.lstrip("#"))
@@ -204,7 +217,7 @@ class VanillaAssets:
                 out.add(_qualify(value))
         return out
 
-    def message(self, key: str) -> Optional[str]:
+    def message(self, key: str) -> str | None:
         return self.lang.get(key)
 
     @property
@@ -251,7 +264,7 @@ class VanillaLibrary:
                 found.setdefault(version, jar)
         return found
 
-    def find(self, version_id: str) -> Optional[Path]:
+    def find(self, version_id: str) -> Path | None:
         return self.local_jars().get(version_id)
 
     # -- download ---------------------------------------------------------
@@ -265,9 +278,9 @@ class VanillaLibrary:
     def download(
         self,
         version_id: str,
-        progress: Optional[Progress] = None,
-        on_bytes: Optional[ByteProgress] = None,
-        cancelled: Optional[CancelCheck] = None,
+        progress: Progress | None = None,
+        on_bytes: ByteProgress | None = None,
+        cancelled: CancelCheck | None = None,
     ) -> Path:
         """Fetch ``version_id``'s client jar into the cache and return its path.
 
@@ -327,7 +340,7 @@ class VanillaLibrary:
                     if on_bytes is not None:
                         on_bytes(received, total)
             if expected_sha1 and digest.hexdigest() != expected_sha1:
-                raise IOError(
+                raise OSError(
                     f"{version_id} client jar is corrupt: sha1 {digest.hexdigest()} "
                     f"does not match {expected_sha1}"
                 )
@@ -346,8 +359,8 @@ class VanillaLibrary:
         self,
         version_id: str,
         allow_download: bool = False,
-        progress: Optional[Progress] = None,
-    ) -> Optional[VanillaAssets]:
+        progress: Progress | None = None,
+    ) -> VanillaAssets | None:
         """Assets for ``version_id``, or ``None`` if no jar is available."""
         cached = self._loaded.get(version_id)
         if cached is not None:

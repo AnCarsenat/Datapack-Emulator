@@ -12,9 +12,9 @@ Every version-dependent decision in the project goes through here.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from functools import lru_cache
-from typing import Iterable, Iterator, Optional
+from functools import cache
 
 from src.emulator.version_data import FEATURE_SINCE, FEATURE_UNTIL, RELEASES
 
@@ -142,7 +142,7 @@ def format_to_version_string(pack_format: float | int | None) -> str:
 # ---------------------------------------------------------------------------
 
 
-@lru_cache(maxsize=None)
+@cache
 def supports(version: Version, feature: str) -> bool:
     """Is ``feature`` (e.g. ``"command:return"``) present in ``version``?"""
     since = FEATURE_SINCE.get(feature)
@@ -155,7 +155,7 @@ def supports(version: Version, feature: str) -> bool:
     return until is None or effective < parse(until)
 
 
-@lru_cache(maxsize=None)
+@cache
 def vanilla_commands(version: Version) -> frozenset[str]:
     """Every command name the vanilla game knows in ``version``."""
     return frozenset(
@@ -169,7 +169,7 @@ def feature_keys(prefix: str) -> list[str]:
     return sorted(key for key in FEATURE_SINCE if key.startswith(prefix + ":"))
 
 
-def since_of(feature: str) -> Optional[Version]:
+def since_of(feature: str) -> Version | None:
     since = FEATURE_SINCE.get(feature)
     return parse(since) if since else None
 

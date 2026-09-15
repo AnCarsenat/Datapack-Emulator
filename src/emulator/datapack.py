@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any
 
 from src.emulator import versions
 from src.emulator.common import flatten_text_component, normalise_id
@@ -31,7 +32,7 @@ Format = tuple[int, int]
 ANY_MINOR = 0x7FFFFFFF
 
 
-def _as_format(value: Any, upper: bool = False) -> Optional[Format]:
+def _as_format(value: Any, upper: bool = False) -> Format | None:
     """Read a pack format as ``(major, minor)``.
 
     ``18.1`` and ``[18, 1]`` are exact. A whole number or a one-element list
@@ -56,7 +57,7 @@ def _as_format(value: Any, upper: bool = False) -> Optional[Format]:
     return None
 
 
-def format_label(pack_format: Optional[Format]) -> str:
+def format_label(pack_format: Format | None) -> str:
     """``(94, 1)`` -> ``"94.1"``, ``(94, ANY_MINOR)`` -> ``"94.*"``."""
     if pack_format is None:
         return "*"
@@ -64,9 +65,18 @@ def format_label(pack_format: Optional[Format]) -> str:
     return f"{major}.*" if minor == ANY_MINOR else f"{major}.{minor}"
 
 
+def _within(pack_format: Format | None, minimum: Format | None, maximum: Format | None) -> bool:
+    """Is ``pack_format`` inside the inclusive, possibly open, range?"""
+    if pack_format is None:
+        return False
+    return (minimum is None or pack_format >= minimum) and (
+        maximum is None or pack_format <= maximum
+    )
+
+
 def _format_bounds(
     formats: Any, min_format: Any, max_format: Any
-) -> tuple[Optional[Format], Optional[Format]]:
+) -> tuple[Format | None, Format | None]:
     """``(min, max)`` from the old ``supported_formats``/``formats`` field or
     the newer ``min_format``/``max_format`` pair; the newer fields fill gaps."""
     minimum = maximum = None
@@ -89,18 +99,12 @@ class OverlayEntry:
     """One entry of ``pack.mcmeta``'s ``overlays.entries``."""
 
     directory: str
-    minimum: Optional[Format] = None
-    maximum: Optional[Format] = None
+    minimum: Format | None = None
+    maximum: Format | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
-    def applies_to(self, pack_format: Optional[Format]) -> bool:
-        if pack_format is None:
-            return False
-        if self.minimum is not None and pack_format < self.minimum:
-            return False
-        if self.maximum is not None and pack_format > self.maximum:
-            return False
-        return True
+    def applies_to(self, pack_format: Format | None) -> bool:
+        return _within(pack_format, self.minimum, self.maximum)
 
     def describe(self) -> str:
         return f"{self.directory} [{format_label(self.minimum)} .. {format_label(self.maximum)}]"
@@ -112,7 +116,7 @@ class PackMCMETA:
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self.content: dict[str, Any] = {}
-        self.error: Optional[str] = None
+        self.error: str | None = None
         try:
             with self.path.open("r", encoding="utf-8") as file:
                 self.content = json.load(file)
@@ -125,7 +129,7 @@ class PackMCMETA:
         return self.content.get("pack", {})
 
     @property
-    def pack_format(self) -> Optional[float]:
+    def pack_format(self) -> float | None:
         value = self.pack.get("pack_format")
         if isinstance(value, (int, float)):
             return float(value)
@@ -133,7 +137,7 @@ class PackMCMETA:
         return float(f"{declared[0]}.{declared[1]}") if declared else None
 
     @property
-    def format_tuple(self) -> Optional[Format]:
+    def format_tuple(self) -> Format | None:
         """The format the pack targets: ``pack_format``, else the top of its range."""
         exact = _as_format(self.pack.get("pack_format"))
         if exact is not None:
@@ -149,7 +153,7 @@ class PackMCMETA:
         return max(known) if known else (bound[0], 0)
 
     @property
-    def format_range(self) -> tuple[Optional[Format], Optional[Format]]:
+    def format_range(self) -> tuple[Format | None, Format | None]:
         """``(min, max)`` from ``supported_formats`` / ``min_format`` / ``max_format``."""
         return _format_bounds(
             self.pack.get("supported_formats"),
@@ -182,7 +186,7 @@ class PackMCMETA:
             )
         return out
 
-    def supports_format(self, pack_format: Optional[Format]) -> bool:
+    def supports_format(self, pack_format: Format | None) -> bool:
         """Would the game accept this pack at ``pack_format``?"""
         if pack_format is None:
             return False
@@ -190,11 +194,7 @@ class PackMCMETA:
         declared = self.format_tuple
         if minimum is None and maximum is None:
             return declared is not None and declared[0] == pack_format[0]
-        if minimum is not None and pack_format < minimum:
-            return False
-        if maximum is not None and pack_format > maximum:
-            return False
-        return True
+        return _within(pack_format, minimum, maximum)
 
     def to_minecraft_version(self) -> str:
         return versions.format_to_version_string(self.pack_format)
@@ -209,7 +209,7 @@ class PackPNG:
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self.data: bytes = b""
-        self.error: Optional[str] = None
+        self.error: str | None = None
         try:
             self.data = self.path.read_bytes()
         except OSError as exc:
@@ -241,20 +241,20 @@ class Layer:
     directory: str  # "data" for the base pack
     path: Path
     namespaces: dict[str, Namespace] = field(default_factory=dict)
-    entry: Optional[OverlayEntry] = None
+    entry: OverlayEntry | None = None
 
     @property
     def label(self) -> str:
         return "base" if self.entry is None else self.directory
 
-    def applies_to(self, pack_format: Optional[Format]) -> bool:
+    def applies_to(self, pack_format: Format | None) -> bool:
         return self.entry is None or self.entry.applies_to(pack_format)
 
 
 class PackView:
     """A datapack flattened for one pack format: base plus matching overlays."""
 
-    def __init__(self, layers: list[Layer], pack_format: Optional[Format]):
+    def __init__(self, layers: list[Layer], pack_format: Format | None):
         self.pack_format = pack_format
         self.layers = layers
         #: registry -> resource id -> resource (later layers win)
@@ -288,10 +288,10 @@ class PackView:
         for bucket in self.registries.values():
             yield from bucket.values()
 
-    def function(self, function_id: str) -> Optional[Function]:
+    def function(self, function_id: str) -> Function | None:
         return self.functions.get(normalise_id(function_id))
 
-    def resolve_function_tag(self, tag_id: str, _seen: Optional[set[str]] = None) -> list[str]:
+    def resolve_function_tag(self, tag_id: str, _seen: set[str] | None = None) -> list[str]:
         """Flatten ``#ns:tag`` into the list of function ids it points at."""
         seen = _seen if _seen is not None else set()
         normalised = normalise_id(tag_id.lstrip("#"))
@@ -334,23 +334,23 @@ class Datapack:
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self.name = self.path.name
-        self.mcmeta: Optional[PackMCMETA] = None
-        self.icon: Optional[PackPNG] = None
+        self.mcmeta: PackMCMETA | None = None
+        self.icon: PackPNG | None = None
         self.base: Layer = Layer(directory="data", path=self.path / "data")
         self.overlays: list[Layer] = []
         self.errors: list[str] = []
         #: merged views per (pack format, overlays allowed); cleared on reload
-        self._views: dict[tuple[Optional[Format], bool], PackView] = {}
+        self._views: dict[tuple[Format | None, bool], PackView] = {}
 
     # -- loading ----------------------------------------------------------
 
     @classmethod
-    def load(cls, path: Path | str) -> "Datapack":
+    def load(cls, path: Path | str) -> Datapack:
         pack = cls(path)
         pack.reload()
         return pack
 
-    def reload(self) -> "Datapack":
+    def reload(self) -> Datapack:
         self.errors.clear()
         self.overlays.clear()
         self._views.clear()
@@ -408,9 +408,7 @@ class Datapack:
 
     # -- views ------------------------------------------------------------
 
-    def view(
-        self, pack_format: Optional[Format] = None, allow_overlays: bool = True
-    ) -> PackView:
+    def view(self, pack_format: Format | None = None, allow_overlays: bool = True) -> PackView:
         """Merge the base pack with the overlays that apply at ``pack_format``.
 
         Cached on the instance: an ``lru_cache`` on the method would be shared
@@ -443,11 +441,11 @@ class Datapack:
         return self.view().functions
 
     @property
-    def pack_format(self) -> Optional[float]:
+    def pack_format(self) -> float | None:
         return self.mcmeta.pack_format if self.mcmeta else None
 
     @property
-    def format_range(self) -> tuple[Optional[Format], Optional[Format]]:
+    def format_range(self) -> tuple[Format | None, Format | None]:
         return self.mcmeta.format_range if self.mcmeta else (None, None)
 
     @property
@@ -488,7 +486,7 @@ class Datapack:
     def resources(self) -> Iterator[Resource]:
         return self.view().resources()
 
-    def function(self, function_id: str) -> Optional[Function]:
+    def function(self, function_id: str) -> Function | None:
         return self.view().function(function_id)
 
     def resolve_function_tag(self, tag_id: str) -> list[str]:

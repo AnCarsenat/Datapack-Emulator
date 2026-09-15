@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Optional
+from typing import Any
 
 import pyqtgraph as pg
 from PySide6.QtCore import QPoint, Signal
@@ -45,7 +45,7 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
         self.plot.addItem(self.graph_item)
         self._decorations: list[Any] = []
         self._positions: dict[str, tuple[float, float]] = {}
-        self.graph: Optional[CallGraph] = None
+        self.graph: CallGraph | None = None
 
     def clear_graph(self) -> None:
         for item in self._decorations:
@@ -67,9 +67,7 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
         brushes = [pg.mkBrush(*_node_colour(graph.nodes[name])) for name in names]
 
         drawn = [
-            edge
-            for edge in graph.edges
-            if edge.source in index_of and edge.target in index_of
+            edge for edge in graph.edges if edge.source in index_of and edge.target in index_of
         ]
         adjacency = [(index_of[edge.source], index_of[edge.target]) for edge in drawn]
 
@@ -114,7 +112,7 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
 
     # -- interaction ------------------------------------------------------
 
-    def node_at(self, widget_position) -> Optional[str]:
+    def node_at(self, widget_position) -> str | None:
         """The node under a widget-space point, if the click is close enough."""
         if not self._positions:
             return None

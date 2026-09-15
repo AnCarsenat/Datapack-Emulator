@@ -10,10 +10,10 @@ from __future__ import annotations
 import random
 import uuid as _uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from src.emulator.common import distance_squared, in_range, normalise_id, split_arguments
 from src.emulator.commands.parser import Selector
+from src.emulator.common import distance_squared, in_range, normalise_id, split_arguments
 
 if TYPE_CHECKING:  # pragma: no cover
     from src.emulator.runtime.context import ExecutionContext
@@ -64,7 +64,7 @@ class Scoreboard:
             holder.pop(name, None)
         return existed
 
-    def get(self, holder: str, objective: str) -> Optional[int]:
+    def get(self, holder: str, objective: str) -> int | None:
         return self.scores.get(holder, {}).get(objective)
 
     def set(self, holder: str, objective: str, value: int) -> None:
@@ -75,7 +75,7 @@ class Scoreboard:
         self.set(holder, objective, value)
         return value
 
-    def reset(self, holder: str, objective: Optional[str] = None) -> None:
+    def reset(self, holder: str, objective: str | None = None) -> None:
         if objective is None:
             self.scores.pop(holder, None)
         else:
@@ -96,9 +96,7 @@ class World:
         self.tick: int = 0
         self.random = random.Random(seed)
         for index in range(players):
-            self.spawn(
-                Entity(type="minecraft:player", name=f"Player{index + 1}", is_player=True)
-            )
+            self.spawn(Entity(type="minecraft:player", name=f"Player{index + 1}", is_player=True))
 
     # -- entities ---------------------------------------------------------
 
@@ -116,13 +114,11 @@ class World:
 
     # -- selector resolution ----------------------------------------------
 
-    def select(self, selector: Selector, context: "ExecutionContext") -> list[Entity]:
+    def select(self, selector: Selector, context: ExecutionContext) -> list[Entity]:
         if selector.kind == "literal":
             name = selector.raw
             return [
-                entity
-                for entity in self.entities
-                if entity.name == name or entity.uuid == name
+                entity for entity in self.entities if entity.name == name or entity.uuid == name
             ]
         if selector.kind == "@s":
             executor = context.executor
@@ -150,7 +146,7 @@ class World:
             limit = 1
         return pool[:limit] if limit is not None else pool
 
-    def _matches(self, entity: Entity, selector: Selector, context: "ExecutionContext") -> bool:
+    def _matches(self, entity: Entity, selector: Selector, context: ExecutionContext) -> bool:
         arguments = selector.arguments
         for raw in arguments.get("type", []):
             negated = raw.startswith("!")
@@ -189,7 +185,7 @@ class World:
         return True
 
     @staticmethod
-    def _tag_members(context: "ExecutionContext", tag: str) -> Optional[set[str]]:
+    def _tag_members(context: ExecutionContext, tag: str) -> set[str] | None:
         assets = getattr(context.emulator, "vanilla", None)
         if assets is None:
             return None

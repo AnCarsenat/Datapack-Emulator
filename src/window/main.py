@@ -7,30 +7,28 @@ name — add or move widgets in Qt Designer, not in this file.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import shiboken6
-from pathlib import Path
-from typing import Optional
-
 from PySide6.QtCore import QModelIndex, QPoint, Qt, QUrl
 from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox,
-    QInputDialog,
-    QMenu,
-    QMessageBox,
     QComboBox,
     QDockWidget,
     QFileDialog,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
-    QTabWidget,
     QTableView,
+    QTabWidget,
     QTreeView,
     QTreeWidget,
     QTreeWidgetItem,
@@ -71,14 +69,14 @@ TAB_PROFILER, TAB_GRAPH, TAB_SOURCE = 0, 1, 2
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__(parent=None)
-        self.datapack: Optional[Datapack] = None
-        self.emulator: Optional[Emulator] = None
-        self.call_graph: Optional[CallGraph] = None
+        self.datapack: Datapack | None = None
+        self.emulator: Emulator | None = None
+        self.call_graph: CallGraph | None = None
         self.output = OutputBus()
         self.logs = LogTableModel(self)
         self.library = default_library()
-        self.vanilla: Optional[VanillaAssets] = None
-        self.engine_window: Optional[EngineWindow] = None
+        self.vanilla: VanillaAssets | None = None
+        self.engine_window: EngineWindow | None = None
         self.project = Project()
         self._highlighter = None
 
@@ -160,7 +158,7 @@ class MainWindow(QMainWindow):
         self.combo_version.setCurrentIndex(0)
         self.combo_version.blockSignals(False)
 
-    def _action(self, name: str) -> Optional[QAction]:
+    def _action(self, name: str) -> QAction | None:
         return self.findChild(QAction, name)
 
     def _wire_actions(self) -> None:
@@ -389,7 +387,7 @@ class MainWindow(QMainWindow):
 
     # -- base game --------------------------------------------------------
 
-    def use_vanilla(self, assets: Optional[VanillaAssets]) -> None:
+    def use_vanilla(self, assets: VanillaAssets | None) -> None:
         """Adopt base-game assets: registries to check ids, strings to quote."""
         self.vanilla = assets
         if assets is None:
@@ -466,7 +464,7 @@ class MainWindow(QMainWindow):
             return
         self.load_datapack(self.datapack.path)
 
-    def show_datapack(self, datapack: Optional[Datapack]) -> None:
+    def show_datapack(self, datapack: Datapack | None) -> None:
         self.tree.setModel(build_explorer_model(datapack))
         self.tree.expandToDepth(2)
         if datapack is None:
@@ -582,7 +580,7 @@ class MainWindow(QMainWindow):
 
     # -- explorer / inspector ---------------------------------------------
 
-    def _selected_path(self) -> Optional[Path]:
+    def _selected_path(self) -> Path | None:
         indexes = self.tree.selectedIndexes()
         if not indexes:
             return None
@@ -597,7 +595,7 @@ class MainWindow(QMainWindow):
 
     # -- opening things ---------------------------------------------------
 
-    def open_externally(self, path: Optional[Path]) -> None:
+    def open_externally(self, path: Path | None) -> None:
         """Hand a file or folder to whatever the desktop uses for it."""
         if path is None:
             return
@@ -606,13 +604,13 @@ class MainWindow(QMainWindow):
         else:
             self.output.app(f"opened {path} externally")
 
-    def open_in_file_manager(self, path: Optional[Path]) -> None:
+    def open_in_file_manager(self, path: Path | None) -> None:
         """A folder opens as itself; a file opens the folder that holds it."""
         if path is None:
             return
         self.open_externally(path if path.is_dir() else path.parent)
 
-    def copy_path(self, path: Optional[Path]) -> None:
+    def copy_path(self, path: Path | None) -> None:
         if path is None:
             return
         from PySide6.QtWidgets import QApplication
@@ -620,11 +618,11 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().setText(str(path))
         self.statusBar().showMessage(f"copied {path}")
 
-    def open_in_source(self, path: Optional[Path]) -> None:
+    def open_in_source(self, path: Path | None) -> None:
         if path is not None and path.is_file():
             self._show_source(path)
 
-    def function_path(self, function_id: str) -> Optional[Path]:
+    def function_path(self, function_id: str) -> Path | None:
         """Where a function id lives in the version currently being emulated."""
         if self.datapack is None:
             return None
@@ -645,7 +643,7 @@ class MainWindow(QMainWindow):
             return
         self._show_source(path)
 
-    def _path_menu(self, path: Optional[Path], title: str = "") -> QMenu:
+    def _path_menu(self, path: Path | None, title: str = "") -> QMenu:
         """The menu every file and folder gets."""
         menu = QMenu(self)
         if title:
@@ -691,9 +689,9 @@ class MainWindow(QMainWindow):
         """Right-click a profiler row: ask the page which function it is."""
         global_point = self.web_view.mapToGlobal(point)
         script = (
-            "(function(){var e=document.elementFromPoint(%d,%d);"
+            f"(function(){{var e=document.elementFromPoint({point.x()},{point.y()});"
             "while(e&&!e.dataset.function){e=e.parentElement;}"
-            "return e?e.dataset.function:'';})()" % (point.x(), point.y())
+            "return e?e.dataset.function:'';})()"
         )
         self.web_view.page().runJavaScript(
             script, lambda result: self._show_profiler_menu(result or "", global_point)
@@ -724,7 +722,7 @@ class MainWindow(QMainWindow):
         if path.is_file():
             self._show_source(path)
 
-    def _find_resource(self, resource_id: str) -> Optional[Resource]:
+    def _find_resource(self, resource_id: str) -> Resource | None:
         if self.datapack is None:
             return None
         for layer in [self.datapack.base, *self.datapack.overlays]:
@@ -788,4 +786,3 @@ class MainWindow(QMainWindow):
         self.output.clear()
         self.logs.clear()
         self.log_counts.setText(self.logs.summary())
-

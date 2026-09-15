@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QPushButton
@@ -67,11 +66,11 @@ class DownloadDialog(QDialog):
         self.library = library
         self.version_id = version_id
         #: set when the download finished
-        self.path: Optional[Path] = None
+        self.path: Path | None = None
         #: set when it failed
-        self.error: Optional[str] = None
-        self._thread: Optional[QThread] = None
-        self._worker: Optional[DownloadWorker] = None
+        self.error: str | None = None
+        self._thread: QThread | None = None
+        self._worker: DownloadWorker | None = None
         self._started_at = 0.0
 
         load_ui_into(self, UI_FILE)
@@ -94,7 +93,7 @@ class DownloadDialog(QDialog):
 
     # -- flow -------------------------------------------------------------
 
-    def run(self) -> Optional[Path]:
+    def run(self) -> Path | None:
         """Show the dialog; returns the jar path, or ``None`` if cancelled/failed."""
         self.exec()
         return self.path

@@ -19,5 +19,5 @@ class CommandResult:
         return self.value if self.success else 0
 
     @classmethod
-    def failure(cls) -> "CommandResult":
+    def failure(cls) -> CommandResult:
         return cls(success=False, value=0)

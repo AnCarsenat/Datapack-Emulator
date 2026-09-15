@@ -11,8 +11,17 @@ the world model has no blocks or inventories to change.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
+from src.emulator.commands.parser import (
+    Command,
+    Selector,
+    Subcommand,
+    parse_duration,
+    resolve_position,
+)
+from src.emulator.commands.result import CommandResult
 from src.emulator.common import (
     as_int,
     nbt_get,
@@ -24,14 +33,6 @@ from src.emulator.common import (
     parse_text_component,
     parse_value,
 )
-from src.emulator.commands.parser import (
-    Command,
-    Selector,
-    Subcommand,
-    parse_duration,
-    resolve_position,
-)
-from src.emulator.commands.result import CommandResult
 from src.emulator.runtime.context import ExecutionContext
 from src.emulator.runtime.world import Entity
 
@@ -218,9 +219,7 @@ def cmd_scoreboard(command: Command, context: ExecutionContext) -> CommandResult
                 return CommandResult.failure()
             value = board.get(holders[0], objective)
             if value is None:
-                context.game_error(
-                    "commands.scoreboard.players.get.null", objective, holders[0]
-                )
+                context.game_error("commands.scoreboard.players.get.null", objective, holders[0])
                 return CommandResult.failure()
             context.feedback(
                 "commands.scoreboard.players.get.success", holders[0], value, objective
@@ -416,7 +415,9 @@ def _macro_arguments(rest: list[str], context: ExecutionContext) -> dict[str, An
         entities = _targets(context, target)
         store = entities[0].nbt if entities else {}
     else:
-        context.note_key("emulator.unimplemented", f"function ... with {source}", context.emulator.version.id)
+        context.note_key(
+            "emulator.unimplemented", f"function ... with {source}", context.emulator.version.id
+        )
         return {}
     if path:
         store = nbt_get(store, path)
@@ -454,12 +455,8 @@ def cmd_schedule(command: Command, context: ExecutionContext) -> CommandResult:
 
 def cmd_return(command: Command, context: ExecutionContext) -> CommandResult:
     if command.arguments and command.arguments[0] == "run":
-        inner = Command.parse(
-            " ".join(command.arguments[1:]), context.function_id, command.line
-        )
-        result = (
-            context.emulator.run_command(inner, context) if inner else CommandResult.failure()
-        )
+        inner = Command.parse(" ".join(command.arguments[1:]), context.function_id, command.line)
+        result = context.emulator.run_command(inner, context) if inner else CommandResult.failure()
         return CommandResult(success=result.success, value=result.value, returned=True)
     if command.arguments and command.arguments[0] == "fail":
         return CommandResult(success=False, value=0, returned=True)
@@ -486,7 +483,9 @@ def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
     elif holder_kind == "entity":
         stores = [entity.nbt for entity in _require_targets(context, target_token)]
     else:  # block NBT is not modelled
-        context.note_key("emulator.unimplemented", f"data {action} block", context.emulator.version.id)
+        context.note_key(
+            "emulator.unimplemented", f"data {action} block", context.emulator.version.id
+        )
         return CommandResult.failure()
 
     if not stores:
@@ -558,7 +557,9 @@ def _data_source(context: ExecutionContext, source: list[str]) -> tuple[bool, An
             return (False, None)
         store = entities[0].nbt
     else:  # block NBT is not modelled
-        context.note_key("emulator.unimplemented", "data modify ... from block", context.emulator.version.id)
+        context.note_key(
+            "emulator.unimplemented", "data modify ... from block", context.emulator.version.id
+        )
         return (False, None)
     value = nbt_get(store, path) if path else store
     if value is None:
@@ -608,9 +609,12 @@ def _checking(registry: str, index: int, key: str) -> Handler:
 def cmd_effect(command: Command, context: ExecutionContext) -> CommandResult:
     """``effect give <targets> <effect>`` / ``effect clear``."""
     arguments = command.arguments
-    if len(arguments) >= 3 and arguments[0] == "give":
-        if not _require_id(context, "mob_effect", arguments[2]):
-            return CommandResult.failure()
+    if (
+        len(arguments) >= 3
+        and arguments[0] == "give"
+        and not _require_id(context, "mob_effect", arguments[2])
+    ):
+        return CommandResult.failure()
     return CommandResult(success=True, value=1)
 
 
@@ -717,9 +721,7 @@ def cmd_execute(command: Command, context: ExecutionContext) -> CommandResult:
     return CommandResult(success=successes > 0, value=total if total else successes)
 
 
-def _apply_store(
-    subcommand: Subcommand, context: ExecutionContext, result: CommandResult
-) -> None:
+def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: CommandResult) -> None:
     arguments = subcommand.arguments
     if len(arguments) < 4:
         return

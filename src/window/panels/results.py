@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 
@@ -90,7 +88,7 @@ class ResultsTableModel(QAbstractTableModel):
         self._runs.clear()
         self.endResetModel()
 
-    def run_at(self, row: int) -> Optional[VersionRun]:
+    def run_at(self, row: int) -> VersionRun | None:
         return self._runs[row] if 0 <= row < len(self._runs) else None
 
     @property

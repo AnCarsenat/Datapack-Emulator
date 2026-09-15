@@ -53,7 +53,11 @@ def test_source_view_keeps_a_single_highlighter(window, make_pack):
     from PySide6.QtGui import QSyntaxHighlighter
 
     pack = make_pack({"data/test/function/tick.mcfunction": "say hi\n"})
-    for relative in ("data/test/function/tick.mcfunction", "pack.mcmeta", "data/test/function/tick.mcfunction"):
+    for relative in (
+        "data/test/function/tick.mcfunction",
+        "pack.mcmeta",
+        "data/test/function/tick.mcfunction",
+    ):
         window._show_source(pack / relative)
     document = window.source_edit.document()
     attached = [child for child in document.children() if isinstance(child, QSyntaxHighlighter)]

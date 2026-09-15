@@ -77,11 +77,17 @@ def mojang(tmp_path, monkeypatch):
     def publish(sha1: str) -> None:
         (served / "v.json").write_text(
             json.dumps(
-                {"downloads": {"client": {"url": f"{base}/client.jar", "size": len(payload), "sha1": sha1}}}
+                {
+                    "downloads": {
+                        "client": {"url": f"{base}/client.jar", "size": len(payload), "sha1": sha1}
+                    }
+                }
             )
         )
 
-    (served / "manifest.json").write_text(json.dumps({"versions": [{"id": "9.9", "url": f"{base}/v.json"}]}))
+    (served / "manifest.json").write_text(
+        json.dumps({"versions": [{"id": "9.9", "url": f"{base}/v.json"}]})
+    )
     publish(hashlib.sha1(payload).hexdigest())
     threading.Thread(target=server.serve_forever, daemon=True).start()
     monkeypatch.setattr(vanilla_module, "MANIFEST_URL", f"{base}/manifest.json")

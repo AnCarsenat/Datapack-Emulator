@@ -9,7 +9,7 @@ same pack against a range of versions is just a list of emulators — see
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from src.emulator import costs, versions
 from src.emulator.analysis.profiler import Profiler
@@ -38,9 +38,9 @@ class Emulator:
         datapack: Datapack,
         version: str | Version | None = None,
         players: int = 1,
-        output: Optional[OutputBus] = None,
+        output: OutputBus | None = None,
         seed: int = 0,
-        vanilla: Optional[VanillaAssets] = None,
+        vanilla: VanillaAssets | None = None,
     ):
         self.datapack = datapack
         self.version: Version = versions.parse(version)
@@ -63,7 +63,7 @@ class Emulator:
 
     # -- lifecycle --------------------------------------------------------
 
-    def reset(self, players: Optional[int] = None) -> None:
+    def reset(self, players: int | None = None) -> None:
         self.players = players if players is not None else self.players
         self.world = World(players=self.players, seed=self.seed)
         self.profiler.reset()
@@ -150,9 +150,7 @@ class Emulator:
     def run_command(self, command: Command, context: ExecutionContext) -> CommandResult:
         """Dispatch one command, after checking it exists in this version."""
         inner = context.branch(line=command.line)
-        self.profiler.charge(
-            inner.function_id, command.estimate_cost(len(self.world.entities))
-        )
+        self.profiler.charge(inner.function_id, command.estimate_cost(len(self.world.entities)))
         self.commands_run += 1
 
         spec = self.commands.spec(command.name)
@@ -206,7 +204,7 @@ class Emulator:
         self,
         function_id: str,
         context: ExecutionContext,
-        macro_arguments: Optional[dict[str, Any]] = None,
+        macro_arguments: dict[str, Any] | None = None,
     ) -> CommandResult:
         function_id = normalise_id(function_id)
         function = self.pack.function(function_id)

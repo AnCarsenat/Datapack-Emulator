@@ -16,9 +16,9 @@ Two kinds of finding come out of a run:
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Optional
 
 from src.emulator import versions
 from src.emulator.analysis.graph import CallGraph
@@ -52,16 +52,14 @@ class VersionRun:
     missing_functions: list[str] = field(default_factory=list)
     unreachable: list[str] = field(default_factory=list)
     cycles: list[list[str]] = field(default_factory=list)
-    profiler: Optional[Profiler] = None
-    graph: Optional[CallGraph] = None
+    profiler: Profiler | None = None
+    graph: CallGraph | None = None
 
     # -- summaries --------------------------------------------------------
 
     def count(self, source: LogSource, min_level: LogLevel = LogLevel.DEBUG) -> int:
         return sum(
-            1
-            for record in self.records
-            if record.source is source and record.level >= min_level
+            1 for record in self.records if record.source is source and record.level >= min_level
         )
 
     @property
@@ -106,7 +104,7 @@ class TestEngine:
         ticks: int = 20,
         players: int = 1,
         seed: int = 0,
-        library: Optional[VanillaLibrary] = None,
+        library: VanillaLibrary | None = None,
         allow_download: bool = False,
     ):
         self.datapack = datapack
@@ -146,7 +144,7 @@ class TestEngine:
 
     # -- running ----------------------------------------------------------
 
-    def run_version(self, version: str | Version, output: Optional[OutputBus] = None) -> VersionRun:
+    def run_version(self, version: str | Version, output: OutputBus | None = None) -> VersionRun:
         version = versions.parse(version)
         bus = output or OutputBus()
         first_record = len(bus.records)
@@ -199,9 +197,9 @@ class TestEngine:
 
     def run(
         self,
-        version_list: Optional[Iterable[str | Version]] = None,
-        progress: Optional[Progress] = None,
-        output: Optional[OutputBus] = None,
+        version_list: Iterable[str | Version] | None = None,
+        progress: Progress | None = None,
+        output: OutputBus | None = None,
     ) -> list[VersionRun]:
         chosen = (
             [versions.parse(item) for item in version_list]
@@ -244,8 +242,7 @@ class TestEngine:
             stale = {
                 folder
                 for folder in raw_folders
-                if folder in PLURAL_REGISTRIES
-                and PLURAL_REGISTRIES[folder] not in raw_folders
+                if folder in PLURAL_REGISTRIES and PLURAL_REGISTRIES[folder] not in raw_folders
             }
             for folder in sorted(stale):
                 bus.emulator(

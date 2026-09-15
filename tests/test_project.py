@@ -19,7 +19,9 @@ def repo(tmp_path, monkeypatch):
 def test_round_trip_keeps_repo_paths_relative(repo):
     pack = repo / "samples" / "hat"
     pack.mkdir(parents=True)
-    saved = Project(name="hat", datapack=pack, version="1.21.4", ticks=7, engine_versions=["1.21"]).save()
+    saved = Project(
+        name="hat", datapack=pack, version="1.21.4", ticks=7, engine_versions=["1.21"]
+    ).save()
 
     data = json.loads(saved.read_text())
     assert saved == repo / "projects" / "hat.json"

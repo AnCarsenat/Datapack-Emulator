@@ -20,9 +20,7 @@ def test_pack_format_forms(tmp_path):
     assert _mcmeta(tmp_path, {"pack_format": 107.1}).format_tuple == (107, 1)
     ranged = _mcmeta(tmp_path, {"pack_format": 15, "supported_formats": [10, 20]})
     assert ranged.format_range == ((10, 0), (20, ANY_MINOR))
-    objected = _mcmeta(
-        tmp_path, {"supported_formats": {"min_inclusive": 18, "max_inclusive": 41}}
-    )
+    objected = _mcmeta(tmp_path, {"supported_formats": {"min_inclusive": 18, "max_inclusive": 41}})
     assert objected.format_range == ((18, 0), (41, ANY_MINOR))
     modern = _mcmeta(tmp_path, {"min_format": [88, 0], "max_format": [94, 1]})
     assert modern.format_range == ((88, 0), (94, 1))
@@ -121,6 +119,8 @@ def test_declared_versions_and_support(make_pack):
 def test_png_size_is_read_from_ihdr(make_pack):
     root = make_pack({})
     header = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 64, 32)
-    (root / "pack.png").write_bytes(header + b"\x08\x06\x00\x00\x00" + struct.pack(">I", zlib.crc32(b"")))
+    (root / "pack.png").write_bytes(
+        header + b"\x08\x06\x00\x00\x00" + struct.pack(">I", zlib.crc32(b""))
+    )
     pack = Datapack.load(root)
     assert pack.icon is not None and pack.icon.size == (64, 32)

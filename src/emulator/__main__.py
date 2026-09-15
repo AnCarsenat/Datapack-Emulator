@@ -1,9 +1,9 @@
 """Headless runner.
 
-    python -m src.emulator run      samples/hat --ticks 20 --version 1.21.4
-    python -m src.emulator matrix   samples/hat --from 1.20.4 --to 1.21.6
-    python -m src.emulator versions
-    python -m src.emulator vanilla  --download 1.21.4
+python -m src.emulator run      samples/hat --ticks 20 --version 1.21.4
+python -m src.emulator matrix   samples/hat --from 1.20.4 --to 1.21.6
+python -m src.emulator versions
+python -m src.emulator vanilla  --download 1.21.4
 """
 
 from __future__ import annotations
@@ -22,7 +22,12 @@ from src.emulator.runtime.emulator import Emulator  # noqa: E402
 from src.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus  # noqa: E402
 from src.emulator.vanilla import VanillaAssets, default_library  # noqa: E402
 
-LEVELS = {"debug": LogLevel.DEBUG, "info": LogLevel.INFO, "warn": LogLevel.WARNING, "error": LogLevel.ERROR}
+LEVELS = {
+    "debug": LogLevel.DEBUG,
+    "info": LogLevel.INFO,
+    "warn": LogLevel.WARNING,
+    "error": LogLevel.ERROR,
+}
 
 
 def _print_record(record: LogRecord) -> None:
@@ -67,9 +72,9 @@ def command_run(arguments: argparse.Namespace) -> int:
     minimum = LEVELS[arguments.level]
     wanted = {LogSource(name) for name in arguments.sources}
     bus.listeners.append(
-        lambda record: _print_record(record)
-        if record.source in wanted and record.level >= minimum
-        else None
+        lambda record: (
+            _print_record(record) if record.source in wanted and record.level >= minimum else None
+        )
     )
     assets = _vanilla(arguments)
     if assets is not None:
@@ -254,9 +259,7 @@ def main(argv: list[str] | None = None) -> int:
     matrix.add_argument("--ticks", type=int, default=20)
     matrix.add_argument("--players", type=int, default=1)
     matrix.add_argument("--html", type=Path, default=Path("generated/matrix.html"))
-    matrix.add_argument(
-        "--vanilla", action="store_true", help="use client jars, one per version"
-    )
+    matrix.add_argument("--vanilla", action="store_true", help="use client jars, one per version")
     matrix.add_argument("--download", action="store_true", help="fetch missing jars")
     matrix.set_defaults(handler=command_matrix)
 

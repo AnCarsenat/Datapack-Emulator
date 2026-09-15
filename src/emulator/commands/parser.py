@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Optional
+from typing import Any
 
 from src.emulator import costs
 from src.emulator.common import (
@@ -32,7 +33,7 @@ class Selector:
     SELECTOR_RE = re.compile(r"^@([sparen])(?:\[(.*)\])?$", re.DOTALL)
 
     @classmethod
-    def parse(cls, raw: str) -> "Selector":
+    def parse(cls, raw: str) -> Selector:
         raw = raw.strip()
         match = cls.SELECTOR_RE.match(raw)
         if match is None:
@@ -42,12 +43,12 @@ class Selector:
             arguments.setdefault(key, []).append(value)
         return cls(raw=raw, kind="@" + match.group(1), arguments=arguments)
 
-    def first(self, key: str, default: Optional[str] = None) -> Optional[str]:
+    def first(self, key: str, default: str | None = None) -> str | None:
         values = self.arguments.get(key)
         return values[0] if values else default
 
     @property
-    def limit(self) -> Optional[int]:
+    def limit(self) -> int | None:
         raw = self.first("limit") or self.first("c")
         try:
             return int(raw) if raw is not None else None
@@ -138,7 +139,7 @@ class Command:
         self,
         raw: str,
         name: str = "",
-        arguments: Optional[list[str]] = None,
+        arguments: list[str] | None = None,
         source: str = "",
         line: int = 0,
     ):
@@ -151,12 +152,12 @@ class Command:
         #: for ``execute``: the chain before ``run``
         self.subcommands: list[Subcommand] = []
         #: for ``execute ... run <command>``: the wrapped command
-        self.child: Optional["Command"] = None
+        self.child: Command | None = None
 
     # -- parsing ----------------------------------------------------------
 
     @classmethod
-    def parse(cls, raw_line: str, source: str = "", line: int = 0) -> Optional["Command"]:
+    def parse(cls, raw_line: str, source: str = "", line: int = 0) -> Command | None:
         """Parse one line.  Returns ``None`` for blank lines and comments."""
         text = raw_line.strip()
         if not text or text.startswith("#"):
@@ -193,9 +194,7 @@ class Command:
             arity = SUBCOMMAND_ARITY.get(name, 1)
             if name in ("positioned", "rotated", "facing") and index < len(tokens):
                 lookahead = tokens[index]
-                if lookahead == "as":
-                    arity = 2
-                elif name == "positioned" and lookahead == "over":
+                if lookahead == "as" or name == "positioned" and lookahead == "over":
                     arity = 2
                 elif name == "facing" and lookahead == "entity":
                     arity = 3
@@ -235,7 +234,7 @@ class Command:
 
     # -- static analysis --------------------------------------------------
 
-    def walk(self) -> Iterator["Command"]:
+    def walk(self) -> Iterator[Command]:
         yield self
         if self.child is not None:
             yield from self.child.walk()
@@ -274,12 +273,11 @@ class Command:
             needed.add(f"command:{command.name}")
             if command.is_macro:
                 needed.add("function:with")
-            if command.name == "schedule" and command.arguments:
-                if command.arguments[0] in ("function", "clear"):
-                    needed.add(f"schedule:{command.arguments[0]}")
-            if command.name == "return" and command.arguments:
-                if command.arguments[0] in ("run", "fail"):
-                    needed.add(f"return:{command.arguments[0]}")
+            first = command.arguments[0] if command.arguments else ""
+            if command.name == "schedule" and first in ("function", "clear"):
+                needed.add(f"schedule:{first}")
+            if command.name == "return" and first in ("run", "fail"):
+                needed.add(f"return:{first}")
             if command.name == "function" and "with" in command.arguments:
                 needed.add("function:with")
             for subcommand in command.subcommands:
@@ -323,7 +321,7 @@ class Command:
     def macro_keys(self) -> list[str]:
         return self.MACRO_RE.findall(self.raw)
 
-    def expand_macro(self, arguments: dict[str, Any]) -> tuple[Optional["Command"], list[str]]:
+    def expand_macro(self, arguments: dict[str, Any]) -> tuple[Command | None, list[str]]:
         """Substitute ``$(key)`` placeholders.  Returns ``(command, missing)``."""
         missing: list[str] = []
 

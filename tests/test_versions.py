@@ -4,7 +4,7 @@ from src.emulator import versions
 def test_versions_sort_numerically():
     assert versions.parse("1.21.10") > versions.parse("1.21.9")
     assert versions.parse("26.1") > versions.parse("1.21.11")
-    assert versions.VERSIONS == tuple(sorted(versions.VERSIONS))
+    assert tuple(sorted(versions.VERSIONS)) == versions.VERSIONS
 
 
 def test_parse_latest_oldest_and_partial():

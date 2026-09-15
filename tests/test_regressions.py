@@ -107,7 +107,7 @@ def test_id_checks_strip_components_nbt_and_particle_options(make_pack, fake_jar
 def test_teleport_to_an_entity(make_pack):
     emulator = run(
         make_pack,
-        "summon minecraft:marker 10 20 30 {Tags:[\"target\"]}\n"
+        'summon minecraft:marker 10 20 30 {Tags:["target"]}\n'
         "execute as @a run tp @e[tag=target,limit=1]\n",
     )
     player = emulator.world.players[0]
@@ -115,7 +115,9 @@ def test_teleport_to_an_entity(make_pack):
 
 
 def test_tellraw_accepts_snbt_components(make_pack):
-    emulator = run(make_pack, 'tellraw @a {text:"hi",color:"red"}\ntellraw @a ["",{text:"a"},"b"]\n')
+    emulator = run(
+        make_pack, 'tellraw @a {text:"hi",color:"red"}\ntellraw @a ["",{text:"a"},"b"]\n'
+    )
     assert chat(emulator.output.records) == ["[Player1] hi", "[Player1] ab"]
     assert not game_errors(emulator.output.records)
 

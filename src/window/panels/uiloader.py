@@ -8,8 +8,8 @@ dock, menu and action still comes from the ``.ui`` file.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 from PySide6.QtCore import QFile
 from PySide6.QtUiTools import QUiLoader
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QWidget
 class _Loader(QUiLoader):
     def __init__(self, base: QWidget, custom: Sequence[type] = ()):
         super().__init__()
-        self._base: Optional[QWidget] = base
+        self._base: QWidget | None = base
         for widget_class in custom:
             self.registerCustomWidget(widget_class)
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 from src.emulator import costs
 
 
@@ -59,7 +58,7 @@ class Profiler:
         for function_id, entry in self.sorted_entries():
             share = 100.0 * entry["total_us"] / total
             rows.append(
-                f"<tr data-function=\"{function_id}\" title=\"right-click to open the source\">"
+                f'<tr data-function="{function_id}" title="right-click to open the source">'
                 f"<td class='id'>{function_id}</td>"
                 f"<td>{int(entry['calls'])}</td>"
                 f"<td>{int(entry['commands'])}</td>"
@@ -94,7 +93,7 @@ class Profiler:
 <body>
 <h2>{title}</h2>
 <p class="summary">
- {subtitle}{' &middot; ' if subtitle else ''}{ticks} tick(s) &middot;
+ {subtitle}{" &middot; " if subtitle else ""}{ticks} tick(s) &middot;
  total {total / 1000:.2f} ms &middot;
  average {self.average_tick_us / 1000:.2f} ms/tick &middot;
  worst <span class="{over}">{worst / 1000:.2f} ms</span>
@@ -121,9 +120,7 @@ class Profiler:
         return path
 
 
-def comparison_html(
-    results: list[tuple[str, "Profiler"]], title: str = "Version comparison"
-) -> str:
+def comparison_html(results: list[tuple[str, Profiler]], title: str = "Version comparison") -> str:
     """A small table comparing the same pack across versions."""
     rows = []
     for label, profiler in results:

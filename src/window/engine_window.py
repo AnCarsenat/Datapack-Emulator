@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -149,9 +148,7 @@ class EngineWindow(QMainWindow):
         ]
 
     def select_range(self) -> None:
-        chosen = versions.version_range(
-            self.combo_from.currentData(), self.combo_to.currentData()
-        )
+        chosen = versions.version_range(self.combo_from.currentData(), self.combo_to.currentData())
         self._check_only(chosen)
 
     def select_declared(self) -> None:
@@ -246,7 +243,7 @@ class EngineWindow(QMainWindow):
             + (f", overlays: {', '.join(run.overlays)}" if run.overlays else "")
         )
 
-    def _current_run(self) -> Optional[VersionRun]:
+    def _current_run(self) -> VersionRun | None:
         indexes = self.table_results.selectionModel().selectedRows()
         if not indexes:
             return None

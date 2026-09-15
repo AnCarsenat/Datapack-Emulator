@@ -21,7 +21,7 @@ import json
 import logging
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from src.settings import EMULATION, PATHS
 
@@ -41,7 +41,7 @@ def list_projects() -> list[Path]:
     return sorted(PATHS.PROJECTS.glob(f"*{SUFFIX}"))
 
 
-def _relative(path: Optional[Path]) -> str:
+def _relative(path: Path | None) -> str:
     """Inside the repo -> relative; anywhere else -> absolute."""
     if path is None:
         return ""
@@ -52,7 +52,7 @@ def _relative(path: Optional[Path]) -> str:
         return str(path)
 
 
-def _absolute(value: str) -> Optional[Path]:
+def _absolute(value: str) -> Path | None:
     if not value:
         return None
     path = Path(value)
@@ -64,7 +64,7 @@ class Project:
     """Everything the window needs to pick up where it left off."""
 
     name: str = "untitled"
-    datapack: Optional[Path] = None
+    datapack: Path | None = None
     version: str = ""
     ticks: int = EMULATION.DEFAULT_TICKS
     players: int = EMULATION.DEFAULT_PLAYERS
@@ -72,7 +72,7 @@ class Project:
     engine_versions: list[str] = field(default_factory=list)
     vanilla_jar: str = ""
     #: where it was saved; ``None`` until the first save
-    path: Optional[Path] = None
+    path: Path | None = None
 
     # -- serialising ------------------------------------------------------
 
@@ -89,7 +89,7 @@ class Project:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], path: Optional[Path] = None) -> "Project":
+    def from_dict(cls, data: dict[str, Any], path: Path | None = None) -> Project:
         return cls(
             name=str(data.get("name") or (path.stem if path else "untitled")),
             datapack=_absolute(str(data.get("datapack", ""))),
@@ -107,7 +107,7 @@ class Project:
     def default_path(self) -> Path:
         return projects_dir() / f"{_safe_name(self.name)}{SUFFIX}"
 
-    def save(self, path: Optional[Path] = None) -> Path:
+    def save(self, path: Path | None = None) -> Path:
         target = Path(path) if path else (self.path or self.default_path())
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
@@ -119,12 +119,12 @@ class Project:
         return target
 
     @classmethod
-    def load(cls, path: Path | str) -> "Project":
+    def load(cls, path: Path | str) -> Project:
         path = Path(path)
         data = json.loads(path.read_text(encoding="utf-8"))
         return cls.from_dict(data, path=path)
 
-    def renamed(self, name: str) -> "Project":
+    def renamed(self, name: str) -> Project:
         """A copy under a new name, not yet written anywhere."""
         return replace(self, name=name, path=None)
 
@@ -141,7 +141,7 @@ def _safe_name(name: str) -> str:
     return cleaned.strip().strip(".") or "untitled"
 
 
-def default_sample() -> Optional[Path]:
+def default_sample() -> Path | None:
     """The datapack to open on a cold start: the first one in ``samples/``."""
     if not PATHS.SAMPLES.is_dir():
         return None

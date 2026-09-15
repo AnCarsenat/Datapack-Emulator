@@ -87,7 +87,8 @@ def test_command_missing_from_version_gets_unknown_command(make_pack):
     assert errors and errors[0].startswith("Unknown or incomplete command")
     assert errors[0].endswith("return<--[HERE]")
     notes = [
-        r.message for r in emulator.output.records
+        r.message
+        for r in emulator.output.records
         if r.source is LogSource.EMULATOR and r.level >= LogLevel.WARNING
     ]
     assert any("added in 1.20" in note for note in notes)

@@ -29,7 +29,7 @@ class CallGraph:
     # -- construction -----------------------------------------------------
 
     @classmethod
-    def from_pack(cls, pack: "PackView") -> "CallGraph":
+    def from_pack(cls, pack: PackView) -> CallGraph:
         graph = cls()
         functions = pack.functions
 
@@ -68,7 +68,7 @@ class CallGraph:
         return graph
 
     @classmethod
-    def from_datapack(cls, datapack: "Datapack") -> "CallGraph":
+    def from_datapack(cls, datapack: Datapack) -> CallGraph:
         return cls.from_pack(datapack.view())
 
     def add_node(self, node_id: str, **attributes: Any) -> None:
@@ -90,7 +90,9 @@ class CallGraph:
     def roots(self) -> list[str]:
         """Entry points: the vanilla tags, plus anything nothing else calls."""
         entries = [node for node in ("#minecraft:load", "#minecraft:tick") if node in self.nodes]
-        entries += [node for node in self.nodes if not self.predecessors(node) and node not in entries]
+        entries += [
+            node for node in self.nodes if not self.predecessors(node) and node not in entries
+        ]
         return entries
 
     def unreachable(self) -> list[str]:

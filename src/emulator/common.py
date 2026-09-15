@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def flatten_text_component(component: Any) -> str:
     return ""
 
 
-def parse_text_component(payload: str) -> Optional[str]:
+def parse_text_component(payload: str) -> str | None:
     """Plain text of a ``tellraw``/``title`` component, or ``None`` if unreadable.
 
     Accepts JSON (every version) and SNBT (1.21.5 and later), e.g.
@@ -82,7 +83,7 @@ def tokenize(text: str) -> list[str]:
     tokens: list[str] = []
     current: list[str] = []
     stack: list[str] = []
-    quote: Optional[str] = None
+    quote: str | None = None
     escaped = False
     for char in text:
         if quote is not None:
@@ -122,7 +123,7 @@ def split_arguments(body: str) -> list[tuple[str, str]]:
     """Split ``type=x,tag=!y,scores={a=1}`` into ``(key, value)`` pairs."""
     out: list[tuple[str, str]] = []
     depth = 0
-    quote: Optional[str] = None
+    quote: str | None = None
     current: list[str] = []
     for char in body:
         if quote is not None:
@@ -165,17 +166,15 @@ def in_range(value: float, expression: str) -> bool:
         if ".." not in expression:
             return float(value) == float(expression)
         low, _, high = expression.partition("..")
-        if low and float(value) < float(low):
-            return False
-        if high and float(value) > float(high):
-            return False
-        return True
+        above_low = not low or float(value) >= float(low)
+        below_high = not high or float(value) <= float(high)
+        return above_low and below_high
     except ValueError:
         return False
 
 
 def distance_squared(a: Iterable[float], b: Iterable[float]) -> float:
-    return sum((x - y) ** 2 for x, y in zip(a, b))
+    return sum((x - y) ** 2 for x, y in zip(a, b, strict=False))
 
 
 def volume_of(arguments: list[str]) -> float:

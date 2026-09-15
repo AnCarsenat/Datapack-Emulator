@@ -31,7 +31,10 @@ def describe_datapack(datapack: Datapack, version: Version | None = None) -> Row
     ]
     if datapack.overlays:
         rows.append(
-            ("overlays", ", ".join(layer.entry.describe() for layer in datapack.overlays if layer.entry))
+            (
+                "overlays",
+                ", ".join(layer.entry.describe() for layer in datapack.overlays if layer.entry),
+            )
         )
     if version is not None:
         view = datapack.view_for(version)

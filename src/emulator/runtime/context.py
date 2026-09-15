@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from src.emulator.runtime.output import LogLevel, LogRecord, LogSource
 from src.emulator.runtime.world import Entity, World
@@ -16,10 +16,10 @@ if TYPE_CHECKING:  # pragma: no cover
 class ExecutionContext:
     """Vanilla's command source: executor, position, rotation, dimension."""
 
-    emulator: "Emulator"
+    emulator: Emulator
     function_id: str = ""
     line: int = 0
-    executor: Optional[Entity] = None
+    executor: Entity | None = None
     position: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     rotation: list[float] = field(default_factory=lambda: [0.0, 0.0])
     dimension: str = "minecraft:overworld"
@@ -29,7 +29,7 @@ class ExecutionContext:
     def world(self) -> World:
         return self.emulator.world
 
-    def branch(self, **overrides: Any) -> "ExecutionContext":
+    def branch(self, **overrides: Any) -> ExecutionContext:
         return ExecutionContext(
             emulator=self.emulator,
             function_id=overrides.get("function_id", self.function_id),
@@ -79,9 +79,7 @@ class ExecutionContext:
         """A diagnostic from the emulator itself, not from the game."""
         return self.emulator.output.emulator(text, level=level, **self._fields())
 
-    def note_key(
-        self, key: str, *arguments: Any, level: LogLevel = LogLevel.WARNING
-    ) -> LogRecord:
+    def note_key(self, key: str, *arguments: Any, level: LogLevel = LogLevel.WARNING) -> LogRecord:
         """Same, but rendered from the message catalogue."""
         return self.emulator.output.emulator(
             self.render(key, *arguments), level=level, **self._fields(key=key)

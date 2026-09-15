@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 import sys
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pytest
 
@@ -43,7 +43,9 @@ def make_pack(tmp_path: Path) -> PackFactory:
     def factory(files: dict[str, object], mcmeta: dict | None = None, name: str = "") -> Path:
         counter["n"] += 1
         root = tmp_path / (name or f"pack{counter['n']}")
-        meta = mcmeta if mcmeta is not None else {"pack": {"description": "test", "pack_format": 61}}
+        meta = (
+            mcmeta if mcmeta is not None else {"pack": {"description": "test", "pack_format": 61}}
+        )
         content = {"pack.mcmeta": meta, **files}
         if not any("tags/function" in key for key in content):
             content["data/minecraft/tags/function/tick.json"] = {"values": ["test:tick"]}
@@ -79,7 +81,9 @@ def fake_jar(tmp_path: Path) -> Path:
         "assets/minecraft/blockstates/stone.json": {},
         "assets/minecraft/items/diamond.json": {},
         "assets/minecraft/particles/flame.json": {},
-        "data/minecraft/tags/entity_type/skeletons.json": {"values": ["skeleton", "#minecraft:cold"]},
+        "data/minecraft/tags/entity_type/skeletons.json": {
+            "values": ["skeleton", "#minecraft:cold"]
+        },
         "data/minecraft/tags/entity_type/cold.json": {"values": ["minecraft:stray"]},
         "data/minecraft/recipe/torch.json": {},
     }

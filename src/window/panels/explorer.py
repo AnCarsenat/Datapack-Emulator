@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 
@@ -21,7 +19,7 @@ OVERLAY_COLOUR = QColor("#8e44ad")
 ERROR_COLOUR = QColor("#c0392b")
 
 
-def build_explorer_model(datapack: Optional[Datapack]) -> QStandardItemModel:
+def build_explorer_model(datapack: Datapack | None) -> QStandardItemModel:
     """Pack files, then ``data/``, then one subtree per overlay directory."""
     model = QStandardItemModel()
     model.setHorizontalHeaderLabels(["datapack"])

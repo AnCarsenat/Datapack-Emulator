@@ -1,10 +1,10 @@
 """Datapack model, command emulator and version test engine.
 
-    from src.emulator import Datapack, Emulator, TestEngine
+from src.emulator import Datapack, Emulator, TestEngine
 
-    pack = Datapack.load("samples/hat")
-    Emulator(pack, version="1.21.4").run(ticks=20)
-    TestEngine(pack).run(["1.20.4", "1.21.4"])
+pack = Datapack.load("samples/hat")
+Emulator(pack, version="1.21.4").run(ticks=20)
+TestEngine(pack).run(["1.20.4", "1.21.4"])
 """
 
 from src.emulator.analysis.graph import CallEdge, CallGraph

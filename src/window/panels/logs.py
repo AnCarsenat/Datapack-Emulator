@@ -7,8 +7,6 @@ diagnostics, ``app`` rows are the program talking about itself.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 
@@ -95,7 +93,7 @@ class LogTableModel(QAbstractTableModel):
             return record
         return None
 
-    def record_at(self, row: int) -> Optional[LogRecord]:
+    def record_at(self, row: int) -> LogRecord | None:
         return self._visible[row] if 0 <= row < len(self._visible) else None
 
     # -- feeding ----------------------------------------------------------
@@ -123,9 +121,9 @@ class LogTableModel(QAbstractTableModel):
 
     def set_filter(
         self,
-        sources: Optional[set[LogSource]] = None,
-        level: Optional[LogLevel] = None,
-        text: Optional[str] = None,
+        sources: set[LogSource] | None = None,
+        level: LogLevel | None = None,
+        text: str | None = None,
     ) -> None:
         if sources is not None:
             self._sources = sources
