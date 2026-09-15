@@ -502,3 +502,19 @@ def test_engine_window_runs_the_environment_tests(window, make_pack):
     ]
     assert "tests" in headers
     engine.close()
+
+
+def test_entity_selector_matches_exactly_that_entity(window):
+    from datapack_emulator.settings import PATHS
+    from datapack_emulator.window.controllers.world import entity_selector
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.console.run("summon minecraft:pig 1 2 3")
+    window.console.run("summon minecraft:pig 4 5 6")
+    world = window.emulator.world
+    first = next(e for e in world.entities if e.type == "minecraft:pig")
+    selector = entity_selector(first)
+    assert selector.startswith("@e[nbt={UUID:[I;") and selector.endswith("]},limit=1]")
+    window.console.run(f"execute as {selector} at @s run tag @s add picked")
+    assert [e.tags for e in world.entities if e.type == "minecraft:pig"] == [{"picked"}, set()]
+    assert entity_selector(world.players[0]) == "Player1"

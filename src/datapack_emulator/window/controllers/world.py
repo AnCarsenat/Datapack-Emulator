@@ -8,6 +8,7 @@ from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QMenu
 
 from datapack_emulator.emulator.common import to_snbt
+from datapack_emulator.emulator.runtime.world import Entity, uuid_to_ints
 from datapack_emulator.window.controllers.base import Controller
 from datapack_emulator.window.panels.world import (
     UUID_ROLE,
@@ -19,6 +20,15 @@ from datapack_emulator.window.panels.world import (
 )
 
 TAB_SCORES, TAB_ENTITIES, TAB_STORAGE = range(3)
+
+
+def entity_selector(entity: Entity) -> str:
+    """A selector for exactly this entity that also works in game: a player's
+    name, otherwise ``@e[nbt={UUID:[I;…]},limit=1]``."""
+    if entity.is_player and entity.name:
+        return entity.name
+    ints = ",".join(str(part) for part in uuid_to_ints(entity.uuid))
+    return f"@e[nbt={{UUID:[I;{ints}]}},limit=1]"
 
 
 class WorldController(Controller):
@@ -117,7 +127,7 @@ class WorldController(Controller):
             menu.addSeparator()
             menu.addAction(
                 "run a command as this entity",
-                lambda: window.console.prefill(f"execute as {entity.id} at @s run "),
+                lambda: window.console.prefill(f"execute as {entity_selector(entity)} at @s run "),
             )
             menu.addAction("copy UUID", lambda: navigation.copy_text(entity.uuid, "the UUID"))
             menu.addAction(
