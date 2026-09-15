@@ -353,16 +353,23 @@ def cmd_kill(command: Command, context: ExecutionContext) -> CommandResult:
 def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
     if not command.arguments:
         return CommandResult.failure()
-    if len(command.arguments) >= 4:
-        targets = _require_targets(context, command.arguments[0])
-        destination = resolve_position(command.arguments[1:4], context.position)
-    elif len(command.arguments) == 2:
-        targets = _require_targets(context, command.arguments[0])
-        anchor = _targets(context, command.arguments[1])
-        destination = list(anchor[0].position) if anchor else context.position
-    else:
+    arguments = command.arguments
+    if len(arguments) >= 4:  # tp <targets> <x y z> [rotation|facing ...]
+        targets = _require_targets(context, arguments[0])
+        destination = resolve_position(arguments[1:4], context.position)
+    elif len(arguments) == 3:  # tp <x y z>
         targets = [context.executor] if context.executor else []
-        destination = resolve_position(command.arguments[0:3], context.position)
+        destination = resolve_position(arguments, context.position)
+    else:  # tp <destination entity> / tp <targets> <destination entity>
+        targets = (
+            _require_targets(context, arguments[0])
+            if len(arguments) == 2
+            else ([context.executor] if context.executor else [])
+        )
+        anchor = _require_targets(context, arguments[-1])
+        if not anchor:
+            return CommandResult.failure()
+        destination = list(anchor[0].position)
     for entity in targets:
         if entity is not None:
             entity.position = list(destination)
@@ -579,12 +586,23 @@ def cmd_noop(command: Command, context: ExecutionContext) -> CommandResult:
     return CommandResult(success=True, value=1)
 
 
+def _resource_id(token: str) -> str:
+    """``minecraft:stone[facing=up]{...}`` -> ``minecraft:stone``.
+
+    Block states, item components, NBT and particle options all follow the id
+    directly, so everything from the first ``[`` or ``{`` on is dropped.
+    """
+    cut = min((token.index(mark) for mark in "[{" if mark in token), default=len(token))
+    return token[:cut]
+
+
 def _checking(registry: str, index: int, key: str) -> Handler:
     """A no-op handler that still checks the id at ``index`` against the jar."""
 
     def handler(command: Command, context: ExecutionContext) -> CommandResult:
         if len(command.arguments) > index:
-            if not _require_id(context, registry, command.arguments[index], key):
+            resource = _resource_id(command.arguments[index])
+            if not _require_id(context, registry, resource, key):
                 return CommandResult.failure()
         return CommandResult(success=True, value=1)
 
@@ -603,7 +621,7 @@ def cmd_effect(command: Command, context: ExecutionContext) -> CommandResult:
 def cmd_setblock(command: Command, context: ExecutionContext) -> CommandResult:
     """Only the block id is checked; there is no block model to change."""
     if len(command.arguments) >= 4:
-        block = command.arguments[3].split("[")[0].split("{")[0]
+        block = _resource_id(command.arguments[3])
         if not _require_id(context, "block", block, "argument.block.id.invalid"):
             return CommandResult.failure()
     return CommandResult(success=True, value=1)

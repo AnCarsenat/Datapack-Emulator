@@ -88,3 +88,27 @@ def test_scoreboard_swap_updates_both_holders(make_pack):
     )
     board = emulator.world.scoreboard
     assert (board.get("#a", "x"), board.get("#b", "x")) == (2, 1)
+
+
+def test_id_checks_strip_components_nbt_and_particle_options(make_pack, fake_jar):
+    from src.emulator.vanilla import VanillaAssets
+
+    emulator = run(
+        make_pack,
+        "give @a minecraft:diamond[enchantments={levels:{sharpness:1}}]\n"
+        "give @a minecraft:diamond{display:{}} 1\n"
+        "clear @a minecraft:diamond[custom_name='x']\n"
+        "particle minecraft:flame{scale:1} ~ ~ ~\n",
+        vanilla=VanillaAssets.from_jar(fake_jar),
+    )
+    assert game_errors(emulator.output.records) == []
+
+
+def test_teleport_to_an_entity(make_pack):
+    emulator = run(
+        make_pack,
+        "summon minecraft:marker 10 20 30 {Tags:[\"target\"]}\n"
+        "execute as @a run tp @e[tag=target,limit=1]\n",
+    )
+    player = emulator.world.players[0]
+    assert player.position == [10.0, 20.0, 30.0]
