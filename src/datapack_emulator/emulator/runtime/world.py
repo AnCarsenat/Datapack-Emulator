@@ -26,7 +26,7 @@ from datapack_emulator.emulator.common import (
     parse_snbt,
     split_arguments,
 )
-from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory
+from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory, has_equipment
 
 if TYPE_CHECKING:  # pragma: no cover
     from datapack_emulator.emulator.runtime.context import ExecutionContext
@@ -105,7 +105,7 @@ class Entity:
 
     def __post_init__(self) -> None:
         if self.inventory is None:
-            self.inventory = Inventory(player=self.is_player)
+            self.inventory = Inventory(player=self.is_player, equipment=has_equipment(self.type))
 
     @property
     def id(self) -> str:

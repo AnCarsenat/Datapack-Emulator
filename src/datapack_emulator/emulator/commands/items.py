@@ -21,11 +21,13 @@ from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import normalise_id
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.inventory import (
+    SLOT_NAMES,
     Inventory,
     ItemPredicate,
     ItemStack,
     parse_item,
     parse_item_predicate,
+    slot_number,
     uses_components,
     uses_equipment,
 )
@@ -188,6 +190,9 @@ def cmd_clear(command: Command, context: ExecutionContext) -> CommandResult:
     max_count = _integer(context, arguments[2]) if len(arguments) > 2 else -1
     if max_count is None:
         return CommandResult.failure()
+    if len(arguments) > 2 and max_count < 0:
+        context.game_error("argument.integer.low", 0, max_count)
+        return CommandResult.failure()
     total = 0
     for player in players:
         if max_count == 0:
@@ -273,7 +278,7 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
     if action == "replace" and rest and rest[0] == "with" and len(rest) > 1:
         stack = _stack(context, rest[1])
         count = _integer(context, rest[2]) if stack is not None and len(rest) > 2 else 1
-        if stack is None or count is None:
+        if stack is None or count is None or not _valid_count(context, stack, count):
             return CommandResult.failure()
         stack.count = count
         return _set_slots(context, token, slot, stack)
@@ -283,8 +288,12 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
             return CommandResult.failure()
         if len(rest) > 4 and stack is not None:
             stack = _modify(context, stack, rest[4])
+            if stack is None:
+                return CommandResult.failure()
         return _set_slots(context, token, slot, stack)
     if action == "modify" and rest:
+        if _modifier(context, rest[0]) is None:
+            return CommandResult.failure()
         targets = _require_targets(context, token)
         changed = 0
         for entity in targets:
@@ -300,19 +309,43 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
     return _usage(context)
 
 
-def _modify(context: ExecutionContext, stack: ItemStack, modifier_id: str) -> ItemStack:
-    """Apply an item modifier from the pack (set_count, set_components, set_nbt)."""
-    from datapack_emulator.emulator.runtime.loot import LootResult, _apply
+def _valid_count(context: ExecutionContext, stack: ItemStack, count: int) -> bool:
+    """``item replace … with <item> <count>``: 1–99 (1–64 before 1.20.5), and
+    no more than the item stacks to."""
+    highest = 99 if uses_components(context.emulator.version) else 64
+    if count < 1:
+        context.game_error("argument.integer.low", 1, count)
+        return False
+    if count > highest:
+        context.game_error("argument.integer.big", highest, count)
+        return False
+    if count > stack.max_count:
+        context.game_error(
+            "arguments.item.overstacked", item_name(context, stack.id), stack.max_count
+        )
+        return False
+    return True
 
+
+def _modifier(context: ExecutionContext, modifier_id: str) -> Any:
     modifiers = context.emulator.pack.registries.get("item_modifier", {})
-    resource = modifiers.get(normalise_id(modifier_id))
-    content: Any = getattr(resource, "content", None)
+    content: Any = getattr(modifiers.get(normalise_id(modifier_id)), "content", None)
     if content is None:
         context.game_error("argument.resource_or_id.no_such_element", modifier_id, "item_modifier")
-        return stack
+    return content
+
+
+def _modify(context: ExecutionContext, stack: ItemStack, modifier_id: str) -> ItemStack | None:
+    """Apply an item modifier from the pack (set_count, set_components, set_nbt);
+    None, with the error reported, when the pack has no such modifier."""
+    from datapack_emulator.emulator.runtime.loot import LootResult, _apply
+
+    content = _modifier(context, modifier_id)
+    if content is None:
+        return None
     result = LootResult()
     for function in content if isinstance(content, list) else [content]:
-        stack = _apply(function, stack, context.world.random, result)
+        stack = _apply(function, stack, context.world.random, result, cap=True)
     if result.skipped:
         context.note_once(
             "item modifier parts not evaluated by the emulator: "
@@ -330,7 +363,7 @@ def cmd_replaceitem(command: Command, context: ExecutionContext) -> CommandResul
         return _usage(context)
     stack = _stack(context, arguments[3])
     count = _integer(context, arguments[4]) if stack is not None and len(arguments) > 4 else 1
-    if stack is None or count is None:
+    if stack is None or count is None or not _valid_count(context, stack, count):
         return CommandResult.failure()
     stack.count = count
     return _set_slots(context, arguments[1], arguments[2], stack)
@@ -364,6 +397,13 @@ def cmd_enchant(command: Command, context: ExecutionContext) -> CommandResult:
             if len(targets) == 1:
                 context.game_error("commands.enchant.failed.itemless", entity.display)
             continue
+        if _has_enchantment(stack, enchantment, version):
+            # an enchantment is incompatible with itself: vanilla refuses a second one
+            if len(targets) == 1:
+                context.game_error(
+                    "commands.enchant.failed.incompatible", item_name(context, stack.id)
+                )
+            continue
         _add_enchantment(stack, enchantment, level, version)
         changed.append(entity)
     if not changed:
@@ -375,6 +415,19 @@ def cmd_enchant(command: Command, context: ExecutionContext) -> CommandResult:
     else:
         context.feedback("commands.enchant.success.multiple", enchantment, len(changed))
     return CommandResult(success=True, value=len(changed))
+
+
+def _has_enchantment(stack: ItemStack, enchantment: str, version) -> bool:
+    if not uses_components(version):
+        return any(
+            isinstance(entry, dict) and normalise_id(str(entry.get("id", ""))) == enchantment
+            for entry in stack.tag.get("Enchantments", [])
+        )
+    current = stack.components.get("minecraft:enchantments")
+    if not isinstance(current, dict):
+        return False
+    levels = current.get("levels", current) if not uses_equipment(version) else current
+    return isinstance(levels, dict) and enchantment in {normalise_id(k) for k in levels}
 
 
 def _add_enchantment(stack: ItemStack, enchantment: str, level: int, version) -> None:
@@ -445,40 +498,50 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
             "loot table parts not evaluated by the emulator (conditions pass, functions are "
             "skipped): " + ", ".join(sorted(result.skipped))
         )
-    items = result.items
+    items = split_stacks(result.items)
     if target == "give":
         players = _players(context, arguments[1])
         if players is None:
             return CommandResult.failure()
         for player in players:
             for stack in items:
-                leftover = player.inventory.add(stack.copy())
-                if leftover:
-                    drop(context, player.position, stack.copy(leftover))
+                player.inventory.add(stack.copy())  # what does not fit is lost, as in vanilla
     elif target == "spawn":
         position = resolve_position(arguments[1:4], context.position)
         for stack in items:
             drop(context, position, stack)
     else:
-        targets = _require_targets(context, arguments[2])
-        slot = arguments[3]
-        limit = int(arguments[4]) if consumed == 5 else len(items)
-        name, _, first = slot.rpartition(".")
-        for entity in targets:
-            for offset in range(limit):
-                key_slot = f"{name}.{int(first) + offset}" if first.isdigit() else slot
-                keys = entity.inventory.keys_for(key_slot)
+        first = slot_number(arguments[3])
+        if first is None:
+            context.game_error("slot.unknown", arguments[3])
+            return CommandResult.failure()
+        count = int(arguments[4]) if consumed == 5 else len(items)
+        for entity in _require_targets(context, arguments[2]):
+            for offset in range(count):
+                name = SLOT_NAMES.get(first + offset)
+                keys = entity.inventory.keys_for(name) if name else None
                 if keys and len(keys) == 1:
-                    entity.inventory.set(
-                        keys[0], items[offset].copy() if offset < len(items) else None
-                    )
-    total = sum(stack.count for stack in items)
+                    stack = items[offset].copy() if offset < len(items) else None
+                    entity.inventory.set(keys[0], stack)
+    # vanilla reports and returns the number of stacks
     if len(items) == 1:
         stack = items[0]
         context.feedback("commands.drop.success.single", stack.count, item_name(context, stack.id))
     else:
-        context.feedback("commands.drop.success.multiple", total)
-    return CommandResult(success=bool(items), value=total)
+        context.feedback("commands.drop.success.multiple", len(items))
+    return CommandResult(success=bool(items), value=len(items))
+
+
+def split_stacks(stacks: list[ItemStack]) -> list[ItemStack]:
+    """Stacks bigger than the item's limit become several full stacks."""
+    out = []
+    for stack in stacks:
+        remaining = stack.count
+        while remaining > 0:
+            size = min(remaining, stack.max_count)
+            out.append(stack.copy(size))
+            remaining -= size
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +569,9 @@ def items_condition_count(arguments: list[str], context: ExecutionContext) -> in
 
 def drop_inventory_on_death(context: ExecutionContext, player: Entity) -> None:
     """A killed player drops what they carry unless keepInventory is on."""
-    if context.world.gamerules.get("keepInventory", "false").lower() == "true":
+    rules = context.world.gamerules
+    names = ("keepInventory", "keep_inventory", "minecraft:keep_inventory")  # renamed in 1.21.11
+    if any(str(rules.get(name, "false")).lower() == "true" for name in names):
         return
     for stack in player.inventory.clear_all():
         drop(context, player.position, stack)

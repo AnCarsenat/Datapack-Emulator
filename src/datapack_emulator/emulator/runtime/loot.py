@@ -10,6 +10,7 @@ what was skipped so the caller can say so.
 
 from __future__ import annotations
 
+import math
 import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -52,6 +53,22 @@ def number(provider: Any, rng: random.Random) -> float:
     return 0
 
 
+def integer(provider: Any, rng: random.Random) -> int:
+    """A number provider read as an int, like vanilla's ``getInt``: uniform
+    ranges include both ends (floored), everything else is floored."""
+    if isinstance(provider, dict):
+        kind = normalise_id(str(provider.get("type", "minecraft:uniform")))
+        if kind == "minecraft:uniform" or (
+            kind not in ("minecraft:constant", "minecraft:binomial")
+            and "min" in provider
+            and "max" in provider
+        ):
+            low = math.floor(number(provider.get("min", 0), rng))
+            high = math.floor(number(provider.get("max", low), rng))
+            return rng.randint(min(low, high), max(low, high))
+    return math.floor(number(provider, rng))
+
+
 def evaluate(
     table: dict[str, Any], lookup: TableLookup, rng: random.Random, depth: int = 0
 ) -> LootResult:
@@ -60,7 +77,7 @@ def evaluate(
         if not isinstance(pool, dict):
             continue
         _skip_conditions(pool, result)
-        rolls = int(number(pool.get("rolls", 1), rng))
+        rolls = integer(pool.get("rolls", 1), rng)
         for _ in range(max(0, rolls)):
             entry = _pick(pool.get("entries", []) or [], rng)
             if entry is not None:
@@ -129,15 +146,19 @@ def _entry_items(
     return [stack for stack in stacks if stack.id != "minecraft:air"]
 
 
-def _apply(function: Any, stack: ItemStack, rng: random.Random, result: LootResult) -> ItemStack:
+def _apply(
+    function: Any, stack: ItemStack, rng: random.Random, result: LootResult, cap: bool = False
+) -> ItemStack:
+    """One item function. ``cap`` limits counts to the stack size (item
+    modifiers); loot keeps the count and is split into stacks afterwards."""
     if not isinstance(function, dict):
         return stack
     _skip_conditions(function, result)
     name = normalise_id(str(function.get("function", "")))
     if name == "minecraft:set_count":
-        amount = int(number(function.get("count", 1), rng))
+        amount = integer(function.get("count", 1), rng)
         stack.count = stack.count + amount if function.get("add") else amount
-        stack.count = max(0, min(stack.count, stack.max_count))
+        stack.count = max(0, min(stack.count, stack.max_count) if cap else stack.count)
     elif name == "minecraft:set_components" and isinstance(function.get("components"), dict):
         for key, value in function["components"].items():
             qualified = key if ":" in key.lstrip("!") else f"minecraft:{key}"

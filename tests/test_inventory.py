@@ -44,8 +44,19 @@ def test_parse_items_and_predicates():
     assert parse_item("air") is None and parse_item("stone").max_count == 64
     assert parse_item("ender_pearl").max_count == 16
     predicate = parse_item_predicate("#minecraft:logs[custom_data,count>1]")
-    assert predicate.id == "#minecraft:logs" and predicate.present == {"minecraft:custom_data"}
-    assert predicate.unchecked == ["count>1"]
+    assert predicate.id == "#minecraft:logs" and predicate.unchecked == ["count>1"]
+    assert [[check.key for check in group] for group in predicate.groups] == [
+        ["minecraft:custom_data"]
+    ]
+
+    damaged = ItemStack("minecraft:iron_sword", 1, {"minecraft:damage": 3})
+    enchanted = ItemStack("minecraft:iron_sword", 1, {"minecraft:enchantments": {}})
+    plain = ItemStack("minecraft:iron_sword")
+    either = parse_item_predicate("*[minecraft:damage|minecraft:enchantments]")
+    assert either.matches(damaged) and either.matches(enchanted) and not either.matches(plain)
+    undamaged = parse_item_predicate("*[!damage]")
+    assert undamaged.matches(plain) and not undamaged.matches(damaged)
+    assert parse_item_predicate("*[damage=3]").matches(damaged)
 
 
 def test_give_stacks_fills_then_drops_the_rest(make_pack):
@@ -238,3 +249,115 @@ def test_nbt_paths_filter_list_elements(make_pack):
         version="1.20.4",
     )
     assert emulator.world.storage["hat:swap"]["head"]["id"] == "minecraft:leather_helmet"
+
+
+def test_review_fixes_for_loot_counts_and_slots(make_pack):
+    two_rolls = {
+        "pools": [
+            {
+                "rolls": 2,
+                "entries": [
+                    {
+                        "type": "minecraft:item",
+                        "name": "minecraft:stone",
+                        "functions": [{"function": "minecraft:set_count", "count": 5}],
+                    }
+                ],
+            }
+        ]
+    }
+    one = {
+        "pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stick"}]}]
+    }
+    big = {
+        "pools": [
+            {
+                "rolls": 1,
+                "entries": [
+                    {
+                        "type": "minecraft:item",
+                        "name": "minecraft:stone",
+                        "functions": [{"function": "minecraft:set_count", "count": 100}],
+                    }
+                ],
+            }
+        ]
+    }
+    emulator = world(
+        make_pack,
+        'summon zombie 0 0 0 {Tags:["z"]}\n',
+        extra={
+            "data/test/loot_table/two.json": two_rolls,
+            "data/test/loot_table/one.json": one,
+            "data/test/loot_table/big.json": big,
+        },
+    )
+    result = typed(emulator, "loot spawn 0 0 0 loot test:two")
+    assert result.value == 2 and "Dropped 2 items" in feedback(emulator)
+    typed(emulator, "item replace entity @e[tag=z] weapon.offhand with minecraft:dirt")
+    typed(emulator, "loot replace entity @e[tag=z] weapon.mainhand 2 loot test:one")
+    zombie = next(e for e in emulator.world.entities if "z" in e.tags).inventory
+    assert zombie.get("mainhand").id == "minecraft:stick" and zombie.get("offhand") is None
+    assert typed(emulator, "loot give Player1 loot test:big").value == 2  # 64 + 36
+    assert emulator.world.players[0].inventory.get("container.1").count == 36
+
+
+def test_review_fixes_for_counts_predicates_and_equipment(make_pack):
+    emulator = world(
+        make_pack,
+        'summon marker 0 0 0 {Tags:["m"]}\nsummon zombie 0 0 0 {Tags:["z"]}\n',
+        version="1.21.5",
+    )
+    assert not typed(emulator, "item replace entity Player1 hotbar.0 with diamond_sword 5").success
+    assert not typed(emulator, "item replace entity Player1 hotbar.0 with stone 0").success
+    assert not typed(emulator, "clear Player1 stone -1").success
+    assert not typed(emulator, "item replace entity @e[tag=m] weapon.mainhand with stone").success
+    marker = next(e for e in emulator.world.entities if "m" in e.tags)
+    assert "HandItems" not in marker.data(emulator.version) and "equipment" not in marker.data(
+        emulator.version
+    )
+    assert not typed(emulator, "item modify entity @e[tag=z] weapon test:missing").success
+
+    typed(emulator, "item replace entity @e[tag=z] armor.head with minecraft:leather_helmet")
+    typed(emulator, "data remove entity @e[tag=z,limit=1] equipment")
+    zombie = next(e for e in emulator.world.entities if "z" in e.tags)
+    assert zombie.inventory.get("head") is None
+
+    typed(emulator, "item replace entity Player1 container.5 with stone 10")
+    typed(emulator, "item replace entity Player1 container.0 with stone 10")
+    typed(emulator, "clear Player1 stone 3")
+    player = emulator.world.players[0].inventory
+    assert player.get("container.0").count == 7 and player.get("container.5").count == 10
+
+    typed(emulator, "give Player1 iron_sword")
+    typed(emulator, "item replace entity Player1 weapon with iron_sword")
+    assert typed(emulator, "enchant Player1 sharpness").success
+    assert not typed(emulator, "enchant Player1 sharpness").success
+
+    typed(emulator, "gamerule minecraft:keep_inventory true")
+    typed(emulator, "kill Player1")
+    assert player.get("container.0") is not None
+
+
+def test_nbt_filters_set_every_match_and_create_missing(make_pack):
+    from datapack_emulator.emulator.common import nbt_set
+
+    data = {"list": [{"id": "a", "v": 0}, {"id": "b", "v": 0}, {"id": "a", "v": 0}]}
+    assert nbt_set(data, 'list[{id:"a"}].v', 1)
+    assert [item["v"] for item in data["list"]] == [1, 0, 1]
+    assert nbt_set(data, 'list[{id:"c"}].v', 2) and data["list"][-1] == {"id": "c", "v": 2}
+    fresh: dict = {}
+    assert nbt_set(fresh, "Items[{Slot:0b}].id", "x") and fresh == {
+        "Items": [{"Slot": 0, "id": "x"}]
+    }
+
+
+def test_uniform_number_providers_include_the_maximum():
+    import random
+
+    from datapack_emulator.emulator.runtime.loot import integer
+
+    rng = random.Random(1)
+    draws = {integer({"type": "minecraft:uniform", "min": 1, "max": 3}, rng) for _ in range(300)}
+    assert draws == {1, 2, 3}
+    assert integer(2.7, rng) == 2 and integer({"type": "minecraft:constant", "value": 4}, rng) == 4

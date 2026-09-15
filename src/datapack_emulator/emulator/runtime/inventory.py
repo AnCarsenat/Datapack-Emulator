@@ -213,17 +213,34 @@ def _matching(text: str, start: int) -> int:
 
 
 @dataclass
+class ComponentCheck:
+    """One test on a stack's components: ``key`` present, ``key=value``, or negated."""
+
+    key: str
+    value: Any = None
+    has_value: bool = False
+    negated: bool = False
+
+    def passes(self, stack: ItemStack) -> bool:
+        if self.has_value:
+            result = stack.components.get(self.key) == self.value
+        else:
+            result = self.key in stack.components
+        return result != self.negated
+
+
+@dataclass
 class ItemPredicate:
-    """What ``clear`` and ``execute if items`` match: an id, ``*`` or ``#tag``,
-    plus components that must be equal or present, or an NBT tag subset."""
+    """What ``clear`` and ``execute if items`` match: an id, ``*`` or ``#tag``;
+    then groups of component checks, all groups needed and any check of a group
+    enough (``[a|b,c]`` is (a or b) and c); or, before 1.20.5, an NBT tag subset."""
 
     id: str = "*"
-    components: dict[str, Any] = field(default_factory=dict)
-    present: set[str] = field(default_factory=set)
+    groups: list[list[ComponentCheck]] = field(default_factory=list)
     tag: dict[str, Any] = field(default_factory=dict)
     #: ids of a #tag, resolved by the caller (None when it could not be resolved)
     tag_members: set[str] | None = None
-    #: parts of the predicate the emulator does not check
+    #: parts of the predicate the emulator does not check (they pass)
     unchecked: list[str] = field(default_factory=list)
 
     def matches(self, stack: ItemStack) -> bool:
@@ -232,11 +249,9 @@ class ItemPredicate:
                 return False
         elif self.id != "*" and stack.id != self.id:
             return False
-        for key, value in self.components.items():
-            if stack.components.get(key) != value:
+        for group in self.groups:
+            if group and not any(check.passes(stack) for check in group):
                 return False
-        if any(key not in stack.components for key in self.present):
-            return False
         return nbt_matches(stack.tag, self.tag) if self.tag else True
 
 
@@ -248,19 +263,26 @@ def parse_item_predicate(text: str) -> ItemPredicate:
     rest = text[cut:]
     if rest.startswith("["):
         end = _matching(rest, 0)
-        body = rest[1:end]
-        for part in _split_predicate(body):
-            name = part.split("=", 1)[0]
-            if "~" in name or any(mark in name for mark in "<>") or name.strip() == "count":
-                predicate.unchecked.append(part)
-            elif "=" in part:
-                key, value = part.split("=", 1)
-                if key.strip() == "count":
+        for alternatives in _split_top(rest[1:end], ","):
+            group: list[ComponentCheck] = []
+            for part in _split_top(alternatives, "|"):
+                negated = part.startswith("!")
+                body = part[1:].strip() if negated else part
+                name = body.split("=", 1)[0]
+                if "~" in name or any(mark in name for mark in "<>") or name.strip() == "count":
                     predicate.unchecked.append(part)
+                    group = []  # an unchecked alternative lets the whole group pass
+                    break
+                if "=" in body:
+                    key, value = body.split("=", 1)
+                    check = ComponentCheck(
+                        _qualify_component(key), parse_value(value), True, negated
+                    )
                 else:
-                    predicate.components[_qualify_component(key)] = parse_value(value)
-            elif part.strip():
-                predicate.present.add(_qualify_component(part))
+                    check = ComponentCheck(_qualify_component(body), negated=negated)
+                group.append(check)
+            if group:
+                predicate.groups.append(group)
         rest = rest[end + 1 :]
     if rest.startswith("{"):
         predicate.tag = parse_snbt(rest)
@@ -271,7 +293,8 @@ def normalise_tagged(value: str) -> str:
     return "#" + normalise_id(value[1:]) if value.startswith("#") else normalise_id(value)
 
 
-def _split_predicate(body: str) -> list[str]:
+def _split_top(body: str, separator: str) -> list[str]:
+    """Split on ``separator`` outside brackets and quotes."""
     parts, depth, current, quote = [], 0, [], None
     for char in body:
         if quote:
@@ -285,7 +308,7 @@ def _split_predicate(body: str) -> list[str]:
             depth += 1
         elif char in "]})":
             depth -= 1
-        if char in ",|" and depth == 0:
+        if char == separator and depth == 0:
             parts.append("".join(current))
             current = []
             continue
@@ -301,14 +324,101 @@ def _split_predicate(body: str) -> list[str]:
 #: slot keys other entities have
 MOB_SLOTS = ("mainhand", "offhand", "head", "chest", "legs", "feet", "body", "saddle")
 
+#: numeric slot ids (SlotArgument), used by loot replace to fill a range of slots
+SLOT_NUMBERS: dict[str, int] = {
+    "weapon.mainhand": 98,
+    "weapon.offhand": 99,
+    "armor.feet": 100,
+    "armor.legs": 101,
+    "armor.chest": 102,
+    "armor.head": 103,
+    "armor.body": 105,
+    "horse.saddle": 400,
+    **{f"container.{i}": i for i in range(54)},
+    **{f"enderchest.{i}": 200 + i for i in range(ENDER_CHEST)},
+}
+SLOT_NAMES = {number: name for name, number in SLOT_NUMBERS.items()}
+
+
+def slot_number(slot: str) -> int | None:
+    """``hotbar.2`` -> 2, ``inventory.0`` -> 9, ``weapon`` -> 98 …"""
+    name, _, index = slot.partition(".")
+    if slot == "weapon":
+        return 98
+    if name == "hotbar" and index.isdigit():
+        return int(index)
+    if name == "inventory" and index.isdigit():
+        return HOTBAR + int(index)
+    return SLOT_NUMBERS.get(slot)
+
+
+#: entity types without equipment (not living); the rest have hands and armour
+NON_LIVING = frozenset(
+    f"minecraft:{name}"
+    for name in [
+        "marker",
+        "item",
+        "experience_orb",
+        "area_effect_cloud",
+        "arrow",
+        "spectral_arrow",
+        "trident",
+        "snowball",
+        "egg",
+        "ender_pearl",
+        "fireball",
+        "small_fireball",
+        "dragon_fireball",
+        "wither_skull",
+        "falling_block",
+        "tnt",
+        "firework_rocket",
+        "minecart",
+        "chest_minecart",
+        "furnace_minecart",
+        "hopper_minecart",
+        "tnt_minecart",
+        "spawner_minecart",
+        "command_block_minecart",
+        "painting",
+        "item_frame",
+        "glow_item_frame",
+        "leash_knot",
+        "end_crystal",
+        "evoker_fangs",
+        "eye_of_ender",
+        "fishing_bobber",
+        "llama_spit",
+        "shulker_bullet",
+        "lightning_bolt",
+        "interaction",
+        "block_display",
+        "item_display",
+        "text_display",
+        "wind_charge",
+        "breeze_wind_charge",
+        "ominous_item_spawner",
+        "potion",
+        "splash_potion",
+        "lingering_potion",
+        "experience_bottle",
+    ]
+)
+
+
+def has_equipment(entity_type: str) -> bool:
+    return entity_type not in NON_LIVING and not entity_type.endswith(("_boat", "_raft"))
+
 
 class Inventory:
     """The slots of one entity, keyed ``container.N``, ``enderchest.N``,
     ``mainhand``, ``offhand``, ``head``, ``chest``, ``legs``, ``feet``, ``body``
     and ``saddle`` (a player's mainhand is their selected container slot)."""
 
-    def __init__(self, player: bool = False):
+    def __init__(self, player: bool = False, equipment: bool = True):
         self.player = player
+        #: whether it has hands and armour at all (not markers, items, arrows…)
+        self.equipment = equipment or player
         self.selected = 0
         self.slots: dict[str, ItemStack] = {}
 
@@ -318,6 +428,8 @@ class Inventory:
         """The storage keys a command slot name refers to; ``None`` when this
         entity has no such slot. Wildcards (``container.*``) give several."""
         slot = slot.strip()
+        if not self.equipment:
+            return None
         if slot.endswith(".*"):
             group = slot[:-2]
             names = {
@@ -418,7 +530,9 @@ class Inventory:
         return sum(stack.count for _, stack in self._clearable() if predicate.matches(stack))
 
     def remove(self, predicate: ItemPredicate, max_count: int = -1) -> int:
-        """Remove up to ``max_count`` matching items (-1: all); how many went."""
+        """Remove up to ``max_count`` matching items (-1: all); how many went.
+
+        Slots are looked through in vanilla's order: container 0–35, armour, offhand."""
         removed = 0
         for key, stack in list(self._clearable()):
             if not predicate.matches(stack):
@@ -433,12 +547,18 @@ class Inventory:
         return removed
 
     def _clearable(self) -> Iterator[tuple[str, ItemStack]]:
-        """What ``clear`` looks through: everything but the ender chest."""
-        return ((k, v) for k, v in self.slots.items() if not k.startswith("enderchest."))
+        """What ``clear`` looks through, in order: everything but the ender chest."""
+        order = [
+            *(f"container.{i}" for i in range(PLAYER_CONTAINER)),
+            "feet", "legs", "chest", "head", "offhand", "mainhand", "body", "saddle",
+        ]  # fmt: skip
+        return ((key, self.slots[key]) for key in order if key in self.slots)
 
     # -- NBT --------------------------------------------------------------------
 
     def to_nbt(self, version: Version | None) -> dict[str, Any]:
+        if not self.equipment:
+            return {}
         return self._player_nbt(version) if self.player else self._mob_nbt(version)
 
     def _player_nbt(self, version: Version | None) -> dict[str, Any]:
@@ -495,8 +615,11 @@ class Inventory:
         return data
 
     def load_nbt(self, data: dict[str, Any]) -> None:
-        """Read slots back from entity NBT in any version's format."""
-        if not any(key in data for key in INVENTORY_KEYS):
+        """Read slots back from entity NBT in any version's format.
+
+        ``data`` is the entity's whole NBT: slots it does not mention are empty
+        (so ``data remove entity @s equipment`` clears the equipment)."""
+        if not self.equipment:
             return
         slots: dict[str, ItemStack] = {}
         for entry in data.get("Inventory") or []:
