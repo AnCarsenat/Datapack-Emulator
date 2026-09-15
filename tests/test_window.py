@@ -45,7 +45,7 @@ def test_opening_a_project_keeps_its_version(window, make_pack):
 
     pack = make_pack({"data/test/function/tick.mcfunction": "say hi\n"})
     project = Project(name="p", datapack=pack, version="1.20.4")
-    window._apply_project(project)
+    window.projects.apply(project)
     assert window.version.id == "1.20.4"
 
 
@@ -58,7 +58,7 @@ def test_source_view_keeps_a_single_highlighter(window, make_pack):
         "pack.mcmeta",
         "data/test/function/tick.mcfunction",
     ):
-        window._show_source(pack / relative)
+        window.navigation.show_source(pack / relative)
     document = window.source_edit.document()
     attached = [child for child in document.children() if isinstance(child, QSyntaxHighlighter)]
     assert len(attached) == 1
@@ -66,10 +66,10 @@ def test_source_view_keeps_a_single_highlighter(window, make_pack):
 
 def test_reload_keeps_the_selected_version(window, make_pack):
     pack = make_pack({"data/test/function/tick.mcfunction": "say hi\n"})
-    window.load_datapack(pack)
+    window.datapacks.load(pack)
     index = window.combo_version.findData("1.20.4")
     window.combo_version.setCurrentIndex(index)
-    window.reload_datapack()
+    window.datapacks.reload()
     assert window.version.id == "1.20.4"
     assert window.emulator is not None and window.emulator.version.id == "1.20.4"
 
@@ -79,5 +79,5 @@ def test_imported_pack_defaults_to_its_newest_declared_version(window, make_pack
         {"data/test/function/tick.mcfunction": "say hi\n"},
         mcmeta={"pack": {"pack_format": 5, "supported_formats": [5, 61]}},
     )
-    window.load_datapack(pack)
+    window.datapacks.load(pack)
     assert window.version.id == "1.21.4"
