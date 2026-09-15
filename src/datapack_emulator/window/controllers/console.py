@@ -73,10 +73,17 @@ class ConsoleController(Controller):
         self._remember(line)
         if text is None:
             window.edit_console.clear()
+        outcome = "succeeded" if result.success else "failed"
+        if window.check_step_on_command.isChecked():
+            window.runs.step()  # one more tick, as step (F7) runs it
+            self.status(
+                f"{line}: {outcome} (value {result.value}), then stepped to game time "
+                f"{window.emulator.world.tick}"
+            )
+            return result
         window.log_view.flush()
         window.runs.show_tick()
         window.world_view.refresh()
-        outcome = "succeeded" if result.success else "failed"
         self.status(f"{line}: {outcome} (value {result.value}) at game time {emulator.world.tick}")
         return result
 

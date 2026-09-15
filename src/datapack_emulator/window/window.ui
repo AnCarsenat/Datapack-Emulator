@@ -1254,6 +1254,16 @@ QMenuBar::item:selected {
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="checkStepOnCommand">
+         <property name="text">
+          <string>step on sent command</string>
+         </property>
+         <property name="toolTip">
+          <string>after each command sent from this line, run one more tick in the current world, like step (F7)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QPushButton" name="buttonConsoleRun">
          <property name="toolTip">
           <string>run the command in the current world (Enter)</string>

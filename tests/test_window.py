@@ -975,3 +975,18 @@ def test_open_recent_and_last_project(app, window, make_pack, tmp_path):
     assert str(first.resolve()) not in window.session.recent_projects
     window.session.clear_recent_projects()
     assert not window.session.open_last_project()
+
+
+def test_step_on_sent_command(window, make_pack, tmp_path):
+    from datapack_emulator.project import Project
+
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.console.run("say first")  # starts the world: the first tick runs
+    assert window.emulator.world.tick == 1
+    window.check_step_on_command.setChecked(True)
+    window.console.run("scoreboard players get #ticks t")
+    assert window.emulator.world.tick == 2  # the command, then one more tick
+    assert window.emulator.world.scoreboard.get("#ticks", "t") == 2
+    assert window.statusBar().currentMessage().endswith("then stepped to game time 2")
+    saved = window.projects.capture().save(tmp_path / "step.dpemu")
+    assert Project.load(saved).step_on_command is True
