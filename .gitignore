@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+src/.venv/
+
+# emulator output and caches
+generated/*
+!generated/.gitkeep
+.mcmeta-cache/
+.cache/
