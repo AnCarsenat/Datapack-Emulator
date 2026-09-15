@@ -32,6 +32,10 @@ from datapack_emulator.emulator.versions import Version
 log = logging.getLogger(__name__)
 
 
+#: the call tree's root for scheduled functions
+SCHEDULE_ROOT = "<schedule>"
+
+
 class Emulator:
     """Runs ``#minecraft:load`` once, then ``#minecraft:tick`` every tick."""
 
@@ -200,8 +204,12 @@ class Emulator:
                 level=LogLevel.INFO,
                 version=self.version.id,
             )
-        for function_id in targets:
-            self.run_function(function_id, self.root_context())
+        self.profiler.enter(tag_id)
+        try:
+            for function_id in targets:
+                self.run_function(function_id, self.root_context())
+        finally:
+            self.profiler.leave()
         return self.profiler.total_us - start
 
     def root_context(self) -> ExecutionContext:
@@ -211,11 +219,15 @@ class Emulator:
 
     def run_scheduled(self, target: str) -> None:
         """Run a due schedule; ``#tag`` targets run every function in the tag."""
-        if target.startswith("#"):
-            for function_id in self.library.resolve_tag(target):
-                self.run_function(function_id, self.root_context())
-        else:
-            self.run_function(target, self.root_context())
+        self.profiler.enter(SCHEDULE_ROOT)
+        try:
+            if target.startswith("#"):
+                for function_id in self.library.resolve_tag(target):
+                    self.run_function(function_id, self.root_context())
+            else:
+                self.run_function(target, self.root_context())
+        finally:
+            self.profiler.leave()
 
     def add_schedule(self, function_id: str, tick: int, replace: bool = True) -> None:
         if replace:
@@ -304,6 +316,19 @@ class Emulator:
             return CommandResult.failure()
 
         self.profiler.call(function_id)
+        self.profiler.enter(function_id)
+        try:
+            return self._run_function_body(function, function_id, context, macro_arguments)
+        finally:
+            self.profiler.leave()
+
+    def _run_function_body(
+        self,
+        function,
+        function_id: str,
+        context: ExecutionContext,
+        macro_arguments: dict[str, Any] | None,
+    ) -> CommandResult:
         inner = context.branch(function_id=function_id, depth=context.depth + 1)
         start = self.profiler.total_us
         executed = 0

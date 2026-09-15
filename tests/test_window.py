@@ -779,3 +779,38 @@ def test_score_graph_segments_leave_gaps_for_resets():
     assert step_segments(board, "p", "o", 10) == [([1, 3], [5]), ([5, 8], [7])]
     board.history[("p", "o")] = deque([(1, 5), (4, 6)])
     assert step_segments(board, "p", "o", 10) == [([1, 4, 10], [5, 6])]
+
+
+def test_log_table_keeps_visible_records_on_long_runs(app, monkeypatch):
+    from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource
+    from datapack_emulator.window.panels import LogTableModel
+
+    monkeypatch.setattr(LogTableModel, "MAX_RECORDS", 50)
+    model = LogTableModel()
+    model.extend([LogRecord(LogSource.GAME, LogLevel.INFO, "[Player1] hello", tick=0)])
+    for tick in range(20):
+        model.extend(
+            [
+                LogRecord(LogSource.GAME, LogLevel.DEBUG, f"feedback {i}", tick=tick)
+                for i in range(10)
+            ]
+        )
+    assert model.record_at(0).message == "[Player1] hello"  # debug records went first
+
+
+def test_profiler_tab_shows_a_per_tick_call_tree(window, make_pack):
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.spin_ticks.setValue(4)
+    window.runs.run_all()
+    window.runs.wait()
+    tree = window.tree_profile
+    tops = [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())]
+    assert "#minecraft:tick" in tops and "#minecraft:load" in tops
+    tick = next(
+        tree.topLevelItem(i)
+        for i in range(tree.topLevelItemCount())
+        if tree.topLevelItem(i).text(0) == "#minecraft:tick"
+    )
+    child = tick.child(0)
+    assert child.text(0) == "test:tick" and child.text(4) == "1.00"  # one call per tick
+    assert window.profile_summary.text().startswith("average of 4 tick(s)")

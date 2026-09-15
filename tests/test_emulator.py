@@ -296,3 +296,61 @@ def test_player_data_is_read_only_and_killed_players_stay(make_pack):
     assert game_errors(emulator.output.records) == ["Unable to modify player data"]
     assert [entity.name for entity in emulator.world.players] == ["Player1"]
     assert "[Server] still here" in chat(emulator.output.records)
+
+
+def test_profiler_builds_a_call_tree_with_per_tick_costs(make_pack):
+    emulator = run(
+        make_pack,
+        "function test:a\nfunction test:a\nschedule function test:b 1t\n",
+        ticks=4,
+        extra={
+            "data/test/function/a.mcfunction": "say a\nfunction test:b\n",
+            "data/test/function/b.mcfunction": "say b\n",
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+        },
+    )
+    profiler = emulator.profiler
+    tree = profiler.tree
+    tick_path = ("#minecraft:tick", "test:tick")
+    assert tree[tick_path]["calls"] == 4
+    assert tree[(*tick_path, "test:a")]["calls"] == 8
+    assert tree[(*tick_path, "test:a", "test:b")]["calls"] == 8
+    assert ("<schedule>", "test:b") in tree
+    # a path's total includes what it calls; self only its own lines
+    a = tree[(*tick_path, "test:a")]
+    assert a["total_us"] > a["self_us"]
+    one = profiler.per_tick(tree[tick_path])
+    assert one["calls"] == 1 and abs(one["total_us"] * 4 - tree[tick_path]["total_us"]) < 1e-6
+    roots = [path for path, _ in profiler.children(())]
+    assert ("#minecraft:tick",) in roots
+    html = profiler.to_html("t")
+    assert "Call tree, per tick" in html and "ms/tick" in html
+
+
+def test_profiler_tree_caps_recursion(make_pack):
+    emulator = run(
+        make_pack,
+        "function test:loop\n",
+        extra={"data/test/function/loop.mcfunction": "function test:loop\n"},
+    )
+    profiler = emulator.profiler
+    longest = max(len(path) for path in profiler.tree)
+    assert longest == profiler.MAX_PATH + 1  # the "…" node under the 32nd call
+    deepest = next(path for path in profiler.tree if len(path) == profiler.MAX_PATH + 1)
+    assert deepest[-1] == profiler.DEEPER
+    parent = deepest[:-1]
+    index = profiler.children_index()
+    children_total = sum(profiler.tree[child]["total_us"] for child in index.get(parent, []))
+    node = profiler.tree[parent]
+    assert abs(node["self_us"] + children_total - node["total_us"]) < 1e-6  # nothing counted twice
+
+
+def test_profiler_report_does_not_link_schedules(make_pack):
+    emulator = run(
+        make_pack,
+        "schedule function test:b 1t\n",
+        ticks=3,
+        extra={"data/test/function/b.mcfunction": "say b\n"},
+    )
+    html = emulator.profiler.to_html("t")
+    assert "&lt;schedule&gt;" in html and 'data-function="&lt;schedule&gt;"' not in html

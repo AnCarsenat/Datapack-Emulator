@@ -60,7 +60,8 @@ current version.
     `@r` select, what `execute as @a` runs as and who receives `tellraw`); a
     random seed for `@r` and `sort=random`; and *summon…*, *set score…* and
     *show world* to change the current world.
-  * *run*: ticks (`-1` = until stopped; 20 ticks are one second) and speed —
+  * *run*: ticks (`-1`, shown as *∞ until stopped*, runs for an infinite
+    number of ticks until you press stop; 20 ticks are one second) and speed —
     as fast as possible, or real time at 20 ticks per second (switchable
     while running). Runs tick in small batches, so the window stays
     responsive and logs keep flowing. *run tests during runs* makes run all,
@@ -97,8 +98,18 @@ current version.
     file (Ctrl+S); the title shows `*` while there are unsaved changes, and
     closing asks to save them. See [projects](projects.md).
 
-* **Profiler** — HTML report (`generated/index.html`): calls, commands, self
-  and total estimated time per function, share of the run, worst tick.
+* **Profiler** — what one average tick costs, as estimated by the cost model:
+  * *per tick*: a tree of call paths — `#minecraft:tick` › `hat:tick` › the
+    functions it calls, `#minecraft:load`, `<schedule>` for scheduled
+    functions — with, per path, total ms/tick (including what it calls),
+    share of a tick, self ms/tick (its own lines), calls/tick and
+    commands/tick: the run's totals divided by its ticks. Columns sort;
+    double-click a function to open it, right-click for its menu. Recursion
+    deeper than 32 calls is added up in one `…` row. The summary gives the
+    average and worst tick against the 50 ms budget.
+  * *HTML report* (`generated/index.html`): the same call tree, and a table
+    per function (calls, commands, self and total ms per tick, share of a
+    tick, calls and total ms for the whole run).
 * **Call graph** — layered DAG of `function`, `schedule`, `execute if function`
   and tag edges. Purple nodes are tags, blue ones come from an overlay, orange
   ones are macros, red ones are called but missing.

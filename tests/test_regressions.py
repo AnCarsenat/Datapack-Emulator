@@ -725,3 +725,25 @@ def test_unknown_commands_and_bad_ranges_are_described_honestly():
     assert rows["in the emulator"].startswith("not a command in any version")
     assert not _valid_range("4..1") and not _valid_range("nan") and not _valid_range("1..2..3")
     assert _valid_range("1..4") and _valid_range("..-3") and _valid_range("5")
+
+
+# -- logs and profiler ---------------------------------------------------------------
+
+
+def test_trimming_logs_drops_debug_records_before_visible_ones():
+    from datapack_emulator.emulator.runtime.output import LogLevel, OutputBus, trim_records
+
+    bus = OutputBus(limit=100)
+    bus.game("[Player1] loaded", level=LogLevel.INFO)
+    bus.game("an error", level=LogLevel.ERROR)
+    for index in range(500):
+        bus.set_tick(index)  # a new tick each time, so repeats are not suppressed
+        bus.game(f"feedback {index}", level=LogLevel.DEBUG)
+    messages = [record.message for record in bus.records]
+    assert "[Player1] loaded" in messages and "an error" in messages
+    assert len(bus.records) <= 100
+
+    records = list(bus.records)
+    kept = trim_records(records, 10)
+    assert [r.level for r in kept][:2] == [LogLevel.INFO, LogLevel.ERROR]
+    assert [r.message for r in kept][-1] == records[-1].message  # the newest debug stays

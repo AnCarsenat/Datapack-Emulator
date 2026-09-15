@@ -27,6 +27,8 @@ class NavigationController(Controller):
         window.web_view.setContextMenuPolicy(Qt.CustomContextMenu)
         window.web_view.customContextMenuRequested.connect(self.profiler_menu)
         window.source_edit.customContextMenuRequested.connect(self.source_menu)
+        window.tree_profile.customContextMenuRequested.connect(self.profile_tree_menu)
+        window.tree_profile.itemDoubleClicked.connect(self._on_profile_double_click)
 
     # -- the explorer selection ---------------------------------------------
 
@@ -293,6 +295,31 @@ class NavigationController(Controller):
             rows = describe_resource(resource, window.version)
             window.datapacks.fill_inspector(rows + window.notes.rows_for(function_id))
             window.dock_inspector.show()
+
+    def _on_profile_double_click(self, item, _column: int) -> None:
+        from datapack_emulator.window.panels.profile import FUNCTION_ROLE
+
+        function_id = item.data(0, FUNCTION_ROLE)
+        if function_id:
+            self.open_function(function_id)
+
+    def profile_tree_menu(self, point: QPoint) -> None:
+        from datapack_emulator.window.panels.profile import FUNCTION_ROLE
+
+        tree = self.window.tree_profile
+        item = tree.itemAt(point)
+        function_id = item.data(0, FUNCTION_ROLE) if item is not None else ""
+        if not function_id:
+            menu = QMenu(self.window)
+            menu.addAction("right-click a function").setEnabled(False)
+            menu.addAction("refresh", self.window.runs.run_profiler)
+            menu.exec(tree.viewport().mapToGlobal(point))
+            return
+        menu = self.path_menu(self.function_path(function_id), function_id)
+        menu.addSeparator()
+        menu.addAction("show in inspector", lambda: self.inspect_function(function_id))
+        menu.addAction("show callers and calls", lambda: self.calls_and_callers(function_id))
+        menu.exec(tree.viewport().mapToGlobal(point))
 
     def profiler_menu(self, point: QPoint) -> None:
         """Right-click a profiler row: ask the page which function it is."""
