@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
             "actiongraphview": lambda: self.tabs.setCurrentIndex(TAB_GRAPH),
             "actionsource": lambda: self.tabs.setCurrentIndex(TAB_SOURCE),
             "actionopen_file_in_editor": self.open_selected_externally,
-            "actionopen_folder_in_explorer": self.open_selected_folder,
+            "actionopen_folder_in_explorer": self.open_selected_in_file_manager,
             "actionopen_in_source": lambda: self.open_in_source(self._selected_path()),
             "actioncopy_path": lambda: self.copy_path(self._selected_path()),
         }
@@ -587,8 +587,8 @@ class MainWindow(QMainWindow):
     def open_selected_externally(self) -> None:
         self.open_externally(self._selected_path())
 
-    def open_selected_folder(self) -> None:
-        self.show_containing_folder(self._selected_path())
+    def open_selected_in_file_manager(self) -> None:
+        self.open_in_file_manager(self._selected_path())
 
     # -- opening things ---------------------------------------------------
 
@@ -601,7 +601,8 @@ class MainWindow(QMainWindow):
         else:
             self.output.app(f"opened {path} externally")
 
-    def show_containing_folder(self, path: Optional[Path]) -> None:
+    def open_in_file_manager(self, path: Optional[Path]) -> None:
+        """A folder opens as itself; a file opens the folder that holds it."""
         if path is None:
             return
         self.open_externally(path if path.is_dir() else path.parent)
@@ -651,7 +652,7 @@ class MainWindow(QMainWindow):
         if path.is_file():
             menu.addAction("open in source view", lambda: self.open_in_source(path))
         menu.addAction("open in external editor", lambda: self.open_externally(path))
-        menu.addAction("show containing folder", lambda: self.show_containing_folder(path))
+        menu.addAction("open in external file manager", lambda: self.open_in_file_manager(path))
         menu.addAction("copy path", lambda: self.copy_path(path))
         return menu
 

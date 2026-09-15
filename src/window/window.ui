@@ -701,7 +701,7 @@ QMenuBar::item:selected {
   </action>
   <action name="actionopen_folder_in_explorer">
    <property name="text">
-    <string>show containing folder</string>
+    <string>open in external file manager</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+Return</string>
