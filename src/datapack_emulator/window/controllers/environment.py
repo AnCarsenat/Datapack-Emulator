@@ -106,16 +106,12 @@ class EnvironmentController(Controller):
             return []
         window.runs.stop(refresh=False)
         window.log_view.clear()
-        results = run_tests(
-            window.datapack,
-            tests,
-            version=window.version,
-            players=window.spin_players.value(),
-            seed=window.spin_seed.value(),
-            vanilla=window.vanilla,
-            output=window.output,
-        )
+        # the tests run in the window's world, so it can be inspected afterwards
+        window.datapacks.rebuild_emulator()
+        results = run_tests(window.datapack, tests, emulator=window.emulator)
         window.log_view.flush()
+        window.runs.show_tick()
+        window.world_view.refresh()
         self._show_results(tests, results)
         window.tabs.setCurrentWidget(window.tab_page(TAB_ENVIRONMENT))
         return results

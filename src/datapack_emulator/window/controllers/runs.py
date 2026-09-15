@@ -103,7 +103,7 @@ class RunController(Controller):
         self.timer.stop()
         self._set_running(False)
         self.window.log_view.flush()
-        self._show_tick()
+        self.show_tick()
         if self.window.emulator is not None:
             self.status(f"stopped at tick {self.window.emulator.world.tick}")
 
@@ -124,7 +124,8 @@ class RunController(Controller):
         window.emulator.start()
         window.emulator.run_tick()
         window.log_view.flush()
-        self._show_tick()
+        self.show_tick()
+        window.world_view.refresh()
         self.run_profiler(switch_tab=False)
         self.status(f"stepped to tick {window.emulator.world.tick} on {window.version.id}")
 
@@ -143,7 +144,8 @@ class RunController(Controller):
                 self.remaining -= 1
             if realtime or time.monotonic() >= deadline:
                 break
-        self._show_tick()
+        self.show_tick()
+        self.window.world_view.refresh_if_due()
         if self.remaining == 0:
             self.finish()
 
@@ -156,10 +158,11 @@ class RunController(Controller):
             return
         profiler = window.emulator.profiler
         self.run_profiler()
+        window.world_view.refresh()
         if self._rebuild_graph:
             self.run_graphview()
             window.tabs.setCurrentWidget(window.tab_page(TAB_PROFILER))
-        self._show_tick()
+        self.show_tick()
         self.status(
             f"{'stopped' if stopped else 'finished'} on {window.version.id}: "
             f"{profiler.ticks} tick(s), {profiler.total_us / 1000:.2f} ms estimated, "
@@ -185,7 +188,7 @@ class RunController(Controller):
         if action is not None:
             action.setEnabled(running)
 
-    def _show_tick(self) -> None:
+    def show_tick(self) -> None:
         window = self.window
         emulator = window.emulator
         if emulator is None:

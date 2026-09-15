@@ -384,3 +384,70 @@ def test_tests_table_runs_as_a_player(window):
     window.environment.set_tests([CommandTest("trigger hat", run_as="Player1")])
     assert window.environment.tests()[0].run_as == "Player1"
     assert [result.passed for result in window.environment.run()] == [True]
+
+
+def test_console_runs_commands_in_the_current_world_as_anyone(app, window):
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.combo_console_as.setCurrentText("Player1")
+    window.edit_console.setText("/trigger hat")
+    window.edit_console.returnPressed.emit()
+    app.processEvents()
+    assert window.emulator.world.tick == 1  # the first tick ran, enabling the trigger
+    assert window.emulator.world.scoreboard.get("Player1", "hat") == 1
+    assert window.edit_console.text() == ""
+    assert window.statusBar().currentMessage().startswith("trigger hat: succeeded")
+
+    window.combo_console_as.setCurrentText("console")
+    result = window.console.run("trigger hat")
+    assert not result.success
+    window.log_view.flush()
+    messages = [
+        window.log_view.model.record_at(row).message
+        for row in range(window.log_view.model.rowCount())
+    ]
+    assert "A player is required to run this command here" in messages
+
+    window.edit_console.setText("")
+    window.console.browse(-1)
+    assert window.edit_console.text() == "trigger hat"
+
+
+def test_world_dock_shows_scores_entities_and_storage(app, window):
+    from PySide6.QtCore import Qt
+
+    from datapack_emulator.settings import PATHS
+
+    assert window.dock_world.isVisible()
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.spin_ticks.setValue(3)
+    window.runs.run_all()
+    window.runs.wait()
+    window.console.run("data modify storage test:mem list append value {a:1}")
+    window.console.use_executor("Player1")
+    window.console.run("trigger hat")
+
+    window.tabs_world.setCurrentIndex(0)
+    table = window.table_scores
+    headers = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
+    rows = [table.verticalHeaderItem(r).text() for r in range(table.rowCount())]
+    assert headers == ["hat\ntrigger"] and rows[0] == "Player1"
+    cell = table.item(0, 0)
+    assert cell.text() == "1" and "values taken: 0, 1" in cell.toolTip()
+
+    window.tabs_world.setCurrentIndex(1)
+    tree = window.tree_entities
+    tops = {
+        tree.topLevelItem(i).text(0): tree.topLevelItem(i) for i in range(tree.topLevelItemCount())
+    }
+    stand = tops["Armor Stand"]
+    assert "tags hat_saver" in stand.text(1)
+    keys = {stand.child(i).text(0): stand.child(i).text(1) for i in range(stand.childCount())}
+    assert keys["Pos"] == "[0.0d, 300.0d, 0.0d]" and keys["id"] == '"minecraft:armor_stand"'
+    assert stand.data(0, Qt.UserRole + 1)
+
+    window.tabs_world.setCurrentIndex(2)
+    storage = window.tree_storage
+    assert storage.topLevelItem(0).text(0) == "test:mem"
+    assert "entities" in window.world_label.text()

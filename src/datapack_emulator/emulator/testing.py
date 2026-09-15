@@ -88,17 +88,22 @@ def run_tests(
     seed: int = 0,
     vanilla: VanillaAssets | None = None,
     output: OutputBus | None = None,
+    emulator: Emulator | None = None,
 ) -> list[TestResult]:
-    """Run ``tests`` in one fresh world, in tick order."""
-    bus = output or OutputBus()
-    emulator = Emulator(
-        datapack,
-        version=versions.parse(version),
-        players=players,
-        output=bus,
-        seed=seed,
-        vanilla=vanilla,
-    )
+    """Run ``tests`` in one fresh world, in tick order.
+
+    Pass ``emulator`` (a new one, not yet started) to keep the world afterwards;
+    the other settings are then taken from it.
+    """
+    if emulator is None:
+        emulator = Emulator(
+            datapack,
+            version=versions.parse(version),
+            players=players,
+            output=output or OutputBus(),
+            seed=seed,
+            vanilla=vanilla,
+        )
     emulator.start()
 
     results: dict[int, TestResult] = {}
