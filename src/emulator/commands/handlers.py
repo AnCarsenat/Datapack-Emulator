@@ -635,93 +635,128 @@ def cmd_setblock(command: Command, context: ExecutionContext) -> CommandResult:
 # ---------------------------------------------------------------------------
 
 
+#: a store waiting for the command's result, bound to the context it appeared in
+PendingStore = tuple[Subcommand, ExecutionContext]
+
+
 def cmd_execute(command: Command, context: ExecutionContext) -> CommandResult:
-    contexts: list[ExecutionContext] = [context]
-    store_targets: list[Subcommand] = []
+    # each branch carries the stores seen so far, each bound to the context at
+    # its position in the chain (vanilla records the location to store in there)
+    branches: list[tuple[ExecutionContext, tuple[PendingStore, ...]]] = [(context, ())]
+    subcommands = command.subcommands
+    trailing_test = (
+        command.child is None
+        and bool(subcommands)
+        and subcommands[-1].name
+        in (
+            "if",
+            "unless",
+        )
+    )
+    chain = subcommands[:-1] if trailing_test else subcommands
 
-    for subcommand in command.subcommands:
-        name = subcommand.name
-        arguments = subcommand.arguments
-        next_contexts: list[ExecutionContext] = []
-
-        if name == "as" and arguments:
-            for current in contexts:
-                for entity in context.world.select(Selector.parse(arguments[0]), current):
-                    next_contexts.append(current.branch(executor=entity))
-        elif name == "at" and arguments:
-            for current in contexts:
-                for entity in context.world.select(Selector.parse(arguments[0]), current):
-                    next_contexts.append(
-                        current.branch(
-                            position=list(entity.position),
-                            rotation=list(entity.rotation),
-                            dimension=entity.dimension,
-                        )
-                    )
-        elif name == "positioned":
-            for current in contexts:
-                if arguments and arguments[0] == "as" and len(arguments) > 1:
-                    for entity in context.world.select(Selector.parse(arguments[1]), current):
-                        next_contexts.append(current.branch(position=list(entity.position)))
-                else:
-                    next_contexts.append(
-                        current.branch(position=resolve_position(arguments, current.position))
-                    )
-        elif name == "rotated":
-            for current in contexts:
-                if arguments and arguments[0] == "as" and len(arguments) > 1:
-                    for entity in context.world.select(Selector.parse(arguments[1]), current):
-                        next_contexts.append(current.branch(rotation=list(entity.rotation)))
-                else:
-                    next_contexts.append(current)
-        elif name == "in" and arguments:
-            next_contexts = [
-                current.branch(dimension=normalise_id(arguments[0])) for current in contexts
-            ]
-        elif name in ("if", "unless"):
-            wanted = name == "if"
-            for current in contexts:
-                if evaluate_condition(arguments, current) == wanted:
-                    next_contexts.append(current)
-        elif name == "store":
-            store_targets.append(subcommand)
-            next_contexts = contexts
-        elif name == "summon" and arguments:
-            for current in contexts:
-                entity = context.world.spawn(
-                    Entity(type=normalise_id(arguments[0]), position=list(current.position))
+    for subcommand in chain:
+        next_branches: list[tuple[ExecutionContext, tuple[PendingStore, ...]]] = []
+        for current, stores in branches:
+            for successor in _execute_step(subcommand.name, subcommand.arguments, current, context):
+                pending = (
+                    stores + ((subcommand, current),) if subcommand.name == "store" else stores
                 )
-                next_contexts.append(current.branch(executor=entity))
-        else:
-            # anchored / align / facing / on: no positional model to change
-            next_contexts = contexts
-
-        contexts = next_contexts
-        if not contexts:
+                next_branches.append((successor, pending))
+        branches = next_branches
+        if not branches:
             break
 
     if command.child is None:
-        # `execute ... if <cond>` with no `run` is a valid conditional test
-        if contexts:
-            context.feedback("commands.execute.conditional.pass_count", len(contexts))
+        # `execute ... if|unless <cond>` with no `run` is a test; its result is
+        # the condition's count (how many entities matched for `if entity`)
+        last = subcommands[-1] if trailing_test else None
+        total = 0
+        for current, stores in branches:
+            if last is None:
+                count = 1
+            elif last.name == "if":
+                count = condition_count(last.arguments, current)
+            else:
+                count = int(not evaluate_condition(last.arguments, current))
+            total += count
+            result = CommandResult(success=count > 0, value=count)
+            for subcommand, bound in stores:
+                _apply_store(subcommand, bound, result)
+        if total:
+            context.feedback("commands.execute.conditional.pass_count", total)
         else:
             context.feedback("commands.execute.conditional.fail")
-        return CommandResult(success=bool(contexts), value=len(contexts))
+        return CommandResult(success=total > 0, value=total)
 
     successes = 0
     total = 0
-    for current in contexts:
+    for current, stores in branches:
         result = context.emulator.run_command(command.child, current)
         if result.success:
             successes += 1
         total += result.value
-        for subcommand in store_targets:
-            _apply_store(subcommand, current, result)
+        for subcommand, bound in stores:
+            _apply_store(subcommand, bound, result)
         if result.returned:
             # `execute ... run return` leaves the function on the first context
             # that reaches it; the remaining contexts never run.
             return CommandResult(success=result.success, value=result.value, returned=True)
     return CommandResult(success=successes > 0, value=total if total else successes)
+
+
+def _execute_step(
+    name: str, arguments: list[str], current: ExecutionContext, origin: ExecutionContext
+) -> list[ExecutionContext]:
+    """The contexts one ``execute`` subcommand turns ``current`` into."""
+    world = origin.world
+    if name == "as" and arguments:
+        return [
+            current.branch(executor=entity)
+            for entity in world.select(Selector.parse(arguments[0]), current)
+        ]
+    if name == "at" and arguments:
+        return [
+            current.branch(
+                position=list(entity.position),
+                rotation=list(entity.rotation),
+                dimension=entity.dimension,
+            )
+            for entity in world.select(Selector.parse(arguments[0]), current)
+        ]
+    if name == "positioned":
+        if arguments and arguments[0] == "as" and len(arguments) > 1:
+            return [
+                current.branch(position=list(entity.position))
+                for entity in world.select(Selector.parse(arguments[1]), current)
+            ]
+        return [current.branch(position=resolve_position(arguments, current.position))]
+    if name == "rotated":
+        if arguments and arguments[0] == "as" and len(arguments) > 1:
+            return [
+                current.branch(rotation=list(entity.rotation))
+                for entity in world.select(Selector.parse(arguments[1]), current)
+            ]
+        return [current]
+    if name == "in" and arguments:
+        return [current.branch(dimension=normalise_id(arguments[0]))]
+    if name in ("if", "unless"):
+        return [current] if evaluate_condition(arguments, current) == (name == "if") else []
+    if name == "summon" and arguments:
+        entity = world.spawn(
+            Entity(type=normalise_id(arguments[0]), position=list(current.position))
+        )
+        return [current.branch(executor=entity)]
+    if name == "on":
+        # vehicles, passengers, owners, leashes and attackers are not modelled:
+        # vanilla ends the branch when the relation does not apply
+        current.note_once(
+            f"'execute on {' '.join(arguments)}': entity relations are not emulated, "
+            "so the branch ends"
+        )
+        return []
+    # store (bound by the caller), anchored, align, facing: nothing to change
+    return [current]
 
 
 def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: CommandResult) -> None:
@@ -752,6 +787,14 @@ def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
     if numeric_type in ("float", "double"):
         return scaled
     return int(scaled)  # byte, short, int, long
+
+
+def condition_count(arguments: list[str], context: ExecutionContext) -> int:
+    """The value a passing ``if`` condition reports: matched entities for
+    ``entity``, otherwise 1 (0 when it fails)."""
+    if arguments and arguments[0] == "entity" and len(arguments) >= 2:
+        return len(context.world.select(Selector.parse(arguments[1]), context))
+    return int(evaluate_condition(arguments, context))
 
 
 def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
@@ -814,7 +857,13 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
             if target.startswith("#")
             else [target]
         )
-        return any(context.emulator.run_function(fid, context).success for fid in ids)
+        # vanilla: passes on the first function that returns a non-zero value;
+        # a function that ends without `return` does not count
+        for function_id in ids:
+            result = context.emulator.run_function(function_id, context)
+            if result.has_return and result.success and result.value != 0:
+                return True
+        return False
 
     context.note_key("emulator.condition", kind)
     return False

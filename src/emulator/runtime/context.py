@@ -75,6 +75,13 @@ class ExecutionContext:
             self.render(key, *arguments), **self._fields(key=key)
         )
 
+    def note_once(self, text: str, level: LogLevel = LogLevel.INFO) -> LogRecord | None:
+        """A diagnostic reported once per run, however often the line executes."""
+        if text in self.emulator.noted:
+            return None
+        self.emulator.noted.add(text)
+        return self.note(text, level=level)
+
     def note(self, text: str, level: LogLevel = LogLevel.WARNING) -> LogRecord:
         """A diagnostic from the emulator itself, not from the game."""
         return self.emulator.output.emulator(text, level=level, **self._fields())

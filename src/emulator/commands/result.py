@@ -13,6 +13,9 @@ class CommandResult:
     value: int = 0
     #: set by ``return`` so the calling function stops after this line
     returned: bool = False
+    #: set on a function's result when it ended with ``return`` (``if function``
+    #: only passes for those, and only with a non-zero value)
+    has_return: bool = False
 
     @property
     def count(self) -> int:

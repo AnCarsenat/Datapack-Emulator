@@ -60,6 +60,8 @@ class Emulator:
         self.commands_run = 0
         self.schedules: list[tuple[int, str]] = []  # (absolute tick, function id)
         self.loaded = False
+        #: diagnostics already reported this run (see ExecutionContext.note_once)
+        self.noted: set[str] = set()
 
     # -- lifecycle --------------------------------------------------------
 
@@ -70,6 +72,7 @@ class Emulator:
         self.commands_run = 0
         self.schedules.clear()
         self.loaded = False
+        self.noted.clear()
         self.output.set_tick(None)
 
     def run_load(self) -> float:
@@ -241,7 +244,7 @@ class Emulator:
             executed += 1
             if result.returned:
                 self.profiler.charge_total(function_id, self.profiler.total_us - start)
-                return CommandResult(success=result.success, value=result.value)
+                return CommandResult(success=result.success, value=result.value, has_return=True)
 
         self.profiler.charge_total(function_id, self.profiler.total_us - start)
         return CommandResult(success=executed > 0, value=executed)

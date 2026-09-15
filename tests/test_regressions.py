@@ -140,3 +140,67 @@ def test_pack_view_cache_does_not_keep_packs_alive(make_pack):
     del pack
     gc.collect()
     assert reference() is None
+
+
+# -- second review ------------------------------------------------------------
+
+
+def test_store_target_is_bound_where_store_appears(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "summon minecraft:pig\n"
+        "execute as @a store result score @s o as @e[type=minecraft:pig] run return 7\n",
+    )
+    board = emulator.world.scoreboard
+    assert board.get("Player1", "o") == 7
+    pig = next(e for e in emulator.world.entities if e.type == "minecraft:pig")
+    assert board.get(pig.id, "o") is None
+
+
+def test_store_without_run_stores_the_condition_count(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "summon minecraft:pig\nsummon minecraft:pig\n"
+        "execute store result score #pigs o if entity @e[type=minecraft:pig]\n",
+    )
+    assert emulator.world.scoreboard.get("#pigs", "o") == 2
+
+
+def test_execute_on_without_a_relation_ends_the_branch(make_pack):
+    emulator = run(
+        make_pack, "execute as @a on vehicle run kill @s\nexecute as @a on vehicle run say hi\n"
+    )
+    assert emulator.world.players, "the player must not be killed"
+    assert "[Player1] hi" not in chat(emulator.output.records)
+
+
+def test_if_function_needs_a_non_zero_return(make_pack):
+    emulator = run(
+        make_pack,
+        "execute if function test:noret run say void passed\n"
+        "execute if function test:zero run say zero passed\n"
+        "execute if function test:seven run say seven passed\n",
+        extra={
+            "data/test/function/noret.mcfunction": "say inside\n",
+            "data/test/function/zero.mcfunction": "return 0\n",
+            "data/test/function/seven.mcfunction": "return 7\n",
+        },
+    )
+    messages = chat(emulator.output.records)
+    assert "[Server] seven passed" in messages
+    assert "[Server] void passed" not in messages and "[Server] zero passed" not in messages
+
+
+def test_trailing_condition_runs_its_function_once(make_pack):
+    emulator = run(
+        make_pack,
+        "scoreboard objectives add o dummy\n"
+        "execute store result score #r o if function test:counted\n",
+        extra={
+            "data/test/function/counted.mcfunction": "scoreboard players add #calls o 1\nreturn 1\n"
+        },
+    )
+    assert emulator.world.scoreboard.get("#calls", "o") == 1
+    assert emulator.world.scoreboard.get("#r", "o") == 1
