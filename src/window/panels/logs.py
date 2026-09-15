@@ -27,6 +27,9 @@ LEVEL_COLOURS = {
     LogLevel.ERROR: QColor("#c0392b"),
 }
 
+#: a command that failed inside a function: the game shows nobody, so muted
+SILENT_FAILURE_COLOUR = QColor("#b07a74")
+
 LEVELS = {
     "debug": LogLevel.DEBUG,
     "info": LogLevel.INFO,
@@ -83,6 +86,8 @@ class LogTableModel(QAbstractTableModel):
                 parts.append(f"version: {record.version}")
             return "\n".join(parts)
         if role == Qt.ForegroundRole:
+            if record.failure and record.level < LogLevel.ERROR:
+                return QBrush(SILENT_FAILURE_COLOUR)
             colour = LEVEL_COLOURS.get(record.level) or SOURCE_COLOURS.get(record.source)
             return QBrush(colour) if colour else None
         if role == Qt.FontRole and record.level >= LogLevel.ERROR:

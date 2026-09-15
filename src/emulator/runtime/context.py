@@ -69,10 +69,23 @@ class ExecutionContext:
             **self._fields(key=key),
         )
 
+    @property
+    def silent(self) -> bool:
+        """Inside a function, vanilla sends command errors nowhere: the line just
+        fails and the function carries on. Typed commands (depth 0) show them."""
+        return self.depth > 0
+
     def game_error(self, key: str, *arguments: Any) -> LogRecord:
-        """The red text a server sends back when a command fails."""
-        return self.emulator.output.game_error(
-            self.render(key, *arguments), **self._fields(key=key)
+        """The red text a server sends back when a command fails.
+
+        Recorded at ERROR for a typed command; inside a function, where no player
+        would see it, at DEBUG so it stays available without flagging the pack.
+        """
+        return self.emulator.output.log(
+            LogSource.GAME,
+            LogLevel.DEBUG if self.silent else LogLevel.ERROR,
+            self.render(key, *arguments),
+            **self._fields(key=key, failure=True),
         )
 
     def note_once(self, text: str, level: LogLevel = LogLevel.INFO) -> LogRecord | None:
@@ -85,6 +98,12 @@ class ExecutionContext:
     def note(self, text: str, level: LogLevel = LogLevel.WARNING) -> LogRecord:
         """A diagnostic from the emulator itself, not from the game."""
         return self.emulator.output.emulator(text, level=level, **self._fields())
+
+    def note_key_once(
+        self, key: str, *arguments: Any, level: LogLevel = LogLevel.INFO
+    ) -> LogRecord | None:
+        """A catalogue note reported once per run — for emulator limitations."""
+        return self.note_once(self.render(key, *arguments), level=level)
 
     def note_key(self, key: str, *arguments: Any, level: LogLevel = LogLevel.WARNING) -> LogRecord:
         """Same, but rendered from the message catalogue."""

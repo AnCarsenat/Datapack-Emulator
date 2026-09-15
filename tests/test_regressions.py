@@ -454,3 +454,35 @@ def test_data_get_saturates_and_set_string_needs_a_value(make_pack):
     )
     assert emulator.world.scoreboard.get("#big", "o") == 2147483647
     assert "text" not in emulator.world.storage["t:s"]
+
+
+# -- vanilla behaviour hat_v2 relies on ----------------------------------------
+
+
+def test_failures_inside_functions_are_silent_but_typed_commands_are_not(make_pack):
+    from conftest import visible_errors
+
+    from src.emulator.commands.parser import Command
+    from src.emulator.runtime.output import LogLevel
+
+    emulator = run(make_pack, "tag @a remove nothing\n", ticks=2)
+    failures = [r for r in emulator.output.records if r.message == "Target does not have this tag"]
+    assert len(failures) == 2 and all(r.level == LogLevel.DEBUG and r.failure for r in failures)
+    assert visible_errors(emulator.output.records) == []
+
+    emulator.run_command(Command.parse("tag @a remove nothing"), emulator.root_context())
+    assert visible_errors(emulator.output.records) == ["Target does not have this tag"]
+
+
+def test_emulator_limitations_are_noted_once_per_run(make_pack):
+    from src.emulator.runtime.output import LogLevel, LogSource
+
+    emulator = run(
+        make_pack,
+        "execute if block 0 0 0 minecraft:stone run say stone\ndata get block 0 0 0 Items\n",
+        ticks=5,
+    )
+    notes = [r for r in emulator.output.records if r.source is LogSource.EMULATOR]
+    assert len([r for r in notes if "'block'" in r.message]) == 1
+    assert len([r for r in notes if "data get block" in r.message]) == 1
+    assert all(r.level <= LogLevel.INFO for r in notes if "block" in r.message)

@@ -55,6 +55,9 @@ class LogRecord:
     version: str = ""
     #: vanilla translation key, when the message mirrors one (see messages.py)
     key: str = ""
+    #: a command failed; set whatever the level (silent failures inside a
+    #: function are DEBUG, typed commands ERROR)
+    failure: bool = False
 
     @property
     def origin(self) -> str:
@@ -104,6 +107,7 @@ class OutputBus:
                 command=record.command,
                 version=record.version,
                 key=record.key,
+                failure=record.failure,
             )
 
         self.records.append(record)

@@ -94,9 +94,21 @@ def fake_jar(tmp_path: Path) -> Path:
 
 
 def game_errors(records) -> list[str]:
+    """Every command failure the game reported, silent (in a function) or not."""
+    from src.emulator.runtime.output import LogSource
+
+    return [r.message for r in records if r.source is LogSource.GAME and r.failure]
+
+
+def visible_errors(records) -> list[str]:
+    """Only the failures a player would see (typed commands)."""
     from src.emulator.runtime.output import LogLevel, LogSource
 
-    return [r.message for r in records if r.source is LogSource.GAME and r.level >= LogLevel.ERROR]
+    return [
+        r.message
+        for r in records
+        if r.source is LogSource.GAME and r.failure and r.level >= LogLevel.ERROR
+    ]
 
 
 def chat(records) -> list[str]:

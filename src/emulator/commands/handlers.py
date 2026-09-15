@@ -459,7 +459,7 @@ def _macro_arguments(rest: list[str], context: ExecutionContext) -> dict[str, An
         entities = _targets(context, target)
         store = entities[0].nbt if entities else {}
     else:
-        context.note_key(
+        context.note_key_once(
             "emulator.unimplemented", f"function ... with {source}", context.emulator.version.id
         )
         return {}
@@ -527,7 +527,7 @@ def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
     elif holder_kind == "entity":
         stores = [entity.nbt for entity in _require_targets(context, target_token)]
     else:  # block NBT is not modelled
-        context.note_key(
+        context.note_key_once(
             "emulator.unimplemented", f"data {action} block", context.emulator.version.id
         )
         return CommandResult.failure()
@@ -652,7 +652,7 @@ def _data_source(context: ExecutionContext, source: list[str]) -> tuple[bool, An
             return (False, None)
         store = entities[0].nbt
     else:  # block NBT is not modelled
-        context.note_key(
+        context.note_key_once(
             "emulator.unimplemented", "data modify ... from block", context.emulator.version.id
         )
         return (False, None)
@@ -957,7 +957,7 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
                 return True
         return False
 
-    context.note_key("emulator.condition", kind)
+    context.note_key_once("emulator.condition", kind)
     return False
 
 

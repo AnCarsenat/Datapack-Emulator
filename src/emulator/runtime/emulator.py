@@ -22,7 +22,7 @@ from src.emulator.common import normalise_id
 from src.emulator.datapack import Datapack, PackView
 from src.emulator.runtime.context import ExecutionContext
 from src.emulator.runtime.messages import MessageCatalogue, unknown_command
-from src.emulator.runtime.output import LogLevel, OutputBus
+from src.emulator.runtime.output import LogLevel, LogSource, OutputBus
 from src.emulator.runtime.world import World
 from src.emulator.vanilla import VanillaAssets
 from src.emulator.versions import Version
@@ -192,20 +192,23 @@ class Emulator:
                 + (f" (added in {since})" if spec.since else "")
                 + (f", removed in {spec.removed.id}" if spec.removed else "")
             )
-            self.output.game_error(
+            self.output.log(
+                LogSource.GAME,
+                LogLevel.DEBUG if inner.silent else LogLevel.ERROR,
                 unknown_command(command.name, self.messages),
                 function=inner.function_id,
                 line=command.line,
                 command=command.raw,
                 version=self.version.id,
                 key="command.unknown.command",
+                failure=True,
             )
             return CommandResult.failure()
 
         missing = self.commands.missing_features(command.features())
         for feature, since in missing:
-            if feature == f"command:{command.name}":
-                continue
+            if feature.startswith("command:"):
+                continue  # the command itself, or a `run` child that reports itself
             inner.note(
                 f"'{feature}' is not available in {self.version.id}"
                 + (f" (added in {since.id})" if since else "")

@@ -83,6 +83,16 @@ Game strings are vanilla's own (`runtime/messages.py`, or the loaded jar's
 `Target does not have this tag`, `Can't get value of hat for Player1; none is
 set`, `Missing argument name to function test:helper`, …
 
+A command that fails **inside a function** fails silently in vanilla: nobody
+sees an error and the function carries on with its next line. Those failures
+are recorded at `debug` level (set the logs dock to *debug* to see them, shown
+in a muted red); only commands run directly — typed, or run by a test — produce
+`error`-level game records. Every failure record has `failure=True` either way.
+
+Limitations of the emulator itself (a condition or `data … block` it cannot
+evaluate, `execute on`, selector arguments it cannot check) are noted once per
+run at `info` level, so they do not mark a working pack as having warnings.
+
 Identical messages are capped at five per tick; the sixth says further copies
 were suppressed.
 
