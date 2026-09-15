@@ -87,62 +87,15 @@ QMenuBar::item:selected {
        </spacer>
       </item>
       <item>
-       <widget class="QLabel" name="labelVersion">
+       <widget class="QLabel" name="labelTickStatus">
         <property name="text">
-         <string>version</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QComboBox" name="comboVersion">
-        <property name="minimumSize">
-         <size>
-          <width>110</width>
-          <height>0</height>
-         </size>
+         <string>idle</string>
         </property>
         <property name="toolTip">
-         <string>Minecraft version to emulate: decides the command set and which overlays apply</string>
+         <string>current tick of the running emulation</string>
         </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelPlayers">
-        <property name="text">
-         <string>players</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QSpinBox" name="spinPlayers">
-        <property name="minimum">
-         <number>0</number>
-        </property>
-        <property name="maximum">
-         <number>200</number>
-        </property>
-        <property name="value">
-         <number>1</number>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="labelTicks">
-        <property name="text">
-         <string>ticks</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QSpinBox" name="spinTicks">
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>72000</number>
-        </property>
-        <property name="value">
-         <number>20</number>
+        <property name="styleSheet">
+         <string notr="true">font-family: monospace; color: #555;</string>
         </property>
        </widget>
       </item>
@@ -164,6 +117,29 @@ QMenuBar::item:selected {
        </widget>
       </item>
       <item>
+       <widget class="QPushButton" name="buttonStep">
+        <property name="text">
+         <string>step</string>
+        </property>
+        <property name="toolTip">
+         <string>run one more tick in the current world (F7)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonStop">
+        <property name="text">
+         <string>stop</string>
+        </property>
+        <property name="toolTip">
+         <string>stop the running emulation (Shift+F5)</string>
+        </property>
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QPushButton" name="buttonEngine">
         <property name="text">
          <string>engine…</string>
@@ -180,6 +156,262 @@ QMenuBar::item:selected {
       <property name="currentIndex">
        <number>0</number>
       </property>
+      <widget class="QWidget" name="environment">
+       <attribute name="title">
+        <string>Environment</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="environmentLayout">
+        <item>
+         <layout class="QHBoxLayout" name="environmentTopLayout">
+          <item>
+           <widget class="QGroupBox" name="groupWorld">
+            <property name="title">
+             <string>world</string>
+            </property>
+            <layout class="QFormLayout" name="worldLayout">
+             <item row="0" column="0">
+              <widget class="QLabel" name="labelVersion">
+               <property name="text">
+                <string>Minecraft version</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QComboBox" name="comboVersion">
+               <property name="toolTip">
+                <string>decides the commands that exist, the folders and overlays that are read, and the load order</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="labelPlayers">
+               <property name="text">
+                <string>players online</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QSpinBox" name="spinPlayers">
+               <property name="minimum">
+                <number>0</number>
+               </property>
+               <property name="maximum">
+                <number>200</number>
+               </property>
+               <property name="value">
+                <number>1</number>
+               </property>
+               <property name="toolTip">
+                <string>fake players present from the start (Player1, Player2, …)</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QLabel" name="labelPlayersHelp">
+               <property name="text">
+                <string>Players are what @a, @p and @r select, what "execute as @a" runs as, and who receives tellraw. With 0, anything aimed at players does nothing.</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">color: #666;</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="labelSeed">
+               <property name="text">
+                <string>random seed</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QSpinBox" name="spinSeed">
+               <property name="maximum">
+                <number>1000000</number>
+               </property>
+               <property name="toolTip">
+                <string>seeds @r and sort=random, so runs repeat exactly</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupRun">
+            <property name="title">
+             <string>run</string>
+            </property>
+            <layout class="QFormLayout" name="runLayout">
+             <item row="0" column="0">
+              <widget class="QLabel" name="labelTicks">
+               <property name="text">
+                <string>ticks</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QSpinBox" name="spinTicks">
+               <property name="minimum">
+                <number>-1</number>
+               </property>
+               <property name="maximum">
+                <number>1000000</number>
+               </property>
+               <property name="value">
+                <number>20</number>
+               </property>
+               <property name="specialValueText">
+                <string>∞ until stopped</string>
+               </property>
+               <property name="toolTip">
+                <string>-1 runs until you press stop; 20 ticks are one second of game time</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="labelSpeed">
+               <property name="text">
+                <string>speed</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QComboBox" name="comboSpeed">
+               <item>
+                <property name="text">
+                 <string>as fast as possible</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>real time (20 ticks/s)</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QLabel" name="labelRunHelp">
+               <property name="text">
+                <string>run all (F5) starts a fresh world, step (F7) adds one tick to the current one, stop (Shift+F5) ends a run and refreshes the profiler.</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">color: #666;</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupTests">
+          <property name="title">
+           <string>tests</string>
+          </property>
+          <layout class="QVBoxLayout" name="testsLayout">
+           <item>
+            <widget class="QLabel" name="labelTestsHelp">
+             <property name="text">
+              <string>Each test runs a command as the server — e.g. "function hat:tick" or "say hi" — after #minecraft:load (tick 0) or at a later tick, in a fresh world. It passes when the command succeeds without a visible error and, if "expect" is set, that text appears in the game output.</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #666;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QTableWidget" name="tableTests">
+             <property name="alternatingRowColors">
+              <bool>true</bool>
+             </property>
+             <property name="selectionBehavior">
+              <enum>QAbstractItemView::SelectRows</enum>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QTableWidget { font-family: monospace; font-size: 11px; }</string>
+             </property>
+             <column>
+              <property name="text">
+               <string>tick</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>command</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>expect output</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>result</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="testButtonsLayout">
+             <item>
+              <widget class="QPushButton" name="buttonAddTest">
+               <property name="text">
+                <string>add test</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="buttonRemoveTest">
+               <property name="text">
+                <string>remove</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="testButtonsSpacer">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>40</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelTestSummary">
+               <property name="text">
+                <string>no tests run</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="buttonRunTests">
+               <property name="text">
+                <string>run tests (F8)</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
       <widget class="QWidget" name="profiler">
        <attribute name="title">
         <string>Profiler</string>
@@ -435,6 +667,10 @@ QMenuBar::item:selected {
     </property>
     <addaction name="actionrun_all"/>
     <addaction name="actionrun_emulator"/>
+    <addaction name="actionstep_tick"/>
+    <addaction name="actionstop"/>
+    <addaction name="separator"/>
+    <addaction name="actionrun_tests"/>
     <addaction name="actionrun_profiler"/>
     <addaction name="actionrun_graphview"/>
     <addaction name="separator"/>
@@ -449,6 +685,7 @@ QMenuBar::item:selected {
     <addaction name="actioninspector"/>
     <addaction name="actionlog"/>
     <addaction name="separator"/>
+    <addaction name="actionenvironment"/>
     <addaction name="actionprofile"/>
     <addaction name="actiongraphview"/>
     <addaction name="actionsource"/>
@@ -733,6 +970,35 @@ QMenuBar::item:selected {
    </property>
    <property name="shortcut">
     <string>F6</string>
+   </property>
+  </action>
+  <action name="actionstep_tick">
+   <property name="text">
+    <string>step one tick</string>
+   </property>
+   <property name="shortcut">
+    <string>F7</string>
+   </property>
+  </action>
+  <action name="actionstop">
+   <property name="text">
+    <string>stop</string>
+   </property>
+   <property name="shortcut">
+    <string>Shift+F5</string>
+   </property>
+  </action>
+  <action name="actionrun_tests">
+   <property name="text">
+    <string>run tests</string>
+   </property>
+   <property name="shortcut">
+    <string>F8</string>
+   </property>
+  </action>
+  <action name="actionenvironment">
+   <property name="text">
+    <string>environment tab</string>
    </property>
   </action>
   <action name="actionrun_all">

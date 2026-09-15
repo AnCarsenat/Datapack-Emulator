@@ -13,13 +13,30 @@ layout changes are made in Qt Designer, never in code.
 | --- | --- |
 | pack label | loaded pack and the version being emulated; warns if the pack does not declare support for it |
 | client.jar label | which base-game jar is in use (tooltip: what it contains) |
-| version | Minecraft version to emulate — decides commands, overlays, message wording |
-| players / ticks | world size and run length |
-| run all (F5) | emulate + profiler + call graph |
-| run emulator | emulate and refresh the profiler only |
+| tick label | the current tick, and whether a run is going |
+| run all (F5) | a fresh world for the configured ticks, then profiler and call graph |
+| run emulator (F6) | the same without rebuilding the call graph |
+| step (F7) | one more tick in the current world (starts one if there is none) |
+| stop (Shift+F5) | ends a run and refreshes the profiler; the only way to end `∞` runs |
 | engine… | open the version test engine |
 
 ### Tabs
+
+* **Environment**
+  * *world*: the Minecraft version; players online, meaning fake players
+    `Player1…` present from the start (they are what `@a`, `@p` and `@r`
+    select, what `execute as @a` runs as and who receives `tellraw`); and a
+    random seed for `@r` and `sort=random`.
+  * *run*: ticks (`-1` = until stopped; 20 ticks are one second) and speed —
+    as fast as possible, or real time at 20 ticks per second. Runs tick in
+    small batches, so the window stays responsive and logs keep flowing.
+  * *tests*: commands run as the server in a fresh world after
+    `#minecraft:load` (tick 0) or at a later tick — `function hat:tick`,
+    `say hi`, `scoreboard players get …`. A test passes when the command
+    succeeds without a visible error and, if *expect output* is set, that
+    text appears in the game output. Untick a row to skip it; hover a result
+    for the records it produced. Tests, speed and seed are saved with the
+    project.
 
 * **Profiler** — HTML report (`generated/index.html`): calls, commands, self
   and total estimated time per function, share of the run, worst tick.
@@ -62,6 +79,9 @@ file type or folders.
 | --- | --- |
 | F5 | run all |
 | F6 | run emulator |
+| F7 | step one tick |
+| Shift+F5 | stop |
+| F8 | run tests |
 | Ctrl+E | version engine |
 | Ctrl+O | import datapack |
 | Ctrl+R | reload datapack |

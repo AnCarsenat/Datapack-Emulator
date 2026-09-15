@@ -101,13 +101,16 @@ class DatapackController(Controller):
         window = self.window
         if window.datapack is None:
             return
+        window.runs.stop(refresh=False)  # the running world is replaced
         window.emulator = Emulator(
             window.datapack,
             version=window.version,
             players=window.spin_players.value(),
             output=window.output,
+            seed=window.spin_seed.value(),
             vanilla=window.vanilla,
         )
+        window.tick_label.setText("idle")
 
     def on_version_changed(self, _text: str) -> None:
         window = self.window

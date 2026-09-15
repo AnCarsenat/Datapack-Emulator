@@ -103,11 +103,28 @@ class LogTableModel(QAbstractTableModel):
 
     # -- feeding ----------------------------------------------------------
 
+    #: records kept for the table; the oldest go first on long or endless runs
+    MAX_RECORDS = 50_000
+
     def append(self, record: LogRecord) -> None:
-        self._records.append(record)
-        if self._passes(record):
-            self.beginInsertRows(QModelIndex(), len(self._visible), len(self._visible))
-            self._visible.append(record)
+        self.extend([record])
+
+    def extend(self, records: list[LogRecord]) -> None:
+        """Add many records with one model update (endless runs log a lot)."""
+        if not records:
+            return
+        self._records.extend(records)
+        if len(self._records) > self.MAX_RECORDS:
+            self.beginResetModel()
+            del self._records[: len(self._records) - self.MAX_RECORDS]
+            self._refilter()
+            self.endResetModel()
+            return
+        shown = [record for record in records if self._passes(record)]
+        if shown:
+            start = len(self._visible)
+            self.beginInsertRows(QModelIndex(), start, start + len(shown) - 1)
+            self._visible.extend(shown)
             self.endInsertRows()
 
     def set_records(self, records: list[LogRecord]) -> None:

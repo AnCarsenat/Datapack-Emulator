@@ -114,7 +114,7 @@ class NavigationController(Controller):
                 cursor.setPosition(block.position())
                 window.source_edit.setTextCursor(cursor)
                 window.source_edit.centerCursor()
-        window.tabs.setCurrentIndex(TAB_SOURCE)
+        window.tabs.setCurrentWidget(window.tab_page(TAB_SOURCE))
 
     # -- menus ------------------------------------------------------------
 

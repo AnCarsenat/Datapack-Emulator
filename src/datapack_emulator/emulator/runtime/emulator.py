@@ -159,15 +159,27 @@ class Emulator:
             )
         return elapsed
 
+    @property
+    def started(self) -> bool:
+        return self.loaded or self._pending_load
+
+    def start(self) -> None:
+        """Start the server: log what failed to load and queue #minecraft:load.
+
+        Idempotent; ``run()`` calls it, and callers that tick one at a time
+        (the window, the test runner) call it before their first ``run_tick``.
+        """
+        if not self.started:
+            self.report_load()
+            self._pending_load = True
+
     def run(self, ticks: int = 20) -> Profiler:
         """Start the server, then run ``ticks`` ticks.
 
         ``#minecraft:load`` runs in the first tick: after ``#minecraft:tick``
         before 1.19.3, before it from 1.19.3 on.
         """
-        if not self.loaded:
-            self.report_load()
-            self._pending_load = True
+        self.start()
         if ticks <= 0 and self._pending_load:
             self._pending_load = False
             self.run_load()

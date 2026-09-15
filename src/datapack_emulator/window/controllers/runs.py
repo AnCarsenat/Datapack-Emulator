@@ -1,8 +1,11 @@
-"""Running the emulator, the profiler report, the call graph, the engine."""
+"""Running the emulator — finite, endless or one tick at a time — plus the
+profiler report, the call graph, the dot export and the engine window."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QUrl
+import time
+
+from PySide6.QtCore import QTimer, QUrl
 
 from datapack_emulator.emulator.analysis.graph import CallGraph
 from datapack_emulator.emulator.runtime.output import LogLevel
@@ -10,48 +13,176 @@ from datapack_emulator.settings import PATHS
 from datapack_emulator.window.controllers.base import TAB_GRAPH, TAB_PROFILER, Controller
 from datapack_emulator.window.engine_window import EngineWindow
 
+#: speed combo entries in window.ui, in order
+SPEEDS = ("fast", "realtime")
+
 
 class RunController(Controller):
+    #: time one timer slot may spend ticking before the UI gets a turn
+    BATCH_BUDGET_S = 0.03
+    #: one Minecraft tick in real time
+    REALTIME_INTERVAL_MS = 50
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.timer = QTimer(window)
+        self.timer.timeout.connect(self._on_timer)
+        #: ticks left in the current run; None while running until stopped
+        self.remaining: int | None = 0
+        self.running = False
+        self._rebuild_graph = False
+
     def connect(self) -> None:
         window = self.window
         window.run_button.clicked.connect(self.run_emulator)
         window.run_all_button.clicked.connect(self.run_all)
+        window.step_button.clicked.connect(self.step)
+        window.stop_button.clicked.connect(self.stop)
         window.engine_button.clicked.connect(self.open_engine)
 
+    # -- settings -----------------------------------------------------------
+
+    @property
+    def speed(self) -> str:
+        return SPEEDS[max(0, self.window.combo_speed.currentIndex())]
+
+    @speed.setter
+    def speed(self, value: str) -> None:
+        self.window.combo_speed.setCurrentIndex(SPEEDS.index(value) if value in SPEEDS else 0)
+
+    # -- starting and stopping ----------------------------------------------
+
     def run_emulator(self) -> None:
-        window = self.window
-        if not self.need_datapack():
-            return
-        window.datapacks.rebuild_emulator()
-        assert window.emulator is not None
-        ticks = window.spin_ticks.value()
-        window.log_view.clear()
-        self.status(f"running {ticks} tick(s) on {window.version.id}…")
-        profiler = window.emulator.run(ticks=ticks)
-        self.status(
-            f"{window.version.id}: {ticks} tick(s), {profiler.total_us / 1000:.2f} ms estimated, "
-            f"worst tick {profiler.worst_tick_us / 1000:.2f} ms"
-        )
-        self.run_profiler()
+        self.start(graph=False)
 
     def run_all(self) -> None:
-        """F5: emulate, refresh the profiler, rebuild the graph."""
+        """F5: a fresh world for the configured ticks, then profiler and graph."""
+        self.start(graph=True)
+
+    def start(self, graph: bool) -> None:
         window = self.window
         if not self.need_datapack():
             return
-        self.run_emulator()
-        self.run_graphview()
-        window.tabs.setCurrentIndex(TAB_PROFILER)
+        self.stop(refresh=False)
+        window.log_view.clear()
+        window.datapacks.rebuild_emulator()
         assert window.emulator is not None
-        profiler = window.emulator.profiler
+        window.emulator.start()
+        ticks = window.spin_ticks.value()
+        self.remaining = None if ticks < 0 else ticks
+        self._rebuild_graph = graph
+        self._set_running(True)
+        if self.remaining == 0:
+            window.emulator.run(ticks=0)  # just start the server and run load
+            self.finish()
+            return
+        interval = self.REALTIME_INTERVAL_MS if self.speed == "realtime" else 0
+        self.timer.start(interval)
         self.status(
-            f"run all on {window.version.id}: {len(profiler.tick_times)} tick(s), "
-            f"{profiler.total_us / 1000:.2f} ms estimated, "
-            f"worst tick {profiler.worst_tick_us / 1000:.2f} ms, "
-            f"{len(window.call_graph.nodes) if window.call_graph else 0} graph node(s)"
+            f"running {'until stopped' if self.remaining is None else f'{ticks} tick(s)'} "
+            f"on {window.version.id}…"
         )
 
-    def run_profiler(self) -> None:
+    def stop(self, refresh: bool = True) -> None:
+        """Stop a running emulation (and, by default, show its results)."""
+        if not self.running:
+            return
+        if refresh:
+            self.finish(stopped=True)
+        else:
+            self.timer.stop()
+            self._set_running(False)
+
+    def wait(self) -> None:
+        """Drive a finite run to its end without the event loop (tests, scripts)."""
+        while self.running and self.remaining is not None:
+            self._on_timer()
+
+    def step(self) -> None:
+        """One more tick in the current world; starts one if there is none."""
+        window = self.window
+        if not self.need_datapack():
+            return
+        self.stop(refresh=False)
+        if window.emulator is None:
+            window.datapacks.rebuild_emulator()
+        assert window.emulator is not None
+        window.emulator.start()
+        window.emulator.run_tick()
+        window.log_view.flush()
+        self._show_tick()
+        self.run_profiler(switch_tab=False)
+        self.status(f"stepped to tick {window.emulator.world.tick} on {window.version.id}")
+
+    # -- ticking ------------------------------------------------------------
+
+    def _on_timer(self) -> None:
+        emulator = self.window.emulator
+        if emulator is None:
+            self.stop(refresh=False)
+            return
+        deadline = time.monotonic() + self.BATCH_BUDGET_S
+        realtime = self.speed == "realtime" and self.timer.isActive()
+        while self.remaining is None or self.remaining > 0:
+            emulator.run_tick()
+            if self.remaining is not None:
+                self.remaining -= 1
+            if realtime or time.monotonic() >= deadline:
+                break
+        self._show_tick()
+        if self.remaining == 0:
+            self.finish()
+
+    def finish(self, stopped: bool = False) -> None:
+        window = self.window
+        self.timer.stop()
+        self._set_running(False)
+        window.log_view.flush()
+        if window.emulator is None:
+            return
+        profiler = window.emulator.profiler
+        self.run_profiler()
+        if self._rebuild_graph:
+            self.run_graphview()
+            window.tabs.setCurrentWidget(window.tab_page(TAB_PROFILER))
+        self._show_tick()
+        self.status(
+            f"{'stopped' if stopped else 'finished'} on {window.version.id}: "
+            f"{len(profiler.tick_times)} tick(s), {profiler.total_us / 1000:.2f} ms estimated, "
+            f"worst tick {profiler.worst_tick_us / 1000:.2f} ms"
+            + (
+                f", {len(window.call_graph.nodes)} graph node(s)"
+                if self._rebuild_graph and window.call_graph
+                else ""
+            )
+        )
+
+    def _set_running(self, running: bool) -> None:
+        window = self.window
+        self.running = running
+        window.stop_button.setEnabled(running)
+        for button in (window.run_button, window.run_all_button, window.step_button):
+            button.setEnabled(not running)
+        for name in ("actionrun_all", "actionrun_emulator", "actionstep_tick"):
+            action = window._action(name)
+            if action is not None:
+                action.setEnabled(not running)
+        action = window._action("actionstop")
+        if action is not None:
+            action.setEnabled(running)
+
+    def _show_tick(self) -> None:
+        window = self.window
+        emulator = window.emulator
+        if emulator is None:
+            window.tick_label.setText("idle")
+            return
+        suffix = " (running)" if self.running else ""
+        window.tick_label.setText(f"tick {emulator.world.tick}{suffix}")
+
+    # -- results ------------------------------------------------------------
+
+    def run_profiler(self, switch_tab: bool = True) -> None:
         """Regenerate the HTML report and show it in the profiler tab."""
         window = self.window
         if window.emulator is None:
@@ -66,7 +197,8 @@ class RunController(Controller):
         window.output.app(f"wrote {report}")
         window.web_view.setUrl(QUrl.fromLocalFile(str(report)))
         window.web_view.reload()
-        window.tabs.setCurrentIndex(TAB_PROFILER)
+        if switch_tab:
+            window.tabs.setCurrentWidget(window.tab_page(TAB_PROFILER))
 
     def run_graphview(self) -> None:
         window = self.window
@@ -92,7 +224,7 @@ class RunController(Controller):
             window.output.emulator(
                 f"{name} is never called from #minecraft:load/tick", level=LogLevel.WARNING
             )
-        window.tabs.setCurrentIndex(TAB_GRAPH)
+        window.tabs.setCurrentWidget(window.tab_page(TAB_GRAPH))
 
     def export_dot(self) -> None:
         window = self.window

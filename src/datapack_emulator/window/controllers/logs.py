@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
+
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource
 from datapack_emulator.window.controllers.base import Controller
 from datapack_emulator.window.panels import LEVELS, LogTableModel
 
 
 class LogController(Controller):
+    #: how often buffered records reach the table, in milliseconds
+    FLUSH_INTERVAL_MS = 100
+
     def __init__(self, window):
         super().__init__(window)
         self.model = LogTableModel(window)
+        self._pending: list[LogRecord] = []
+        self._flush_timer = QTimer(window)
+        self._flush_timer.setSingleShot(True)
+        self._flush_timer.timeout.connect(self.flush)
 
     def connect(self) -> None:
         window = self.window
@@ -26,7 +35,17 @@ class LogController(Controller):
         self.apply_filter()
 
     def on_record(self, record: LogRecord) -> None:
-        self.model.append(record)
+        # records arrive thousands per second on long runs: buffer them and
+        # update the table a few times a second instead of once per record
+        self._pending.append(record)
+        if not self._flush_timer.isActive():
+            self._flush_timer.start(self.FLUSH_INTERVAL_MS)
+
+    def flush(self) -> None:
+        if not self._pending:
+            return
+        pending, self._pending = self._pending, []
+        self.model.extend(pending)
         self.window.log_counts.setText(self.model.summary())
         self.window.log_table.scrollToBottom()
 
@@ -48,6 +67,7 @@ class LogController(Controller):
         window.log_table.resizeColumnsToContents()
 
     def clear(self) -> None:
+        self._pending.clear()
         self.window.output.clear()
         self.model.clear()
         self.window.log_counts.setText(self.model.summary())

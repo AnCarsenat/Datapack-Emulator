@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 
 from datapack_emulator.emulator.runtime.output import LogLevel
+from datapack_emulator.emulator.testing import CommandTest
 from datapack_emulator.project import Project, projects_dir
 from datapack_emulator.window.controllers.base import Controller
 
@@ -22,6 +23,9 @@ class ProjectController(Controller):
                 window.combo_version.setCurrentIndex(index)
         window.spin_ticks.setValue(project.ticks)
         window.spin_players.setValue(project.players)
+        window.spin_seed.setValue(project.seed)
+        window.runs.speed = project.speed
+        window.environment.set_tests([CommandTest.from_dict(test) for test in project.tests])
         if project.vanilla_jar and Path(project.vanilla_jar).is_file():
             try:
                 window.jars.use(window.library.load_jar(Path(project.vanilla_jar)))
@@ -39,6 +43,9 @@ class ProjectController(Controller):
         project.version = window.version.id
         project.ticks = window.spin_ticks.value()
         project.players = window.spin_players.value()
+        project.seed = window.spin_seed.value()
+        project.speed = window.runs.speed
+        project.tests = [test.to_dict() for test in window.environment.tests()]
         project.vanilla_jar = str(window.vanilla.jar_path) if window.vanilla else ""
         if window.engine_window is not None:
             project.engine_versions = [

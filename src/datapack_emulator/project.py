@@ -71,6 +71,10 @@ class Project:
     seed: int = EMULATION.DEFAULT_SEED
     engine_versions: list[str] = field(default_factory=list)
     vanilla_jar: str = ""
+    #: "fast" or "realtime"
+    speed: str = "fast"
+    #: CommandTest.to_dict() entries from the environment tab
+    tests: list[dict[str, Any]] = field(default_factory=list)
     #: where it was saved; ``None`` until the first save
     path: Path | None = None
 
@@ -86,6 +90,8 @@ class Project:
             "seed": self.seed,
             "engine_versions": list(self.engine_versions),
             "vanilla_jar": self.vanilla_jar,
+            "speed": self.speed,
+            "tests": [dict(test) for test in self.tests],
         }
 
     @classmethod
@@ -99,6 +105,8 @@ class Project:
             seed=int(data.get("seed", EMULATION.DEFAULT_SEED)),
             engine_versions=[str(item) for item in data.get("engine_versions", [])],
             vanilla_jar=str(data.get("vanilla_jar", "")),
+            speed=str(data.get("speed", "fast")),
+            tests=[dict(test) for test in data.get("tests", []) if isinstance(test, dict)],
             path=path,
         )
 

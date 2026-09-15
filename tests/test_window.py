@@ -81,3 +81,72 @@ def test_imported_pack_defaults_to_its_newest_declared_version(window, make_pack
     )
     window.datapacks.load(pack)
     assert window.version.id == "1.21.4"
+
+
+def _hat_like_pack(make_pack):
+    return make_pack(
+        {
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add t dummy\nsay loaded\n",
+            "data/test/function/tick.mcfunction": "scoreboard players add #ticks t 1\n",
+        }
+    )
+
+
+def test_finite_run_ticks_to_the_end(window, make_pack):
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.spin_ticks.setValue(7)
+    window.runs.run_all()
+    assert window.runs.running and window.stop_button.isEnabled()
+    window.runs.wait()
+    assert not window.runs.running and not window.stop_button.isEnabled()
+    assert window.emulator.world.tick == 7
+    assert window.emulator.world.scoreboard.get("#ticks", "t") == 7
+    assert window.tick_label.text() == "tick 7"
+    assert window.call_graph is not None
+
+
+def test_endless_run_stops_on_request_and_step_continues(window, make_pack):
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.spin_ticks.setValue(-1)
+    assert window.spin_ticks.text() == "∞ until stopped"
+    window.runs.run_emulator()
+    for _ in range(3):
+        window.runs._on_timer()
+    ticked = window.emulator.world.tick
+    assert ticked > 3 and window.runs.running
+    window.runs.stop()
+    assert not window.runs.running
+    assert window.statusBar().currentMessage().startswith("stopped")
+
+    window.runs.step()
+    assert window.emulator.world.tick == ticked + 1
+
+
+def test_tests_table_runs_commands_and_saves_with_the_project(window, make_pack, tmp_path):
+    from datapack_emulator.emulator.testing import CommandTest
+    from datapack_emulator.project import Project
+
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.environment.set_tests(
+        [
+            CommandTest("scoreboard players get #ticks t", at_tick=4),
+            CommandTest("say hi", expect="bye"),
+        ]
+    )
+    results = window.environment.run()
+    assert [result.passed for result in results] == [True, False]
+    assert window.table_tests.item(0, 3).text().startswith("✔")
+    assert window.table_tests.item(1, 3).text().startswith("✘")
+    assert window.test_summary.text().startswith("1/2 passed")
+
+    window.spin_seed.setValue(42)
+    window.runs.speed = "realtime"
+    saved = window.projects.capture().save(tmp_path / "p.json")
+    loaded = Project.load(saved)
+    assert loaded.seed == 42 and loaded.speed == "realtime"
+    assert [test["command"] for test in loaded.tests] == [
+        "scoreboard players get #ticks t",
+        "say hi",
+    ]

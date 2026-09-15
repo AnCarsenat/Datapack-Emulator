@@ -6,6 +6,7 @@ area and reaches the others through the window.
 """
 
 from datapack_emulator.window.controllers.datapacks import DatapackController
+from datapack_emulator.window.controllers.environment import EnvironmentController
 from datapack_emulator.window.controllers.jars import JarController
 from datapack_emulator.window.controllers.logs import LogController
 from datapack_emulator.window.controllers.navigation import NavigationController
@@ -14,6 +15,7 @@ from datapack_emulator.window.controllers.runs import RunController
 
 __all__ = [
     "DatapackController",
+    "EnvironmentController",
     "JarController",
     "LogController",
     "NavigationController",

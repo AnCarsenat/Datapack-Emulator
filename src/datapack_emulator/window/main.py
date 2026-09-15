@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTableView,
+    QTableWidget,
     QTabWidget,
     QTreeView,
     QTreeWidget,
@@ -40,13 +41,19 @@ from datapack_emulator.project import Project
 from datapack_emulator.settings import EMULATION, WINDOW
 from datapack_emulator.window.controllers import (
     DatapackController,
+    EnvironmentController,
     JarController,
     LogController,
     NavigationController,
     ProjectController,
     RunController,
 )
-from datapack_emulator.window.controllers.base import TAB_GRAPH, TAB_PROFILER, TAB_SOURCE
+from datapack_emulator.window.controllers.base import (
+    TAB_ENVIRONMENT,
+    TAB_GRAPH,
+    TAB_PROFILER,
+    TAB_SOURCE,
+)
 from datapack_emulator.window.engine_window import EngineWindow
 from datapack_emulator.window.panels import FunctionGraphWidget, load_ui_into
 
@@ -78,11 +85,19 @@ class MainWindow(QMainWindow):
         self.datapacks = DatapackController(self)
         self.runs = RunController(self)
         self.navigation = NavigationController(self)
-        for controller in (self.log_view, self.datapacks, self.runs, self.navigation):
+        self.environment = EnvironmentController(self)
+        for controller in (
+            self.log_view,
+            self.datapacks,
+            self.runs,
+            self.navigation,
+            self.environment,
+        ):
             controller.connect()
         self._wire_actions()
 
         self.resize(WINDOW.WINDOW_WIDTH, WINDOW.WINDOW_HEIGHT)
+        self.runs._set_running(False)
         self.show_all_docks()
         self.datapacks.show(None)
         self.datapacks.open_default()
@@ -107,6 +122,16 @@ class MainWindow(QMainWindow):
         self.edit_filter: QLineEdit = find(QLineEdit, "editLogFilter")
         self.spin_ticks: QSpinBox = find(QSpinBox, "spinTicks")
         self.spin_players: QSpinBox = find(QSpinBox, "spinPlayers")
+        self.spin_seed: QSpinBox = find(QSpinBox, "spinSeed")
+        self.combo_speed: QComboBox = find(QComboBox, "comboSpeed")
+        self.tick_label: QLabel = find(QLabel, "labelTickStatus")
+        self.table_tests: QTableWidget = find(QTableWidget, "tableTests")
+        self.add_test_button: QPushButton = find(QPushButton, "buttonAddTest")
+        self.remove_test_button: QPushButton = find(QPushButton, "buttonRemoveTest")
+        self.run_tests_button: QPushButton = find(QPushButton, "buttonRunTests")
+        self.test_summary: QLabel = find(QLabel, "labelTestSummary")
+        self.step_button: QPushButton = find(QPushButton, "buttonStep")
+        self.stop_button: QPushButton = find(QPushButton, "buttonStop")
         self.run_button: QPushButton = find(QPushButton, "buttonRun")
         self.run_all_button: QPushButton = find(QPushButton, "buttonRunAll")
         self.engine_button: QPushButton = find(QPushButton, "buttonEngine")
@@ -125,6 +150,7 @@ class MainWindow(QMainWindow):
 
         self.spin_ticks.setValue(EMULATION.DEFAULT_TICKS)
         self.spin_players.setValue(EMULATION.DEFAULT_PLAYERS)
+        self.spin_seed.setValue(EMULATION.DEFAULT_SEED)
 
     def _fill_versions(self) -> None:
         self.combo_version.blockSignals(True)
@@ -136,6 +162,10 @@ class MainWindow(QMainWindow):
             self.combo_version.addItem(label, version.id)
         self.combo_version.setCurrentIndex(max(self.combo_version.findData(versions.LATEST.id), 0))
         self.combo_version.blockSignals(False)
+
+    def tab_page(self, name: str) -> QWidget:
+        """A tab page of window.ui by object name (see controllers.base)."""
+        return self.findChild(QWidget, name)
 
     @property
     def version(self) -> versions.Version:
@@ -158,13 +188,17 @@ class MainWindow(QMainWindow):
             "actionquit": self.close,
             "actionrun_all": self.runs.run_all,
             "actionrun_emulator": self.runs.run_emulator,
+            "actionstep_tick": self.runs.step,
+            "actionstop": self.runs.stop,
+            "actionrun_tests": self.environment.run,
+            "actionenvironment": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_ENVIRONMENT)),
             "actionrun_profiler": self.runs.run_profiler,
             "actionrun_graphview": self.runs.run_graphview,
             "actionopen_engine": self.runs.open_engine,
             "actionexport_dot": self.runs.export_dot,
-            "actionprofile": lambda: self.tabs.setCurrentIndex(TAB_PROFILER),
-            "actiongraphview": lambda: self.tabs.setCurrentIndex(TAB_GRAPH),
-            "actionsource": lambda: self.tabs.setCurrentIndex(TAB_SOURCE),
+            "actionprofile": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_PROFILER)),
+            "actiongraphview": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_GRAPH)),
+            "actionsource": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_SOURCE)),
             "actionopen_file_in_editor": lambda: navigation.open_externally(
                 navigation.selected_path()
             ),

@@ -7,8 +7,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover
     from datapack_emulator.window.main import MainWindow
 
-#: tab indexes in window.ui
-TAB_PROFILER, TAB_GRAPH, TAB_SOURCE = 0, 1, 2
+#: tab pages in window.ui, by object name (indexes change when tabs are added)
+TAB_ENVIRONMENT = "environment"
+TAB_PROFILER = "profiler"
+TAB_GRAPH = "graph_view"
+TAB_SOURCE = "source_view"
 
 
 class Controller:
