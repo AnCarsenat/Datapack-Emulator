@@ -47,7 +47,7 @@ Timings are **estimates from a cost model**, not measurements — see
 
 ```
 src/emulator/   model, commands, runtime, analysis, version engine (no Qt)
-src/window/     window.ui + engine.ui, and the code that wires them
+src/window/     window.ui, engine.ui, download.ui, and the code that wires them
 src/project.py  projects/ files
 tools/          generate_version_data.py
 docs/           documentation

@@ -31,9 +31,11 @@ src/
     engine.py             TestEngine, VersionRun
     __main__.py           CLI
   window/                 Qt only
-    window.ui, engine.ui  ALL layout
+    window.ui, engine.ui  ALL layout (plus download.ui)
     main.py               MainWindow: wiring
     engine_window.py      EngineWindow: wiring
+    download.ui           client-jar download popup
+    download_dialog.py    DownloadDialog + DownloadWorker (QThread)
     panels/
       uiloader.py         load a .ui into an existing QMainWindow
       explorer.py         explorer model

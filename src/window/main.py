@@ -46,6 +46,7 @@ from src.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBu
 from src.emulator.vanilla import VanillaAssets, default_library
 from src.project import Project, default_sample, projects_dir
 from src.settings import EMULATION, PATHS, WINDOW
+from src.window.download_dialog import DownloadDialog
 from src.window.engine_window import EngineWindow
 from src.window.panels import (
     LEVELS,
@@ -427,23 +428,24 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "client jar", f"cannot read {chosen}:\n{exc}")
 
     def download_vanilla_jar(self) -> None:
+        """Popup: confirm, then download with a progress bar and a cancel button."""
         version = self.version
-        answer = QMessageBox.question(
-            self,
-            "download client jar",
-            f"Download the Minecraft {version.id} client.jar from Mojang "
-            f"into {self.library.cache_dir}?\n\nThis is roughly 25 MB.",
-        )
-        if answer != QMessageBox.Yes:
+        existing = self.library.find(version.id)
+        if existing is not None:
+            self.statusBar().showMessage(f"{version.id} client jar already installed: {existing}")
+            self.use_vanilla(self.library.load_jar(existing))
             return
-        self.statusBar().showMessage(f"downloading {version.id} client.jar…")
-        try:
-            path = self.library.download(version.id, progress=self.output.app)
+        dialog = DownloadDialog(self.library, version.id, parent=self)
+        path = dialog.run()
+        if path is not None:
+            self.output.app(f"downloaded {path}")
             self.use_vanilla(self.library.load_jar(path))
             self.statusBar().showMessage(f"client jar ready: {path}")
-        except Exception as exc:
-            self.statusBar().showMessage("download failed")
-            QMessageBox.warning(self, "download failed", str(exc))
+        elif dialog.error:
+            self.output.app(f"client jar download failed: {dialog.error}", level=LogLevel.ERROR)
+            self.statusBar().showMessage("client jar download failed")
+        else:
+            self.statusBar().showMessage("client jar download cancelled")
 
     def _on_version_changed(self, _text: str) -> None:
         if self.datapack is None:

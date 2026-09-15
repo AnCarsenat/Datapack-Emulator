@@ -1,8 +1,8 @@
 # The window
 
 Every widget, dock, menu, action and shortcut is declared in
-`src/window/window.ui` (main window) and `src/window/engine.ui` (engine
-window). The Python side only loads those files and wires behaviour, so
+`src/window/window.ui` (main window), `src/window/engine.ui` (engine
+window) and `src/window/download.ui` (client-jar download popup). The Python side only loads those files and wires behaviour, so
 layout changes are made in Qt Designer, never in code.
 
 ## Main window
@@ -70,6 +70,15 @@ file type or folders.
 | Ctrl+Return | open selection in external editor |
 | Ctrl+Shift+Return | open selection in external file manager |
 | Ctrl+Q | quit |
+
+## Client-jar download popup
+
+*file › download client jar for this version*. Confirm with *download*; the
+popup then shows the progress bar, MiB received out of the total, the
+transfer rate, and *cancel*. Closing the popup or pressing Escape also
+cancels. On success the jar is loaded straight away; on failure the popup
+says why and the log records it. If the jar for that version is already
+installed, it is loaded without downloading.
 
 ## Engine window
 

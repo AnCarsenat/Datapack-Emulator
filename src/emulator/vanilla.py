@@ -22,6 +22,7 @@ and can tell a typo'd ``minecraft:armour_stand`` from a real entity type.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import urllib.request
@@ -47,6 +48,16 @@ SEARCH_DIRS: tuple[Path, ...] = (
 )
 
 Progress = Callable[[str], None]
+#: ``(bytes received, bytes expected)``; expected is 0 when the server does not say
+ByteProgress = Callable[[int, int], None]
+#: polled between chunks; returning ``True`` aborts the download
+CancelCheck = Callable[[], bool]
+
+CHUNK_SIZE = 64 * 1024
+
+
+class DownloadCancelled(Exception):
+    """The user stopped a client jar download; nothing was left on disk."""
 
 
 def _read_json(archive: zipfile.ZipFile, name: str) -> dict:
@@ -251,8 +262,19 @@ class VanillaLibrary:
         with urllib.request.urlopen(MANIFEST_URL, timeout=30) as response:
             return json.loads(response.read())
 
-    def download(self, version_id: str, progress: Optional[Progress] = None) -> Path:
-        """Fetch ``version_id``'s client jar into the cache and return its path."""
+    def download(
+        self,
+        version_id: str,
+        progress: Optional[Progress] = None,
+        on_bytes: Optional[ByteProgress] = None,
+        cancelled: Optional[CancelCheck] = None,
+    ) -> Path:
+        """Fetch ``version_id``'s client jar into the cache and return its path.
+
+        The jar is streamed to a ``.part`` file, checked against the SHA-1
+        Mojang publishes, then renamed into place — so an interrupted or
+        cancelled download never leaves a truncated jar behind.
+        """
         target = self.cache_dir / version_id / f"minecraft-{version_id}-client.jar"
         if target.is_file():
             return target
@@ -262,6 +284,10 @@ class VanillaLibrary:
             if progress is not None:
                 progress(text)
 
+        def check_cancel() -> None:
+            if cancelled is not None and cancelled():
+                raise DownloadCancelled(f"download of {version_id} cancelled")
+
         say(f"looking up {version_id} in Mojang's version manifest")
         entry = next(
             (item for item in self.manifest().get("versions", []) if item["id"] == version_id),
@@ -269,6 +295,7 @@ class VanillaLibrary:
         )
         if entry is None:
             raise KeyError(f"Mojang's manifest has no version {version_id!r}")
+        check_cancel()
 
         with urllib.request.urlopen(entry["url"], timeout=30) as response:
             meta = json.loads(response.read())
@@ -276,12 +303,41 @@ class VanillaLibrary:
         url = client.get("url")
         if not url:
             raise KeyError(f"{version_id} has no client download")
+        expected_size = int(client.get("size", 0) or 0)
+        expected_sha1 = str(client.get("sha1", "") or "").lower()
 
-        say(f"downloading {url.rsplit('/', 1)[-1]} ({client.get('size', 0) // 1024} KiB)")
+        say(f"downloading {url.rsplit('/', 1)[-1]} ({expected_size // 1024} KiB)")
         target.parent.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(url, timeout=120) as response:
-            target.write_bytes(response.read())
-        say(f"saved {target}")
+        partial = target.with_name(target.name + ".part")
+        digest = hashlib.sha1()
+        received = 0
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response, partial.open("wb") as out:
+                total = expected_size or int(response.headers.get("Content-Length", 0) or 0)
+                if on_bytes is not None:
+                    on_bytes(0, total)
+                while True:
+                    check_cancel()
+                    chunk = response.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    digest.update(chunk)
+                    received += len(chunk)
+                    if on_bytes is not None:
+                        on_bytes(received, total)
+            if expected_sha1 and digest.hexdigest() != expected_sha1:
+                raise IOError(
+                    f"{version_id} client jar is corrupt: sha1 {digest.hexdigest()} "
+                    f"does not match {expected_sha1}"
+                )
+            partial.replace(target)
+        except BaseException:
+            partial.unlink(missing_ok=True)
+            raise
+
+        verified = ", sha1 verified" if expected_sha1 else ""
+        say(f"saved {target} ({received // 1024} KiB{verified})")
         return target
 
     # -- loading ----------------------------------------------------------

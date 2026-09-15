@@ -57,16 +57,21 @@ is found. *file › load client jar…* picks any jar by hand.
 
 ## Downloading
 
-*file › download client jar for this version*, or:
+*file › download client jar for this version* opens a popup: confirm, then
+a progress bar with MiB received, transfer rate and a cancel button. The
+download runs on a worker thread, so the window stays responsive. From a
+terminal:
 
 ```sh
 python -m src.emulator vanilla --download 1.21.4
 ```
 
 The version is looked up in Mojang's
-`piston-meta.mojang.com/mc/game/version_manifest_v2.json`, then its client jar
-is saved to `.cache/vanilla/<version>/`. Nothing is downloaded unless you ask.
-`.cache/` is git-ignored.
+`piston-meta.mojang.com/mc/game/version_manifest_v2.json`, and its client jar
+is streamed to `.cache/vanilla/<version>/…jar.part`. When the transfer ends
+the file's SHA-1 is compared with the one Mojang publishes and only then
+renamed into place; a cancelled, interrupted or corrupt download deletes the
+partial file. Nothing is downloaded unless you ask. `.cache/` is git-ignored.
 
 ## From code
 
@@ -75,6 +80,7 @@ from src.emulator.vanilla import default_library
 
 library = default_library()
 assets = library.load("26.2", allow_download=False)   # None if not installed
+library.download("1.21.4", on_bytes=print, cancelled=lambda: False)
 assets.knows("block", "minecraft:stone")               # True / False / None
 assets.resolve_tag("entity_type", "#minecraft:skeletons")
 assets.message("commands.summon.success")              # "Summoned new %s"
