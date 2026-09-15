@@ -350,7 +350,10 @@ class MainWindow(QMainWindow):
         for error in datapack.errors:
             self.output.app(error, level=LogLevel.ERROR)
 
-        self._select_pack_version(datapack)
+        if not keep_project or not self.project.version:
+            # a project remembers its version; a freshly imported pack gets the
+            # release matching its pack_format
+            self._select_pack_version(datapack)
         self.autoload_vanilla()
         self._rebuild_emulator()
         self.call_graph = None
@@ -731,11 +734,18 @@ class MainWindow(QMainWindow):
                         return resource
         return None
 
+    def _detach_highlighter(self) -> None:
+        """Only one highlighter may colour the source document at a time."""
+        if self._highlighter is not None:
+            self._highlighter.setDocument(None)
+            self._highlighter.setParent(None)
+            self._highlighter = None
+
     def _show_source(self, path: Path) -> None:
         self.source_label.setText(str(path))
+        self._detach_highlighter()
         if path.suffix.lower() == ".png":
             self.source_edit.setPlainText(f"{path.name}: binary image")
-            self._highlighter = None
             return
         try:
             text = path.read_text(encoding="utf-8")
