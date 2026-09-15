@@ -146,6 +146,7 @@ class MainWindow(QMainWindow):
         self.combo_version: QComboBox = find(QComboBox, "comboVersion")
         self.version_note: QLabel = find(QLabel, "labelVersionNote")
         self.combo_level: QComboBox = find(QComboBox, "comboLevel")
+        self.combo_seen_by: QComboBox = find(QComboBox, "comboSeenBy")
         self.edit_filter: QLineEdit = find(QLineEdit, "editLogFilter")
         self.spin_ticks: QSpinBox = find(QSpinBox, "spinTicks")
         self.spin_players: QSpinBox = find(QSpinBox, "spinPlayers")

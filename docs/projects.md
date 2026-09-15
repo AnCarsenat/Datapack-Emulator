@@ -88,7 +88,7 @@ made before several datapacks were supported (`"archive_format": 1`, one
 | file › new project (Ctrl+N) | asks for a name, saves the current state under it |
 | file › open project… (Ctrl+Shift+O) | restores settings, tests and notes, then opens the project's datapacks in place of the open ones |
 | file › add datapack… (Ctrl+O) | adds a pack to the ones analyzed; it loads after them |
-| file › remove datapack | removes one pack (also: right-click its root in the explorer) |
+| file › remove datapack | removes one pack (also: right-click its root in the explorer); with no project open, removing the last one opens the default pack |
 | file › save project (Ctrl+S) | writes the file the project came from; a project never saved goes to `projects/<name>.dpemu` (the pack name if untitled), or asks for a name when that file already belongs to another project |
 | file › save project as… (Ctrl+Shift+S) | same, under another name or path; if it fails, the project keeps its current file |
 

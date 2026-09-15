@@ -900,3 +900,52 @@ def test_shared_ids_inspect_the_clicked_file_and_the_engine_follows(app, window,
     window.datapacks.remove(1)
     assert window.engine_window.datapack.name == "p1"
     window.engine_window.close()
+
+
+def test_logs_show_what_each_player_reads(app, window, make_pack):
+    pack = make_pack(
+        {
+            "data/test/function/tick.mcfunction": (
+                'tellraw @a {"text":"to all"}\n'
+                'tellraw Player2 {"text":"only two"}\n'
+                'title Player1 actionbar {"text":"bar"}\n'
+                "say everyone hears this\n"
+                'tellraw @a {"translate":"missing.key","fallback":"fallback text"}\n'
+                'data modify storage t:m note set value "stored"\n'
+                'tellraw Player1 {"nbt":"note","storage":"t:m"}\n'
+            )
+        }
+    )
+    window.spin_players.setValue(2)
+    window.datapacks.load(pack)
+    window.spin_ticks.setValue(1)
+    window.runs.run_emulator()
+    window.runs.wait()
+    model = window.log_view.model
+
+    def shown():
+        return [model.record_at(row).message for row in range(model.rowCount())]
+
+    assert {"to Player1: to all", "to Player2: to all", "to Player2: only two"} <= set(shown())
+    assert "to Player1: fallback text" in shown() and "to Player1: stored" in shown()
+    assert [window.combo_seen_by.itemText(i) for i in range(window.combo_seen_by.count())] == [
+        "everyone",
+        "Player1",
+        "Player2",
+    ]
+    window.combo_seen_by.setCurrentText("Player2")
+    assert shown() == [
+        "to Player2: to all",
+        "to Player2: only two",
+        "[Server] everyone hears this",
+        "to Player2: fallback text",
+    ]
+
+
+def test_removing_every_pack_without_a_project_opens_the_default_pack(window, make_pack):
+    from datapack_emulator.project import default_sample
+
+    window.datapacks.load(make_pack({"data/test/function/tick.mcfunction": "say x\n"}))
+    assert window.project.path is None
+    window.datapacks.remove(0)
+    assert window.datapack is not None and window.datapack.paths == [default_sample()]

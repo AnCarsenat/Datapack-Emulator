@@ -112,13 +112,13 @@ def _holders(context: ExecutionContext, token: str) -> list[str]:
 
 def cmd_say(command: Command, context: ExecutionContext) -> CommandResult:
     who = context.executor.display if context.executor else "Server"
-    context.chat(f"[{who}] {' '.join(command.arguments)}")
+    context.chat(f"[{who}] {' '.join(command.arguments)}", recipient="*")
     return CommandResult(success=True, value=1)
 
 
 def cmd_me(command: Command, context: ExecutionContext) -> CommandResult:
     who = context.executor.display if context.executor else "Server"
-    context.chat(f"* {who} {' '.join(command.arguments)}")
+    context.chat(f"* {who} {' '.join(command.arguments)}", recipient="*")
     return CommandResult(success=True, value=1)
 
 
@@ -127,8 +127,9 @@ def cmd_msg(command: Command, context: ExecutionContext) -> CommandResult:
         return CommandResult.failure()
     targets = _require_targets(context, command.arguments[0])
     text = " ".join(command.arguments[1:])
+    who = context.executor.display if context.executor else "Server"
     for entity in targets:
-        context.chat(f"[whisper -> {entity.display}] {text}")
+        context.chat(f"{who} whispers to {entity.display}: {text}", recipient=entity.display)
     return CommandResult(success=bool(targets), value=len(targets))
 
 
@@ -142,7 +143,8 @@ def cmd_tellraw(command: Command, context: ExecutionContext) -> CommandResult:
     targets = _require_targets(context, command.arguments[0])
     for entity in targets:
         text = flatten_text_component(component, _text_resolver(context, entity))
-        context.chat(f"[{entity.display}] {text}")
+        # one record per player, saying who reads it
+        context.chat(f"to {entity.display}: {text}", recipient=entity.display)
     return CommandResult(success=bool(targets), value=len(targets))
 
 
@@ -162,9 +164,36 @@ def _text_resolver(context: ExecutionContext, viewer: Entity | None):
             return "" if score is None else str(score)
         if kind == "selector":
             return ", ".join(entity.display for entity in _targets(context, str(value)))
+        if kind == "translate" and isinstance(value, dict):
+            key = str(value.get("translate", ""))
+            template = context.emulator.messages.template(key)
+            if template is None:
+                return str(value.get("fallback", key))
+            arguments = [
+                flatten_text_component(argument, resolve) for argument in value.get("with", [])
+            ]
+            return context.render(key, *arguments)
+        if kind == "nbt" and isinstance(value, dict):
+            return _nbt_text(context, value)
         return ""
 
     return resolve
+
+
+def _nbt_text(context: ExecutionContext, component: dict[str, Any]) -> str:
+    """An ``nbt`` text component: the value at a path of a storage or entity."""
+    path = str(component.get("nbt", ""))
+    if "storage" in component:
+        store: Any = context.world.storage.get(normalise_id(str(component["storage"])), {})
+    elif "entity" in component:
+        entities = _targets(context, str(component["entity"]))
+        store = entities[0].data(context.emulator.version) if entities else None
+    else:
+        return ""  # block NBT is not modelled
+    value = nbt_get(store, path) if isinstance(store, dict) else None
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else to_snbt(value)
 
 
 def cmd_title(command: Command, context: ExecutionContext) -> CommandResult:
@@ -181,7 +210,7 @@ def cmd_title(command: Command, context: ExecutionContext) -> CommandResult:
                 if component is None
                 else flatten_text_component(component, _text_resolver(context, entity))
             )
-            context.chat(f"[{entity.display} {action}] {text}")
+            context.chat(f"to {entity.display} ({action}): {text}", recipient=entity.display)
     return CommandResult(success=bool(targets), value=len(targets))
 
 

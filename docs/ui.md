@@ -148,6 +148,9 @@ All four are open by default and can be toggled from *view*.
     would print;
   * *level*: the lowest level shown (`debug`, `info` — the default —,
     `warning`, `error`); silent failures inside functions are `debug`;
+  * *seen by*: `everyone` shows every record; a player shows only the chat
+    that player reads — `tellraw`, `title` and `msg` sent to them, and `say`
+    or `me` sent to everyone;
   * a text filter matched against the message;
   * the record counts, and *clear*, which empties the log.
 

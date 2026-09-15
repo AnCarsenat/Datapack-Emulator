@@ -137,6 +137,14 @@ class DatapackController(Controller):
         window = self.window
         window.log_view.clear()
         window.call_graph = None
+        if not packs and window.project.path is None and not keep_project:
+            # no project open: fall back to the default pack rather than nothing
+            sample = default_sample()
+            if sample is not None:
+                window.output.app(
+                    f"no datapack left and no project open: opened the default pack {sample.name}"
+                )
+                packs = DatapackSet([Datapack.load(sample)])
         if not packs:
             window.runs.stop(refresh=False)
             window.datapack = None
@@ -233,6 +241,7 @@ class DatapackController(Controller):
         )
         window.tick_label.setText("idle")
         window.world_view.forget()
+        window.log_view.refresh_readers()
 
     def on_version_changed(self, _text: str) -> None:
         window = self.window

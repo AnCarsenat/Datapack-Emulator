@@ -1156,6 +1156,25 @@ QMenuBar::item:selected {
         </widget>
        </item>
        <item>
+        <widget class="QLabel" name="labelSeenBy">
+         <property name="text">
+          <string>seen by</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="comboSeenBy">
+         <property name="toolTip">
+          <string>everyone: every record · a player: only the chat that player reads (tellraw, title and msg sent to them, and say or me sent to everyone)</string>
+         </property>
+         <item>
+          <property name="text">
+           <string>everyone</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item>
         <widget class="QLineEdit" name="editLogFilter">
          <property name="toolTip">
           <string>show only records whose message contains this text</string>

@@ -120,7 +120,7 @@ def test_tellraw_accepts_snbt_components(make_pack):
     emulator = run(
         make_pack, 'tellraw @a {text:"hi",color:"red"}\ntellraw @a ["",{text:"a"},"b"]\n'
     )
-    assert chat(emulator.output.records) == ["[Player1] hi", "[Player1] ab"]
+    assert chat(emulator.output.records) == ["to Player1: hi", "to Player1: ab"]
     assert not game_errors(emulator.output.records)
 
 
@@ -401,7 +401,7 @@ def test_tellraw_resolves_score_and_selector_components(make_pack):
         'tellraw @a ["score ",{"score":{"name":"#a","objective":"o"}},'
         '" mine ",{"score":{"name":"*","objective":"o"}}," who ",{"selector":"@a"}]\n',
     )
-    assert chat(emulator.output.records) == ["[Player1] score 42 mine 7 who Player1"]
+    assert chat(emulator.output.records) == ["to Player1: score 42 mine 7 who Player1"]
 
 
 def test_reports_escape_pack_content(make_pack):

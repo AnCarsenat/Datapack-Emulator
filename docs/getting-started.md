@@ -31,7 +31,8 @@ src/main.sh                      # same, without installing the package
 and puts `src/` on `PYTHONPATH`; `src/main.sh --cli …` runs the
 [command line](cli.md) instead.
 
-On a cold start the first datapack in `samples/` opens by itself, the version
+On a cold start the first datapack in `samples/` opens by itself (and again
+whenever no project is open and the last datapack is removed), the version
 combo jumps to the newest stable release the pack declares whose server reads
 its `pack.mcmeta` cleanly (hat_v2: 1.21.8), and a matching client jar is
 picked up if one is installed.
