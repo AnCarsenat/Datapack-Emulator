@@ -6,8 +6,9 @@ session in decompiled Mojang jars (1.16.1 to 26.3-rc-3):
 
 * Each function is compiled on its own. If any line does not parse in that
   version, the **whole function is dropped** ("Failed to load function <id>")
-  and every other function still loads. ``$`` macro lines are only parsed when
-  the function is called, so they never fail the load.
+  and every other function still loads. From 1.20.2, ``$`` macro lines are only
+  parsed when the function is called, so they never fail the load; before
+  that, a ``$`` line is an unknown command like any other.
 * ``function <id>`` resolves lazily when it runs, so calling a function that
   failed to load does not break the caller's load.
 * A function **tag** with any missing required entry — a function or tag that
@@ -58,7 +59,7 @@ class FunctionLibrary:
     def build(cls, pack: PackView, commands: CommandSet) -> FunctionLibrary:
         library = cls(version=commands.version)
         for function_id, function in sorted(pack.functions.items()):
-            failure = _parse_failure(function, commands)
+            failure = _parse_failure(function, commands, versions.supports_macros(library.version))
             if failure is None:
                 library.functions[function_id] = function
             else:
@@ -132,11 +133,24 @@ class FunctionLibrary:
         return [*self.function_failures.values(), *self.tag_failures.values()]
 
 
-def _parse_failure(function: Function, commands: CommandSet) -> LoadFailure | None:
+def _parse_failure(
+    function: Function, commands: CommandSet, macros_supported: bool
+) -> LoadFailure | None:
     """The first line of ``function`` this version cannot parse, if any."""
     for command in function.content:
-        if command.is_macro:
+        if command.is_macro and macros_supported:
             continue  # macro lines are parsed when the function is called
+        if command.is_macro:  # before 1.20.2 a `$` line is just an unknown command
+            return LoadFailure(
+                function.id,
+                f"Failed to load function {function.id}",
+                detail=(
+                    f"Whilst parsing command on line {command.line}: "
+                    "Unknown or incomplete command, see below for error"
+                ),
+                line=command.line,
+                key="command.unknown.command",
+            )
         for feature, _since in commands.missing_features(command.features()):
             unknown_command = feature.startswith("command:")
             key = "command.unknown.command" if unknown_command else "command.unknown.argument"

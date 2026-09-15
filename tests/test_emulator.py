@@ -148,7 +148,7 @@ def test_profiler_charges_time(make_pack):
     emulator = run(make_pack, "say hi\n", ticks=3)
     entry = emulator.profiler.entries["test:tick"]
     assert entry["calls"] == 3 and entry["total_us"] > 0
-    assert len(emulator.profiler.tick_times) == 3
+    assert emulator.profiler.ticks == 3 and len(emulator.profiler.tick_times) == 3
 
 
 def test_trigger_on_missing_or_wrong_objective(make_pack):

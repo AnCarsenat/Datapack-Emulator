@@ -547,3 +547,35 @@ def test_first_tick_runs_load_and_tick_in_the_versions_order(make_pack):
 
     assert order("1.19.2") == ["[Server] tick", "[Server] load", "[Server] tick"]
     assert order("1.19.3") == ["[Server] load", "[Server] tick", "[Server] tick"]
+
+
+# -- third review ---------------------------------------------------------------
+
+
+def test_macro_lines_fail_the_load_before_macros_existed(make_pack):
+    from datapack_emulator.emulator import Datapack, Emulator
+
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/functions/m.mcfunction": "say before\n$say $(x)\n",
+                "data/test/function/m.mcfunction": "say before\n$say $(x)\n",
+            }
+        )
+    )
+    assert "test:m" in Emulator(pack, version="1.20.1").library.function_failures
+    assert "test:m" in Emulator(pack, version="1.20.4").library.functions
+
+
+def test_tick_history_is_bounded_but_statistics_are_complete(make_pack):
+    from datapack_emulator.emulator.analysis.profiler import Profiler
+
+    profiler = Profiler()
+    for index in range(Profiler.TICK_HISTORY + 500):
+        profiler.record_tick(float(index % 7))
+    profiler.record_tick(99.0)
+    assert len(profiler.tick_times) == Profiler.TICK_HISTORY
+    assert profiler.ticks == Profiler.TICK_HISTORY + 501
+    assert profiler.worst_tick_us == 99.0
+    expected = (sum(i % 7 for i in range(Profiler.TICK_HISTORY + 500)) + 99.0) / profiler.ticks
+    assert abs(profiler.average_tick_us - expected) < 1e-9

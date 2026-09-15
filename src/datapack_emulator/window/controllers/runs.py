@@ -148,7 +148,7 @@ class RunController(Controller):
         self._show_tick()
         self.status(
             f"{'stopped' if stopped else 'finished'} on {window.version.id}: "
-            f"{len(profiler.tick_times)} tick(s), {profiler.total_us / 1000:.2f} ms estimated, "
+            f"{profiler.ticks} tick(s), {profiler.total_us / 1000:.2f} ms estimated, "
             f"worst tick {profiler.worst_tick_us / 1000:.2f} ms"
             + (
                 f", {len(window.call_graph.nodes)} graph node(s)"

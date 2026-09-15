@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from html import escape
 from pathlib import Path
 
@@ -9,12 +10,20 @@ from datapack_emulator.emulator import costs
 
 
 class Profiler:
+    #: recent tick durations kept for display
+    TICK_HISTORY = 10_000
+
     """Per-function accumulated estimated time and call counts."""
 
     def __init__(self) -> None:
         #: function id -> {"calls", "commands", "self_us", "total_us"}
         self.entries: dict[str, dict[str, float]] = {}
-        self.tick_times: list[float] = []
+        #: the most recent tick durations (endless runs would otherwise grow forever)
+        self.tick_times: deque[float] = deque(maxlen=self.TICK_HISTORY)
+        #: totals over every tick, not just the recent history
+        self.ticks = 0
+        self._tick_total_us = 0.0
+        self._worst_tick_us = 0.0
 
     def _entry(self, function_id: str) -> dict[str, float]:
         return self.entries.setdefault(
@@ -41,15 +50,24 @@ class Profiler:
 
     @property
     def worst_tick_us(self) -> float:
-        return max(self.tick_times, default=0.0)
+        return self._worst_tick_us
 
     @property
     def average_tick_us(self) -> float:
-        return sum(self.tick_times) / len(self.tick_times) if self.tick_times else 0.0
+        return self._tick_total_us / self.ticks if self.ticks else 0.0
+
+    def record_tick(self, microseconds: float) -> None:
+        self.tick_times.append(microseconds)
+        self.ticks += 1
+        self._tick_total_us += microseconds
+        self._worst_tick_us = max(self._worst_tick_us, microseconds)
 
     def reset(self) -> None:
         self.entries.clear()
         self.tick_times.clear()
+        self.ticks = 0
+        self._tick_total_us = 0.0
+        self._worst_tick_us = 0.0
 
     # -- reporting --------------------------------------------------------
 
@@ -72,7 +90,7 @@ class Profiler:
                 f"<span>{share:.1f}%</span></td>"
                 "</tr>"
             )
-        ticks = len(self.tick_times)
+        ticks = self.ticks
         worst = self.worst_tick_us
         body = "\n".join(rows) or "<tr><td colspan='6'>no data — run the emulator</td></tr>"
         over = "warn" if worst > costs.TICK_BUDGET_US else ""
@@ -132,7 +150,7 @@ def comparison_html(results: list[tuple[str, Profiler]], title: str = "Version c
         rows.append(
             "<tr>"
             f"<td class='id'>{escape(label)}</td>"
-            f"<td>{len(profiler.tick_times)}</td>"
+            f"<td>{profiler.ticks}</td>"
             f"<td>{profiler.total_us / 1000:.2f}</td>"
             f"<td>{profiler.average_tick_us / 1000:.2f}</td>"
             f"<td>{profiler.worst_tick_us / 1000:.2f}</td>"

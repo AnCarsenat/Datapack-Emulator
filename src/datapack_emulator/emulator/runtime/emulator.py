@@ -149,7 +149,7 @@ class Emulator:
                 self.run_scheduled(target)
 
         elapsed = self.profiler.total_us - start
-        self.profiler.tick_times.append(elapsed)
+        self.profiler.record_tick(elapsed)
         if elapsed > costs.TICK_BUDGET_US:
             self.output.emulator(
                 f"tick {self.world.tick - 1} took an estimated {elapsed / 1000:.1f} ms, over the "
