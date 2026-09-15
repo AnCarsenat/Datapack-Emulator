@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -340,6 +339,8 @@ class Datapack:
         self.base: Layer = Layer(directory="data", path=self.path / "data")
         self.overlays: list[Layer] = []
         self.errors: list[str] = []
+        #: merged views per (pack format, overlays allowed); cleared on reload
+        self._views: dict[tuple[Optional[Format], bool], PackView] = {}
 
     # -- loading ----------------------------------------------------------
 
@@ -352,7 +353,7 @@ class Datapack:
     def reload(self) -> "Datapack":
         self.errors.clear()
         self.overlays.clear()
-        self.view.cache_clear()
+        self._views.clear()
 
         if not self.path.is_dir():
             self.errors.append(f"{self.path} is not a directory")
@@ -407,16 +408,24 @@ class Datapack:
 
     # -- views ------------------------------------------------------------
 
-    @lru_cache(maxsize=64)
     def view(
         self, pack_format: Optional[Format] = None, allow_overlays: bool = True
     ) -> PackView:
-        """Merge the base pack with the overlays that apply at ``pack_format``."""
+        """Merge the base pack with the overlays that apply at ``pack_format``.
+
+        Cached on the instance: an ``lru_cache`` on the method would be shared
+        by every Datapack, keep them all alive, and be cleared for all of them
+        whenever one reloads.
+        """
         target = pack_format or (self.mcmeta.format_tuple if self.mcmeta else None)
-        layers = [self.base]
-        if allow_overlays:
-            layers += [layer for layer in self.overlays if layer.applies_to(target)]
-        return PackView(layers, target)
+        key = (target, allow_overlays)
+        cached = self._views.get(key)
+        if cached is None:
+            layers = [self.base]
+            if allow_overlays:
+                layers += [layer for layer in self.overlays if layer.applies_to(target)]
+            cached = self._views[key] = PackView(layers, target)
+        return cached
 
     def view_for(self, version: Version) -> PackView:
         """The pack as ``version`` would read it (pre-1.20.2 ignores overlays)."""

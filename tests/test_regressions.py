@@ -126,3 +126,15 @@ def test_whole_number_max_format_accepts_minor_formats(make_pack):
     pack = Datapack.load(make_pack({}, mcmeta={"pack": {"min_format": 88, "max_format": 94}}))
     assert pack.supports(versions.parse("1.21.11"))  # format 94.1
     assert "1.21.11" in [v.id for v in pack.declared_versions()]
+
+
+def test_pack_view_cache_does_not_keep_packs_alive(make_pack):
+    import gc
+    import weakref
+
+    pack = Datapack.load(make_pack({"data/test/function/tick.mcfunction": "say one\n"}))
+    assert pack.view() is pack.view()  # still cached per instance
+    reference = weakref.ref(pack)
+    del pack
+    gc.collect()
+    assert reference() is None
