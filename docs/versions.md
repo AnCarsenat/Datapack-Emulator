@@ -1,11 +1,11 @@
 # Versions, pack formats and overlays
 
-Every version-dependent decision goes through `src/emulator/versions.py`.
+Every version-dependent decision goes through `src/datapack_emulator/emulator/versions.py`.
 Nothing else in the code compares version strings.
 
 ## Where the data comes from
 
-`src/emulator/version_data.py` is **generated** from
+`src/datapack_emulator/emulator/version_data.py` is **generated** from
 [misode/mcmeta](https://github.com/misode/mcmeta), which republishes Mojang's
 data-generator output for every release:
 
@@ -16,7 +16,14 @@ data-generator output for every release:
 
 The generator walks every release from 1.14 on, extracts feature keys from
 each command tree, and records the first release that has each key and the
-first release that dropped it. 1.13 has no tree in mcmeta; it is added by hand
+first release that dropped it.
+
+It also takes the newest pre-release or release candidate of a version that
+has not shipped yet (for example `26.3-rc-3` before 26.3), marked
+`stable=False`. It sorts before its final release, `parse("26.3")` resolves to
+it until the release exists, and `LATEST` stays the newest *stable* release
+(`NEWEST` includes the pre-release). Re-running the generator after the release
+replaces it. 1.13 has no tree in mcmeta; it is added by hand
 with pack format 4 and answered as 1.14 for features.
 
 ### Feature keys
@@ -47,7 +54,7 @@ the work dir, so re-runs only fetch new releases. Commit the regenerated
 ## The API
 
 ```python
-from src.emulator import versions
+from datapack_emulator.emulator import versions
 
 v = versions.parse("1.21.4")                # exact release id
 versions.parse("26")                        # not a release: newest 26.x
@@ -71,7 +78,31 @@ carry `pack_format`, `pack_format_minor`, `format` (a tuple) and
 | singular registry folders (`function/`, `tags/function/`, …) | 1.21 | each version loads only its own spelling; files in the other one are not loaded, and the engine reports them |
 | `overlays` and `supported_formats` in `pack.mcmeta` | 1.20.2 | older versions read only the base pack |
 | `min_format` / `max_format` | 1.21.9 | parsed alongside the older fields |
-| macros (`$` lines, `function … with`) | 1.20.2 | reported as unavailable before |
+| macros (`$` lines, `function … with`) | 1.20.2 | a `$` line is an unknown command before, so its function fails to load |
+
+## What a server of each version loads
+
+Checked in decompiled Mojang jars (1.16.1 to 26.3-rc-3) and applied by
+`FunctionLibrary` in `src/datapack_emulator/emulator/runtime/library.py`:
+
+* **Functions** are compiled one by one. A function with a line its version
+  cannot parse is **not loaded at all** ("Failed to load function …: Whilst
+  parsing command on line N: …"); every other function still loads. From
+  1.20.2, `$` macro lines are parsed when called, so they never fail the load;
+  before, a `$` line fails it like any unknown command. Multi-version
+  packs use this on purpose, e.g. one function with `replaceitem` for 1.16 and
+  one with `item replace` for 1.17+.
+* `function <id>` resolves when it runs, so calling a function that failed to
+  load only fails that call, silently.
+* A **function tag** with any missing required entry is dropped whole ("Couldn't
+  load tag … as it is missing following references: …"). `{"id": …,
+  "required": false}` entries are skipped from 1.16.2; 1.16.1 cannot read them,
+  so the tag file fails.
+* On the first tick after start or reload, 1.16.1–1.19.2 run `#minecraft:tick`
+  **before** `#minecraft:load`; 1.19.3 and later run load first.
+
+These server-log lines are recorded as `game` warnings: vanilla's console
+reports some of them as ERROR, but the pack keeps loading and working.
 
 ## Pack formats in `pack.mcmeta`
 
@@ -81,7 +112,24 @@ float, `supported_formats` as an int, a `[min, max]` list or a
 ints, floats or `[major, minor]` lists.
 
 `Datapack.declared_versions()` turns that into the list of releases the pack
-claims; `Datapack.supports(version)` answers for one.
+claims. `Datapack.compatibility(version)` answers the way that version reads
+the file, and the answer is never "refuse": an incompatible pack still loads,
+the game only warns in the pack list.
+
+| versions | reads | notes |
+| --- | --- | --- |
+| 1.13 – 1.20.1 | `pack_format` only | compared as one number |
+| 1.20.2 – 1.21.8 | `pack_format` + `supported_formats` | a range that excludes `pack_format` is warned about and ignored |
+| 1.21.9 + | `min_format` / `max_format` (required) | with a minimum of 81 or below, `pack_format` and `supported_formats` must be present, agree with min/max, and `pack_format` must be ≥ 15; otherwise the server logs "Couldn't load <pack> pack metadata" and compatibility is unknown |
+
+So no single `pack.mcmeta` is clean both on 1.16.1 (which wants
+`pack_format` 5) and on 1.21.9+ (which wants at least 15). `pack_format: 15`
+with `supported_formats`/`min_format`/`max_format` from 15 loads everywhere and
+is only flagged in the 1.16–1.20.1 pack list.
+
+For packs whose declared range spans a change (the 1.21 folder rename, 1.20.2
+overlays), the engine reports the legacy forms a version ignores as `info`
+rather than `warning`, since they are there on purpose.
 
 ## Overlays
 

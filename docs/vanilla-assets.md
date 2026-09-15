@@ -1,7 +1,7 @@
 # Base-game assets from `client.jar`
 
 The Minecraft client jar already contains most of what the base game knows.
-`src/emulator/vanilla.py` reads it instead of hardcoding anything.
+`src/datapack_emulator/emulator/vanilla.py` reads it instead of hardcoding anything.
 
 ## What is read
 
@@ -63,7 +63,7 @@ download runs on a worker thread, so the window stays responsive. From a
 terminal:
 
 ```sh
-python -m src.emulator vanilla --download 1.21.4
+python -m datapack_emulator.emulator vanilla --download 1.21.4
 ```
 
 The version is looked up in Mojang's
@@ -76,7 +76,7 @@ partial file. Nothing is downloaded unless you ask. `.cache/` is git-ignored.
 ## From code
 
 ```python
-from src.emulator.vanilla import default_library
+from datapack_emulator.emulator.vanilla import default_library
 
 library = default_library()
 assets = library.load("26.2", allow_download=False)   # None if not installed

@@ -1,9 +1,11 @@
 """One test per bug found in review; each failed before its fix."""
 
+from pathlib import Path
+
 from conftest import chat, game_errors
 
-from src.emulator import Datapack, Emulator
-from src.emulator.commands.parser import Command
+from datapack_emulator.emulator import Datapack, Emulator
+from datapack_emulator.emulator.commands.parser import Command
 
 
 def run(make_pack, body: str, version: str = "1.21.4", ticks: int = 1, extra=None, **kwargs):
@@ -91,7 +93,7 @@ def test_scoreboard_swap_updates_both_holders(make_pack):
 
 
 def test_id_checks_strip_components_nbt_and_particle_options(make_pack, fake_jar):
-    from src.emulator.vanilla import VanillaAssets
+    from datapack_emulator.emulator.vanilla import VanillaAssets
 
     emulator = run(
         make_pack,
@@ -123,7 +125,7 @@ def test_tellraw_accepts_snbt_components(make_pack):
 
 
 def test_whole_number_max_format_accepts_minor_formats(make_pack):
-    from src.emulator import versions
+    from datapack_emulator.emulator import versions
 
     pack = Datapack.load(make_pack({}, mcmeta={"pack": {"min_format": 88, "max_format": 94}}))
     assert pack.supports(versions.parse("1.21.11"))  # format 94.1
@@ -295,7 +297,7 @@ def test_deep_recursion_is_not_capped_at_64(make_pack):
 
 
 def test_each_version_reads_only_its_folder_spelling(make_pack):
-    from src.emulator import versions
+    from datapack_emulator.emulator import versions
 
     plural_only = Datapack.load(
         make_pack(
@@ -349,7 +351,7 @@ def test_selector_nbt_and_volume_arguments(make_pack):
 
 
 def test_unmodelled_selector_arguments_are_reported_once(make_pack):
-    from src.emulator.runtime.output import LogSource
+    from datapack_emulator.emulator.runtime.output import LogSource
 
     emulator = run(make_pack, "execute if entity @a[gamemode=creative] run say creative\n", ticks=3)
     notes = [
@@ -403,7 +405,7 @@ def test_tellraw_resolves_score_and_selector_components(make_pack):
 
 
 def test_reports_escape_pack_content(make_pack):
-    from src.emulator import TestEngine
+    from datapack_emulator.emulator import TestEngine
 
     pack = Datapack.load(
         make_pack(
@@ -418,7 +420,7 @@ def test_reports_escape_pack_content(make_pack):
 
 
 def test_nbt_filter_sees_tags_and_reports_unmodelled_data(make_pack):
-    from src.emulator.runtime.output import LogSource
+    from datapack_emulator.emulator.runtime.output import LogSource
 
     emulator = run(
         make_pack,
@@ -454,3 +456,168 @@ def test_data_get_saturates_and_set_string_needs_a_value(make_pack):
     )
     assert emulator.world.scoreboard.get("#big", "o") == 2147483647
     assert "text" not in emulator.world.storage["t:s"]
+
+
+# -- vanilla behaviour hat_v2 relies on ----------------------------------------
+
+
+def test_failures_inside_functions_are_silent_but_typed_commands_are_not(make_pack):
+    from conftest import visible_errors
+
+    from datapack_emulator.emulator.commands.parser import Command
+    from datapack_emulator.emulator.runtime.output import LogLevel
+
+    emulator = run(make_pack, "tag @a remove nothing\n", ticks=2)
+    failures = [r for r in emulator.output.records if r.message == "Target does not have this tag"]
+    assert len(failures) == 2 and all(r.level == LogLevel.DEBUG and r.failure for r in failures)
+    assert visible_errors(emulator.output.records) == []
+
+    emulator.run_command(Command.parse("tag @a remove nothing"), emulator.root_context())
+    assert visible_errors(emulator.output.records) == ["Target does not have this tag"]
+
+
+def test_emulator_limitations_are_noted_once_per_run(make_pack):
+    from datapack_emulator.emulator.runtime.output import LogLevel, LogSource
+
+    emulator = run(
+        make_pack,
+        "execute if block 0 0 0 minecraft:stone run say stone\ndata get block 0 0 0 Items\n",
+        ticks=5,
+    )
+    notes = [r for r in emulator.output.records if r.source is LogSource.EMULATOR]
+    assert len([r for r in notes if "'block'" in r.message]) == 1
+    assert len([r for r in notes if "data get block" in r.message]) == 1
+    assert all(r.level <= LogLevel.INFO for r in notes if "block" in r.message)
+
+
+def test_tags_with_missing_required_entries_are_dropped(make_pack):
+    from datapack_emulator.emulator import Datapack, Emulator
+
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/minecraft/tags/function/tick.json": {"values": ["test:a", "test:gone"]},
+                "data/minecraft/tags/function/load.json": {
+                    "values": ["test:a", {"id": "test:gone", "required": False}]
+                },
+                "data/test/function/a.mcfunction": "say a\n",
+            }
+        )
+    )
+    modern = Emulator(pack, version="1.21.4")
+    assert modern.library.resolve_tag("#minecraft:tick") == []
+    assert modern.library.resolve_tag("#minecraft:load") == ["test:a"]
+    assert "#minecraft:tick" in modern.library.tag_failures
+
+    legacy_pack = Datapack.load(
+        make_pack(
+            {
+                "data/minecraft/tags/functions/load.json": {
+                    "values": [{"id": "test:a", "required": False}]
+                },
+                "data/test/functions/a.mcfunction": "say a\n",
+            }
+        )
+    )
+    assert Emulator(legacy_pack, version="1.16.1").library.resolve_tag("#minecraft:load") == []
+    assert Emulator(legacy_pack, version="1.16.2").library.resolve_tag("#minecraft:load") == [
+        "test:a"
+    ]
+
+
+def test_first_tick_runs_load_and_tick_in_the_versions_order(make_pack):
+    from datapack_emulator.emulator import Datapack, Emulator
+
+    def order(version: str) -> list[str]:
+        pack = Datapack.load(
+            make_pack(
+                {
+                    "data/minecraft/tags/functions/tick.json": {"values": ["test:tick"]},
+                    "data/minecraft/tags/functions/load.json": {"values": ["test:load"]},
+                    "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+                    "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+                    "data/test/functions/tick.mcfunction": "say tick\n",
+                    "data/test/functions/load.mcfunction": "say load\n",
+                    "data/test/function/tick.mcfunction": "say tick\n",
+                    "data/test/function/load.mcfunction": "say load\n",
+                }
+            )
+        )
+        emulator = Emulator(pack, version=version)
+        emulator.run(ticks=2)
+        return chat(emulator.output.records)
+
+    assert order("1.19.2") == ["[Server] tick", "[Server] load", "[Server] tick"]
+    assert order("1.19.3") == ["[Server] load", "[Server] tick", "[Server] tick"]
+
+
+# -- third review ---------------------------------------------------------------
+
+
+def test_macro_lines_fail_the_load_before_macros_existed(make_pack):
+    from datapack_emulator.emulator import Datapack, Emulator
+
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/functions/m.mcfunction": "say before\n$say $(x)\n",
+                "data/test/function/m.mcfunction": "say before\n$say $(x)\n",
+            }
+        )
+    )
+    assert "test:m" in Emulator(pack, version="1.20.1").library.function_failures
+    assert "test:m" in Emulator(pack, version="1.20.4").library.functions
+
+
+def test_tick_history_is_bounded_but_statistics_are_complete(make_pack):
+    from datapack_emulator.emulator.analysis.profiler import Profiler
+
+    profiler = Profiler()
+    for index in range(Profiler.TICK_HISTORY + 500):
+        profiler.record_tick(float(index % 7))
+    profiler.record_tick(99.0)
+    assert len(profiler.tick_times) == Profiler.TICK_HISTORY
+    assert profiler.ticks == Profiler.TICK_HISTORY + 501
+    assert profiler.worst_tick_us == 99.0
+    expected = (sum(i % 7 for i in range(Profiler.TICK_HISTORY + 500)) + 99.0) / profiler.ticks
+    assert abs(profiler.average_tick_us - expected) < 1e-9
+
+
+def test_settings_only_trust_a_real_checkout(tmp_path):
+    from datapack_emulator.settings.main import find_checkout, user_dirs
+
+    other = tmp_path / "other_project"
+    (other / "src" / "whatever").mkdir(parents=True)
+    (other / "pyproject.toml").write_text("")
+    module = other / "venv" / "site-packages" / "datapack_emulator" / "settings" / "main.py"
+    assert find_checkout(module) is None
+
+    checkout = tmp_path / "checkout"
+    (checkout / "src" / "datapack_emulator" / "settings").mkdir(parents=True)
+    (checkout / "pyproject.toml").write_text("")
+    assert (
+        find_checkout(checkout / "src" / "datapack_emulator" / "settings" / "main.py") == checkout
+    )
+
+    data, cache = user_dirs("linux", {"XDG_DATA_HOME": "/d", "XDG_CACHE_HOME": "/c"})
+    assert (data, cache) == (Path("/d/datapack-emulator"), Path("/c/datapack-emulator"))
+    data, cache = user_dirs("win32", {"APPDATA": "/r", "LOCALAPPDATA": "/l"})
+    assert data == Path("/r/datapack-emulator") and cache.parent == Path("/l/datapack-emulator")
+
+
+def test_run_load_alone_reports_load_failures(make_pack):
+    from datapack_emulator.emulator import Datapack, Emulator
+    from datapack_emulator.emulator.runtime.output import OutputBus
+
+    pack = Datapack.load(make_pack({"data/test/function/bad.mcfunction": "notacommand\n"}))
+    output = OutputBus()
+    Emulator(pack, version="1.21.4", output=output).run_load()
+    assert any("Failed to load function test:bad" in r.message for r in output.records)
+
+
+def test_hand_edited_tests_do_not_break_the_project():
+    from datapack_emulator.emulator.testing import CommandTest
+
+    assert CommandTest.from_dict({"command": "say hi", "at_tick": "soon"}).at_tick == 0
+    assert CommandTest.from_dict({"command": "say hi", "at_tick": None}).at_tick == 0
+    assert CommandTest.from_dict({"at_tick": "5"}).at_tick == 5

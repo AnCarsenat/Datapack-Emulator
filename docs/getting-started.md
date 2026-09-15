@@ -8,9 +8,9 @@
   library
 
 ```sh
-python -m venv src/.venv
-src/.venv/bin/pip install -r requirements.txt       # the window
-src/.venv/bin/pip install -r requirements-dev.txt   # plus pytest and ruff
+python -m venv .venv
+.venv/bin/pip install -e ".[gui]"                   # the window
+.venv/bin/pip install -r requirements-dev.txt       # plus pytest and ruff
 ```
 
 Optional: a Minecraft **client.jar** for the version you target. If you have
@@ -23,7 +23,7 @@ found automatically; otherwise the app can fetch one from Mojang. See
 Always from the project root:
 
 ```sh
-src/.venv/bin/python ./src/main.py
+.venv/bin/datapack-emulator      # or: python -m datapack_emulator
 ```
 
 On a cold start the first datapack in `samples/` opens by itself, the version
@@ -33,7 +33,7 @@ jar is picked up if one is installed.
 ## First run
 
 1. Press **F5** (*run all*). This emulates `#minecraft:load` once, then
-   `#minecraft:tick` for the number of ticks in the toolbar, and refreshes
+   `#minecraft:tick` for the number of ticks set in the Environment tab, and refreshes
    everything that depends on the run.
 2. **Profiler** tab — estimated time per function, worst tick against the 50 ms
    budget. Right-click a row to open that function.
@@ -44,7 +44,7 @@ jar is picked up if one is installed.
 
 ## Try another version
 
-Pick a version in the toolbar combo and press F5 again. The command set, the
+Pick a version in the **Environment** tab and press F5 again. The command set, the
 active overlays and (if a jar is installed) the message wording all follow
 the selection.
 
@@ -60,8 +60,8 @@ Then *file › save project* (Ctrl+S) to find it again next time — see
 ## Without the window
 
 ```sh
-src/.venv/bin/python -m src.emulator run samples/hat --version 1.21.4
-src/.venv/bin/python -m src.emulator matrix samples/hat --declared --boundaries
+.venv/bin/datapack-emulator-cli run samples/hat --version 1.21.4
+.venv/bin/datapack-emulator-cli matrix samples/hat_v2 --declared --boundaries
 ```
 
 See [cli.md](cli.md).

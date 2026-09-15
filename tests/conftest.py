@@ -15,8 +15,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# pyproject.toml adds src/ to the path for pytest; this keeps a bare
+# `python -m pytest` from another directory working too
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
 
 PackFactory = Callable[..., Path]
 
@@ -94,13 +96,25 @@ def fake_jar(tmp_path: Path) -> Path:
 
 
 def game_errors(records) -> list[str]:
-    from src.emulator.runtime.output import LogLevel, LogSource
+    """Every command failure the game reported, silent (in a function) or not."""
+    from datapack_emulator.emulator.runtime.output import LogSource
 
-    return [r.message for r in records if r.source is LogSource.GAME and r.level >= LogLevel.ERROR]
+    return [r.message for r in records if r.source is LogSource.GAME and r.failure]
+
+
+def visible_errors(records) -> list[str]:
+    """Only the failures a player would see (typed commands)."""
+    from datapack_emulator.emulator.runtime.output import LogLevel, LogSource
+
+    return [
+        r.message
+        for r in records
+        if r.source is LogSource.GAME and r.failure and r.level >= LogLevel.ERROR
+    ]
 
 
 def chat(records) -> list[str]:
-    from src.emulator.runtime.output import LogLevel, LogSource
+    from datapack_emulator.emulator.runtime.output import LogLevel, LogSource
 
     return [
         r.message

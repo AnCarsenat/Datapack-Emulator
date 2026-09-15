@@ -1,5 +1,5 @@
-from src.emulator.commands.parser import Command, Selector, parse_duration
-from src.emulator.common import in_range, parse_snbt, tokenize
+from datapack_emulator.emulator.commands.parser import Command, Selector, parse_duration
+from datapack_emulator.emulator.common import in_range, parse_snbt, tokenize
 
 
 def test_tokenize_keeps_brackets_and_quotes_together():
@@ -86,7 +86,7 @@ def test_helpers():
 
 
 def test_text_components_in_json_and_snbt():
-    from src.emulator.common import parse_text_component
+    from datapack_emulator.emulator.common import parse_text_component
 
     assert parse_text_component('{"text":"json"}') == "json"
     assert parse_text_component('{text:"hi",color:"red"}') == "hi"

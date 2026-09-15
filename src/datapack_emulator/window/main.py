@@ -1,0 +1,262 @@
+"""Main window: the layout comes from ``window.ui``, the behaviour from controllers.
+
+Every widget is declared in ``window.ui`` and looked up here by object name —
+add or move widgets in Qt Designer, not in code. This class owns the shared
+state and wires menu actions to the controllers in ``window/controllers/``.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+import shiboken6
+from PySide6.QtGui import QAction
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDockWidget,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPlainTextEdit,
+    QPushButton,
+    QSpinBox,
+    QTableView,
+    QTableWidget,
+    QTabWidget,
+    QTreeView,
+    QTreeWidget,
+    QWidget,
+)
+
+from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.analysis.graph import CallGraph
+from datapack_emulator.emulator.datapack import Datapack
+from datapack_emulator.emulator.runtime.emulator import Emulator
+from datapack_emulator.emulator.runtime.output import OutputBus
+from datapack_emulator.emulator.vanilla import VanillaAssets, default_library
+from datapack_emulator.project import Project
+from datapack_emulator.settings import EMULATION, WINDOW
+from datapack_emulator.window.controllers import (
+    DatapackController,
+    EnvironmentController,
+    JarController,
+    LogController,
+    NavigationController,
+    ProjectController,
+    RunController,
+)
+from datapack_emulator.window.controllers.base import (
+    TAB_ENVIRONMENT,
+    TAB_GRAPH,
+    TAB_PROFILER,
+    TAB_SOURCE,
+)
+from datapack_emulator.window.engine_window import EngineWindow
+from datapack_emulator.window.panels import FunctionGraphWidget, load_ui_into
+
+log = logging.getLogger(__name__)
+
+UI_FILE = Path(__file__).with_name("window.ui")
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__(parent=None)
+        # shared state, read and written by the controllers
+        self.datapack: Datapack | None = None
+        self.emulator: Emulator | None = None
+        self.call_graph: CallGraph | None = None
+        self.output = OutputBus()
+        self.library = default_library()
+        self.vanilla: VanillaAssets | None = None
+        self.engine_window: EngineWindow | None = None
+        self.project = Project()
+
+        load_ui_into(self, UI_FILE, custom=[QWebEngineView])
+        self._bind_widgets()
+        self._fill_versions()
+
+        self.log_view = LogController(self)
+        self.projects = ProjectController(self)
+        self.jars = JarController(self)
+        self.datapacks = DatapackController(self)
+        self.runs = RunController(self)
+        self.navigation = NavigationController(self)
+        self.environment = EnvironmentController(self)
+        for controller in (
+            self.log_view,
+            self.datapacks,
+            self.runs,
+            self.navigation,
+            self.environment,
+        ):
+            controller.connect()
+        self._wire_actions()
+
+        self.resize(WINDOW.WINDOW_WIDTH, WINDOW.WINDOW_HEIGHT)
+        self.runs._set_running(False)
+        self.show_all_docks()
+        self.datapacks.show(None)
+        self.datapacks.open_default()
+
+    # -- setup ------------------------------------------------------------
+
+    def _bind_widgets(self) -> None:
+        find = self.findChild
+        self.tabs: QTabWidget = find(QTabWidget, "tabWidget")
+        self.tree: QTreeView = find(QTreeView, "treeView")
+        self.inspector: QTreeWidget = find(QTreeWidget, "inspectorTree")
+        self.log_table: QTableView = find(QTableView, "logTable")
+        self.source_edit: QPlainTextEdit = find(QPlainTextEdit, "sourceEdit")
+        self.web_view: QWebEngineView = find(QWebEngineView, "webEngineView")
+        self.pack_label: QLabel = find(QLabel, "labelPack")
+        self.vanilla_label: QLabel = find(QLabel, "labelVanilla")
+        self.graph_label: QLabel = find(QLabel, "labelGraph")
+        self.source_label: QLabel = find(QLabel, "labelSource")
+        self.log_counts: QLabel = find(QLabel, "labelLogCounts")
+        self.combo_version: QComboBox = find(QComboBox, "comboVersion")
+        self.combo_level: QComboBox = find(QComboBox, "comboLevel")
+        self.edit_filter: QLineEdit = find(QLineEdit, "editLogFilter")
+        self.spin_ticks: QSpinBox = find(QSpinBox, "spinTicks")
+        self.spin_players: QSpinBox = find(QSpinBox, "spinPlayers")
+        self.spin_seed: QSpinBox = find(QSpinBox, "spinSeed")
+        self.combo_speed: QComboBox = find(QComboBox, "comboSpeed")
+        self.tick_label: QLabel = find(QLabel, "labelTickStatus")
+        self.table_tests: QTableWidget = find(QTableWidget, "tableTests")
+        self.add_test_button: QPushButton = find(QPushButton, "buttonAddTest")
+        self.remove_test_button: QPushButton = find(QPushButton, "buttonRemoveTest")
+        self.run_tests_button: QPushButton = find(QPushButton, "buttonRunTests")
+        self.test_summary: QLabel = find(QLabel, "labelTestSummary")
+        self.step_button: QPushButton = find(QPushButton, "buttonStep")
+        self.stop_button: QPushButton = find(QPushButton, "buttonStop")
+        self.run_button: QPushButton = find(QPushButton, "buttonRun")
+        self.run_all_button: QPushButton = find(QPushButton, "buttonRunAll")
+        self.engine_button: QPushButton = find(QPushButton, "buttonEngine")
+        self.clear_logs_button: QPushButton = find(QPushButton, "buttonClearLogs")
+        self.check_app: QCheckBox = find(QCheckBox, "checkApp")
+        self.check_emulator: QCheckBox = find(QCheckBox, "checkEmulator")
+        self.check_game: QCheckBox = find(QCheckBox, "checkGame")
+        self.dock_explorer: QDockWidget = find(QDockWidget, "dockWidgetExplorer")
+        self.dock_inspector: QDockWidget = find(QDockWidget, "dockWidgetInspector")
+        self.dock_logs: QDockWidget = find(QDockWidget, "dockWidgetLogs")
+
+        # the only widget the .ui cannot describe: the pyqtgraph canvas
+        container: QWidget = find(QWidget, "graphContainer")
+        self.graph_widget = FunctionGraphWidget(container)
+        container.layout().addWidget(self.graph_widget)
+
+        self.spin_ticks.setValue(EMULATION.DEFAULT_TICKS)
+        self.spin_players.setValue(EMULATION.DEFAULT_PLAYERS)
+        self.spin_seed.setValue(EMULATION.DEFAULT_SEED)
+
+    def _fill_versions(self) -> None:
+        self.combo_version.blockSignals(True)
+        self.combo_version.clear()
+        for version in reversed(versions.VERSIONS):
+            label = f"{version.id}  ({version.format_string})"
+            if not version.stable:
+                label += "  pre-release"
+            self.combo_version.addItem(label, version.id)
+        self.combo_version.setCurrentIndex(max(self.combo_version.findData(versions.LATEST.id), 0))
+        self.combo_version.blockSignals(False)
+
+    def tab_page(self, name: str) -> QWidget:
+        """A tab page of window.ui by object name (see controllers.base)."""
+        return self.findChild(QWidget, name)
+
+    @property
+    def version(self) -> versions.Version:
+        return versions.parse(self.combo_version.currentData() or versions.LATEST)
+
+    def _action(self, name: str) -> QAction | None:
+        return self.findChild(QAction, name)
+
+    def _wire_actions(self) -> None:
+        navigation = self.navigation
+        connections = {
+            "actionimport_datapack": self.datapacks.import_,
+            "actionreload_datapack": self.datapacks.reload,
+            "actionnew_project": self.projects.new,
+            "actionopen_project": self.projects.open,
+            "actionsave_project": self.projects.save,
+            "actionsave_project_as": self.projects.save_as,
+            "actionload_vanilla": self.jars.load_by_hand,
+            "actiondownload_vanilla": self.jars.download,
+            "actionquit": self.close,
+            "actionrun_all": self.runs.run_all,
+            "actionrun_emulator": self.runs.run_emulator,
+            "actionstep_tick": self.runs.step,
+            "actionstop": lambda: self.runs.stop(),
+            "actionrun_tests": self.environment.run,
+            "actionenvironment": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_ENVIRONMENT)),
+            "actionrun_profiler": self.runs.run_profiler,
+            "actionrun_graphview": self.runs.run_graphview,
+            "actionopen_engine": self.runs.open_engine,
+            "actionexport_dot": self.runs.export_dot,
+            "actionprofile": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_PROFILER)),
+            "actiongraphview": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_GRAPH)),
+            "actionsource": lambda: self.tabs.setCurrentWidget(self.tab_page(TAB_SOURCE)),
+            "actionopen_file_in_editor": lambda: navigation.open_externally(
+                navigation.selected_path()
+            ),
+            "actionopen_folder_in_explorer": lambda: navigation.open_in_file_manager(
+                navigation.selected_path()
+            ),
+            "actionopen_in_source": lambda: navigation.open_in_source(navigation.selected_path()),
+            "actioncopy_path": lambda: navigation.copy_path(navigation.selected_path()),
+        }
+        for name, slot in connections.items():
+            action = self._action(name)
+            if action is not None:
+                action.triggered.connect(slot)
+
+        for name, dock in (
+            ("actionexplorer", self.dock_explorer),
+            ("actioninspector", self.dock_inspector),
+            ("actionlog", self.dock_logs),
+        ):
+            action = self._action(name)
+            if action is None or dock is None:
+                continue
+            # `triggered` fires only when the user clicks the menu entry, never
+            # when the checkmark is updated from code, so hiding the window
+            # (minimise, workspace switch, the window manager's first map)
+            # can no longer switch a dock off for good.
+            action.triggered.connect(
+                lambda checked, dock=dock: self._set_dock_visible(dock, checked)
+            )
+            # `isHidden()` is the dock's own flag; `visibilityChanged(False)` also
+            # fires when only the main window is hidden.
+            dock.visibilityChanged.connect(
+                lambda _visible, dock=dock, action=action: self._sync_dock_action(dock, action)
+            )
+
+    # -- docks ------------------------------------------------------------
+
+    @staticmethod
+    def _set_dock_visible(dock: QDockWidget, visible: bool) -> None:
+        if shiboken6.isValid(dock):
+            dock.setVisible(visible)
+
+    @staticmethod
+    def _sync_dock_action(dock: QDockWidget, action: QAction) -> None:
+        # also runs while Qt tears the window down, after the C++ objects are gone
+        if shiboken6.isValid(dock) and shiboken6.isValid(action):
+            action.setChecked(not dock.isHidden())
+
+    @property
+    def docks(self) -> tuple[QDockWidget, ...]:
+        return (self.dock_explorer, self.dock_inspector, self.dock_logs)
+
+    def show_all_docks(self) -> None:
+        """Every panel open and docked — the default layout."""
+        for dock in self.docks:
+            dock.setFloating(False)
+            dock.show()
+        for name in ("actionexplorer", "actioninspector", "actionlog"):
+            action = self._action(name)
+            if action is not None:
+                action.setChecked(True)

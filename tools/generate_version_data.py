@@ -1,4 +1,4 @@
-"""Regenerate ``src/emulator/version_data.py`` from misode/mcmeta.
+"""Regenerate ``src/datapack_emulator/emulator/version_data.py`` from misode/mcmeta.
 
 Downloads the release table and one Brigadier command tree per release into a
 work directory, diffs them, and writes the table the emulator reads.
@@ -13,10 +13,11 @@ import argparse
 import datetime
 import json
 import pathlib
+import re
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = ROOT / "src" / "emulator" / "version_data.py"
+OUT = ROOT / "src" / "datapack_emulator" / "emulator" / "version_data.py"
 VERSIONS_URL = "https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json"
 COMMANDS_URL = (
     "https://raw.githubusercontent.com/misode/mcmeta/{version}-summary/commands/data.json"
@@ -41,6 +42,26 @@ releases = [
     v for v in versions if v.get("type") == "release" and (v.get("data_pack_version") or 0) >= 4
 ]
 releases = list(reversed(releases))
+
+# The newest pre-release or release candidate of a version that has not shipped
+# yet (e.g. 26.3-rc-3 before 26.3), so packs targeting it can be tested now.
+# Regenerating after the release replaces it with the real thing.
+PRERELEASE_RE = re.compile(r"^(?P<base>\d+(?:\.\d+)+)-(?:pre|rc)-\d+$")
+released_ids = {release["id"] for release in releases}
+upcoming = next(
+    (
+        v
+        for v in versions  # newest first
+        if v.get("type") == "snapshot"
+        and (match := PRERELEASE_RE.match(v["id"]))
+        and match.group("base") not in released_ids
+    ),
+    None,
+)
+if upcoming is not None and versions.index(upcoming) > versions.index(
+    next(v for v in versions if v.get("type") == "release")
+):
+    upcoming = None  # older than the newest release: nothing upcoming
 
 
 def features(tree):
@@ -75,7 +96,8 @@ def features(tree):
 
 since, until, previous, last = {}, {}, set(), None
 rows = []
-for release in releases:
+prerelease_rows = []
+for release in releases + ([upcoming] if upcoming else []):
     identifier = release["id"]
     tree = json.loads(
         fetch(
@@ -90,7 +112,7 @@ for release in releases:
         until[name] = identifier
     previous = current
     last = identifier
-    rows.append(
+    (prerelease_rows if release is upcoming else rows).append(
         (
             identifier,
             release["data_pack_version"],
@@ -105,7 +127,7 @@ lines = [
     "GENERATED FILE — do not edit by hand.  Rebuilt from misode/mcmeta:",
     "  versions:  https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json",
     "  commands:  https://raw.githubusercontent.com/misode/mcmeta/<version>-summary/commands/data.json",
-    f"Snapshot taken {datetime.date.today().isoformat()}; newest release covered: {last}.",
+    f"Snapshot taken {datetime.date.today().isoformat()}; newest version covered: {last}.",
     "",
     "``RELEASES`` holds every release from 1.14 on (mcmeta carries no command tree",
     "for 1.13, which shares pack_format 4 with 1.14).  ``FEATURE_SINCE`` maps a",
@@ -122,6 +144,14 @@ lines = [
 ]
 for row in rows:
     lines.append(f'    ("{row[0]}", {row[1]}, {row[2]}, {row[3]}),')
+lines += [
+    ")",
+    "",
+    "#: the newest pre-release / release candidate of an unreleased version, if any",
+    "PRERELEASES: tuple[tuple[str, int, int, int], ...] = (",
+]
+for row in prerelease_rows:
+    lines.append(f'    ("{row[0]}", {row[1]}, {row[2]}, {row[3]}),')
 lines += [")", "", "FEATURE_SINCE: dict[str, str] = {"]
 for name in sorted(since):
     lines.append(f'    "{name}": "{since[name]}",')
@@ -130,4 +160,14 @@ for name in sorted(until):
     lines.append(f'    "{name}": "{until[name]}",')
 lines += ["}", ""]
 OUT.write_text("\n".join(lines), encoding="utf-8")
-print(OUT, len(rows), "releases,", len(since), "features,", len(until), "removals")
+print(
+    OUT,
+    len(rows),
+    "releases,",
+    len(prerelease_rows),
+    "pre-release(s),",
+    len(since),
+    "features,",
+    len(until),
+    "removals",
+)

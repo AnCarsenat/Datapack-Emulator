@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from src import project as project_module
-from src.project import Project, default_sample, list_projects
-from src.settings import PATHS
+from datapack_emulator import project as project_module
+from datapack_emulator.project import Project, default_sample, list_projects
+from datapack_emulator.settings import PATHS
 
 
 @pytest.fixture

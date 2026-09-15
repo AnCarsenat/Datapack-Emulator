@@ -7,9 +7,9 @@ import threading
 import pytest
 from conftest import chat, game_errors
 
-from src.emulator import Datapack, Emulator
-from src.emulator import vanilla as vanilla_module
-from src.emulator.vanilla import DownloadCancelled, VanillaAssets, VanillaLibrary
+from datapack_emulator.emulator import Datapack, Emulator
+from datapack_emulator.emulator import vanilla as vanilla_module
+from datapack_emulator.emulator.vanilla import DownloadCancelled, VanillaAssets, VanillaLibrary
 
 
 def test_reads_registries_tags_and_lang(fake_jar):

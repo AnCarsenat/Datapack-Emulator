@@ -4,8 +4,8 @@
 `VersionRun` per version.
 
 ```python
-from src.emulator import Datapack, TestEngine
-from src.emulator.vanilla import default_library
+from datapack_emulator.emulator import Datapack, TestEngine
+from datapack_emulator.emulator.vanilla import default_library
 
 pack = Datapack.load("samples/hat")
 engine = TestEngine(pack, ticks=20, players=1, seed=0, library=default_library())
@@ -20,13 +20,18 @@ for run in engine.run(chosen):
 1. Build the `PackView` for the version (base + matching overlays).
 2. Load that version's client jar if a library is given and one is available.
 3. **Static checks**, no ticks needed:
-   * does `pack.mcmeta` declare support for this format → `unsupported`
+   * how the version reads `pack.mcmeta` (`Datapack.compatibility`): what the
+     server logs about invalid metadata, and whether the pack list would call
+     it incompatible → `unsupported`
    * registry folders spelled the way this version does not read
      (`functions/` on 1.21+, `function/` before)
    * overlays declared for a version that predates them
-   * per function, every feature it uses that the version lacks
-     (unknown commands, `execute on` before 1.19.4, macros before 1.20.2, …)
+   (the last two are `info` for packs whose declared range spans the change)
 4. Run a fresh `Emulator` for the requested ticks, with its own world and bus.
+   Its `FunctionLibrary` drops every function with a line the version cannot
+   parse (unknown commands, `execute on` before 1.19.4, macros before 1.20.2,
+   …) and every tag missing a required entry, and logs each as a `game`
+   warning; `unknown_commands` / `failed_functions` summarise them.
 5. Build the call graph: missing functions, unreachable functions, recursion.
 
 ## `VersionRun`
@@ -36,10 +41,11 @@ for run in engine.run(chosen):
 | `version`, `supported`, `overlays`, `vanilla` | context |
 | `ticks`, `commands`, `total_us`, `worst_tick_us` | cost |
 | `records` | every log record of that run |
-| `unknown_commands`, `missing_features` | from the static checks |
+| `unknown_commands`, `missing_features` | what the functions that failed to load needed |
+| `failed_functions`, `failed_tags` | what the version's server refused to load |
 | `missing_functions`, `unreachable`, `cycles` | from the call graph |
 | `profiler`, `graph` | the full objects |
-| `status` | `unsupported` › `errors` › `warnings` › `ok` |
+| `status` | `errors` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
 | `warnings`, `errors`, `chat`, `count(source, level)` | summaries |
 
 ## Choosing versions
@@ -56,7 +62,7 @@ matching `pack_format` when nothing is declared.
 ## Reports
 
 `TestEngine.write_html(results, path, pack_name)` writes the matrix table.
-The engine window's *export html* and `python -m src.emulator matrix` both use
+The engine window's *export html* and `python -m datapack_emulator.emulator matrix` both use
 it.
 
 ## Performance note
