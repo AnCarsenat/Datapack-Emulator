@@ -8,3 +8,7 @@ generated/*
 !generated/.gitkeep
 .mcmeta-cache/
 .cache/
+
+# user projects (keep the folder, not its contents)
+projects/*
+!projects/.gitkeep

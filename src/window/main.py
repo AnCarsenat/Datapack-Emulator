@@ -10,11 +10,13 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QModelIndex, QUrl
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QModelIndex, QPoint, Qt, QUrl
+from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox,
+    QInputDialog,
+    QMenu,
     QMessageBox,
     QComboBox,
     QDockWidget,
@@ -40,6 +42,7 @@ from src.emulator.resources import Resource
 from src.emulator.runtime.emulator import Emulator
 from src.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
 from src.emulator.vanilla import VanillaAssets, default_library
+from src.project import Project, default_sample, projects_dir
 from src.settings import EMULATION, PATHS, WINDOW
 from src.window.engine_window import EngineWindow
 from src.window.panels import (
@@ -73,6 +76,7 @@ class MainWindow(QMainWindow):
         self.library = default_library()
         self.vanilla: Optional[VanillaAssets] = None
         self.engine_window: Optional[EngineWindow] = None
+        self.project = Project()
         self._highlighter = None
 
         load_ui_into(self, UI_FILE, custom=[QWebEngineView])
@@ -82,10 +86,10 @@ class MainWindow(QMainWindow):
 
         self.output.listeners.append(self._on_record)
         self.resize(WINDOW.WINDOW_WIDTH, WINDOW.WINDOW_HEIGHT)
-        self.dock_explorer.show()
-        self.dock_logs.show()
-        self.statusBar().showMessage("no datapack loaded — file > import datapack")
+        for dock in (self.dock_explorer, self.dock_inspector, self.dock_logs):
+            dock.show()
         self.show_datapack(None)
+        self.open_default_datapack()
 
     # -- setup ------------------------------------------------------------
 
@@ -109,6 +113,7 @@ class MainWindow(QMainWindow):
         self.spin_ticks: QSpinBox = find(QSpinBox, "spinTicks")
         self.spin_players: QSpinBox = find(QSpinBox, "spinPlayers")
         self.run_button: QPushButton = find(QPushButton, "buttonRun")
+        self.run_all_button: QPushButton = find(QPushButton, "buttonRunAll")
         self.engine_button: QPushButton = find(QPushButton, "buttonEngine")
         self.clear_logs_button: QPushButton = find(QPushButton, "buttonClearLogs")
         self.check_app: QCheckBox = find(QCheckBox, "checkApp")
@@ -131,7 +136,12 @@ class MainWindow(QMainWindow):
         self.spin_players.setValue(EMULATION.DEFAULT_PLAYERS)
 
         self.tree.clicked.connect(self._on_tree_clicked)
+        self.tree.customContextMenuRequested.connect(self._explorer_menu)
+        self.graph_widget.node_menu_requested.connect(self._graph_menu)
+        self.web_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.web_view.customContextMenuRequested.connect(self._profiler_menu)
         self.run_button.clicked.connect(self.run_emulator)
+        self.run_all_button.clicked.connect(self.run_all)
         self.engine_button.clicked.connect(self.open_engine)
         self.clear_logs_button.clicked.connect(self.clear_logs)
         self.combo_level.currentTextChanged.connect(self._apply_log_filter)
@@ -155,9 +165,13 @@ class MainWindow(QMainWindow):
     def _wire_actions(self) -> None:
         connections = {
             "actionimport_datapack": self.import_datapack,
-            "actionopen_project": self.import_datapack,
+            "actionnew_project": self.new_project,
+            "actionopen_project": self.open_project,
+            "actionsave_project": self.save_project,
+            "actionsave_project_as": self.save_project_as,
             "actionreload_datapack": self.reload_datapack,
             "actionquit": self.close,
+            "actionrun_all": self.run_all,
             "actionrun_emulator": self.run_emulator,
             "actionrun_profiler": self.run_profiler,
             "actionrun_graphview": self.run_graphview,
@@ -188,6 +202,86 @@ class MainWindow(QMainWindow):
             action.toggled.connect(dock.setVisible)
             dock.visibilityChanged.connect(action.setChecked)
 
+    # -- projects ---------------------------------------------------------
+
+    def _apply_project(self, project: Project) -> None:
+        """Put a loaded project into the widgets, then open its datapack."""
+        self.project = project
+        if project.version:
+            index = self.combo_version.findData(project.version)
+            if index >= 0:
+                self.combo_version.setCurrentIndex(index)
+        self.spin_ticks.setValue(project.ticks)
+        self.spin_players.setValue(project.players)
+        if project.vanilla_jar and Path(project.vanilla_jar).is_file():
+            try:
+                self.use_vanilla(self.library.load_jar(Path(project.vanilla_jar)))
+            except Exception as exc:
+                self.output.app(f"cannot read {project.vanilla_jar}: {exc}", level=LogLevel.ERROR)
+        if project.datapack and Path(project.datapack).is_dir():
+            self.load_datapack(Path(project.datapack), keep_project=True)
+        self._refresh_title()
+
+    def _capture_project(self) -> Project:
+        """Read the current window state back into the project."""
+        self.project.datapack = self.datapack.path if self.datapack else None
+        self.project.version = self.version.id
+        self.project.ticks = self.spin_ticks.value()
+        self.project.players = self.spin_players.value()
+        self.project.vanilla_jar = str(self.vanilla.jar_path) if self.vanilla else ""
+        if self.engine_window is not None:
+            self.project.engine_versions = [
+                version.id for version in self.engine_window.selected_versions()
+            ]
+        return self.project
+
+    def _refresh_title(self) -> None:
+        where = f" — {self.project.path}" if self.project.path else ""
+        self.setWindowTitle(f"Datapack Emulator — {self.project.title}{where}")
+
+    def new_project(self) -> None:
+        name, accepted = QInputDialog.getText(self, "new project", "project name:")
+        if not accepted or not name.strip():
+            return
+        self.project = Project(name=name.strip())
+        self._capture_project()
+        self.save_project()
+
+    def open_project(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "open project", str(projects_dir()), "Projects (*.json)"
+        )
+        if not chosen:
+            return
+        try:
+            project = Project.load(Path(chosen))
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "open project", f"cannot read {chosen}:\n{exc}")
+            return
+        self.output.app(f"opened project {chosen}")
+        self._apply_project(project)
+
+    def save_project(self) -> None:
+        project = self._capture_project()
+        if project.path is None and project.name == "untitled" and self.datapack is not None:
+            project.name = self.datapack.name
+        target = project.save()
+        self._refresh_title()
+        self.output.app(f"saved project {target}")
+        self.statusBar().showMessage(f"saved {target}")
+
+    def save_project_as(self) -> None:
+        suggestion = str(self._capture_project().default_path())
+        chosen, _ = QFileDialog.getSaveFileName(
+            self, "save project as", suggestion, "Projects (*.json)"
+        )
+        if not chosen:
+            return
+        self.project = self.project.renamed(Path(chosen).stem)
+        self._capture_project().save(Path(chosen))
+        self._refresh_title()
+        self.statusBar().showMessage(f"saved {chosen}")
+
     # -- datapack ---------------------------------------------------------
 
     @property
@@ -202,7 +296,16 @@ class MainWindow(QMainWindow):
         if chosen:
             self.load_datapack(Path(chosen))
 
-    def load_datapack(self, path: Path) -> None:
+    def open_default_datapack(self) -> None:
+        """Cold start: open the first pack in samples/ so there is something to run."""
+        sample = default_sample()
+        if sample is None:
+            self.statusBar().showMessage("no datapack loaded — file > import datapack")
+            return
+        self.load_datapack(sample)
+        self.output.app(f"opened the sample datapack {sample.name} (file > import to change)")
+
+    def load_datapack(self, path: Path, keep_project: bool = False) -> None:
         self.clear_logs()
         datapack = Datapack.load(path)
         self.datapack = datapack
@@ -215,6 +318,11 @@ class MainWindow(QMainWindow):
         self._rebuild_emulator()
         self.call_graph = None
         self.show_datapack(datapack)
+        if not keep_project:
+            if self.project.path is None:
+                self.project.name = datapack.name
+            self.project.datapack = datapack.path
+        self._refresh_title()
         self.statusBar().showMessage(
             f"{datapack.name}: {len(datapack.namespaces)} namespace(s), "
             f"{len(datapack.functions)} function(s), pack_format {datapack.pack_format} "
@@ -350,6 +458,24 @@ class MainWindow(QMainWindow):
         self._refresh_chat()
         self.run_profiler()
 
+    def run_all(self) -> None:
+        """F5: emulate, refresh the profiler, rebuild the graph and the chat."""
+        if self.datapack is None:
+            self.statusBar().showMessage("load a datapack first")
+            return
+        self.run_emulator()
+        self.run_graphview()
+        self._refresh_chat()
+        self.tabs.setCurrentIndex(TAB_PROFILER)
+        assert self.emulator is not None
+        profiler = self.emulator.profiler
+        self.statusBar().showMessage(
+            f"run all on {self.version.id}: {len(profiler.tick_times)} tick(s), "
+            f"{profiler.total_us / 1000:.2f} ms estimated, "
+            f"worst tick {profiler.worst_tick_us / 1000:.2f} ms, "
+            f"{len(self.call_graph.nodes) if self.call_graph else 0} graph node(s)"
+        )
+
     def run_profiler(self) -> None:
         """Regenerate the HTML report and show it in the profiler tab."""
         if self.emulator is None:
@@ -425,19 +551,122 @@ class MainWindow(QMainWindow):
         return Path(value) if value else None
 
     def open_selected_externally(self) -> None:
-        from PySide6.QtGui import QDesktopServices
-
-        path = self._selected_path()
-        if path is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        self.open_externally(self._selected_path())
 
     def open_selected_folder(self) -> None:
-        from PySide6.QtGui import QDesktopServices
+        self.show_containing_folder(self._selected_path())
 
-        path = self._selected_path()
+    # -- opening things ---------------------------------------------------
+
+    def open_externally(self, path: Optional[Path]) -> None:
+        """Hand a file or folder to whatever the desktop uses for it."""
+        if path is None:
+            return
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
+            self.statusBar().showMessage(f"no application is registered for {path}")
+        else:
+            self.output.app(f"opened {path} externally")
+
+    def show_containing_folder(self, path: Optional[Path]) -> None:
+        if path is None:
+            return
+        self.open_externally(path if path.is_dir() else path.parent)
+
+    def copy_path(self, path: Optional[Path]) -> None:
+        if path is None:
+            return
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.clipboard().setText(str(path))
+        self.statusBar().showMessage(f"copied {path}")
+
+    def open_in_source(self, path: Optional[Path]) -> None:
+        if path is not None and path.is_file():
+            self._show_source(path)
+
+    def function_path(self, function_id: str) -> Optional[Path]:
+        """Where a function id lives in the version currently being emulated."""
+        if self.datapack is None:
+            return None
+        view = self.datapack.view_for(self.version)
+        function = view.function(function_id.lstrip("#"))
+        if function is not None:
+            return function.path
+        tag = view.function_tags.get(
+            function_id if function_id.startswith("#") else f"#{function_id}"
+        )
+        return tag.path if tag is not None else None
+
+    def open_function(self, function_id: str) -> None:
+        """Right-click target from the graph and the profiler."""
+        path = self.function_path(function_id)
+        if path is None:
+            self.statusBar().showMessage(f"{function_id} has no file in {self.version.id}")
+            return
+        self._show_source(path)
+
+    def _path_menu(self, path: Optional[Path], title: str = "") -> QMenu:
+        """The menu every file and folder gets."""
+        menu = QMenu(self)
+        if title:
+            menu.addAction(title).setEnabled(False)
+            menu.addSeparator()
+        if path is None:
+            menu.addAction("nothing to open").setEnabled(False)
+            return menu
+        if path.is_file():
+            menu.addAction("open in source view", lambda: self.open_in_source(path))
+        menu.addAction("open in external editor", lambda: self.open_externally(path))
+        menu.addAction("show containing folder", lambda: self.show_containing_folder(path))
+        menu.addAction("copy path", lambda: self.copy_path(path))
+        return menu
+
+    def _explorer_menu(self, point: QPoint) -> None:
+        index = self.tree.indexAt(point)
+        value = index.data(PATH_ROLE) if index.isValid() else None
+        path = Path(value) if value else None
+        menu = self._path_menu(path, path.name if path else "")
+        menu.exec(self.tree.viewport().mapToGlobal(point))
+
+    def _graph_menu(self, node_id: str, global_point: QPoint) -> None:
+        path = self.function_path(node_id)
+        menu = self._path_menu(path, node_id)
         if path is not None:
-            folder = path if path.is_dir() else path.parent
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+            menu.addSeparator()
+        menu.addAction("show in inspector", lambda: self._inspect_function(node_id))
+        menu.exec(global_point)
+
+    def _inspect_function(self, function_id: str) -> None:
+        if self.datapack is None:
+            return
+        view = self.datapack.view_for(self.version)
+        resource = view.function(function_id.lstrip("#")) or view.function_tags.get(
+            function_id if function_id.startswith("#") else f"#{function_id}"
+        )
+        if resource is not None:
+            self._fill_inspector(describe_resource(resource, self.version))
+            self.dock_inspector.show()
+
+    def _profiler_menu(self, point: QPoint) -> None:
+        """Right-click a profiler row: ask the page which function it is."""
+        global_point = self.web_view.mapToGlobal(point)
+        script = (
+            "(function(){var e=document.elementFromPoint(%d,%d);"
+            "while(e&&!e.dataset.function){e=e.parentElement;}"
+            "return e?e.dataset.function:'';})()" % (point.x(), point.y())
+        )
+        self.web_view.page().runJavaScript(
+            script, lambda result: self._show_profiler_menu(result or "", global_point)
+        )
+
+    def _show_profiler_menu(self, function_id: str, global_point: QPoint) -> None:
+        if not function_id:
+            menu = QMenu(self)
+            menu.addAction("right-click a row to open its function").setEnabled(False)
+            menu.addAction("refresh report", self.run_profiler)
+            menu.exec(global_point)
+            return
+        self._graph_menu(function_id, global_point)
 
     def _on_tree_clicked(self, index: QModelIndex) -> None:
         path_value = index.data(PATH_ROLE)

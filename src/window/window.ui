@@ -147,6 +147,16 @@ QMenuBar::item:selected {
        </widget>
       </item>
       <item>
+       <widget class="QPushButton" name="buttonRunAll">
+        <property name="text">
+         <string>run all (F5)</string>
+        </property>
+        <property name="toolTip">
+         <string>emulate, refresh the profiler, rebuild the call graph and the chat</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QPushButton" name="buttonRun">
         <property name="text">
          <string>run emulator</string>
@@ -365,6 +375,9 @@ QMenuBar::item:selected {
        <property name="alternatingRowColors">
         <bool>true</bool>
        </property>
+       <property name="contextMenuPolicy">
+        <enum>Qt::CustomContextMenu</enum>
+       </property>
       </widget>
      </item>
     </layout>
@@ -441,6 +454,8 @@ QMenuBar::item:selected {
     </property>
     <addaction name="actionnew_project"/>
     <addaction name="actionopen_project"/>
+    <addaction name="actionsave_project"/>
+    <addaction name="actionsave_project_as"/>
     <addaction name="separator"/>
     <addaction name="actionimport_datapack"/>
     <addaction name="actionreload_datapack"/>
@@ -461,6 +476,7 @@ QMenuBar::item:selected {
     <property name="title">
      <string>run</string>
     </property>
+    <addaction name="actionrun_all"/>
     <addaction name="actionrun_emulator"/>
     <addaction name="actionrun_profiler"/>
     <addaction name="actionrun_graphview"/>
@@ -651,10 +667,32 @@ QMenuBar::item:selected {
    <property name="text">
     <string>new project</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
   </action>
   <action name="actionopen_project">
    <property name="text">
-    <string>open project</string>
+    <string>open project…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+O</string>
+   </property>
+  </action>
+  <action name="actionsave_project">
+   <property name="text">
+    <string>save project</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="actionsave_project_as">
+   <property name="text">
+    <string>save project as…</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+S</string>
    </property>
   </action>
   <action name="actionimport_datapack">
@@ -699,12 +737,28 @@ QMenuBar::item:selected {
   </action>
   <action name="actionopen_file_in_editor">
    <property name="text">
-    <string>open file in editor</string>
+    <string>open in external editor</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Return</string>
    </property>
   </action>
   <action name="actionopen_folder_in_explorer">
    <property name="text">
-    <string>open folder in explorer</string>
+    <string>show containing folder</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+Return</string>
+   </property>
+  </action>
+  <action name="actionopen_in_source">
+   <property name="text">
+    <string>open in source view</string>
+   </property>
+  </action>
+  <action name="actioncopy_path">
+   <property name="text">
+    <string>copy path</string>
    </property>
   </action>
   <action name="actionrun_profiler">
@@ -720,6 +774,17 @@ QMenuBar::item:selected {
   <action name="actionrun_emulator">
    <property name="text">
     <string>run emulator</string>
+   </property>
+   <property name="shortcut">
+    <string>F6</string>
+   </property>
+  </action>
+  <action name="actionrun_all">
+   <property name="text">
+    <string>run all</string>
+   </property>
+   <property name="toolTip">
+    <string>emulate, refresh the profiler, rebuild the call graph and the chat</string>
    </property>
    <property name="shortcut">
     <string>F5</string>

@@ -6,6 +6,7 @@ import math
 from typing import Any, Optional
 
 import pyqtgraph as pg
+from PySide6.QtCore import QPoint, Signal
 
 from src.emulator.analysis.graph import CallGraph
 
@@ -31,6 +32,9 @@ EDGE_COLOURS = {
 class FunctionGraphWidget(pg.GraphicsLayoutWidget):
     """Draws a :class:`~src.emulator.analysis.graph.CallGraph` as a layered DAG."""
 
+    #: right-click on a node: ``(node id, global position)``
+    node_menu_requested = Signal(str, QPoint)
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.plot = self.addPlot()
@@ -40,6 +44,7 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
         self.graph_item = pg.GraphItem()
         self.plot.addItem(self.graph_item)
         self._decorations: list[Any] = []
+        self._positions: dict[str, tuple[float, float]] = {}
         self.graph: Optional[CallGraph] = None
 
     def clear_graph(self) -> None:
@@ -55,6 +60,7 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
             return
 
         positions = graph.layout(x_spacing=3.0, y_spacing=1.6)
+        self._positions = positions
         names = list(graph.nodes)
         index_of = {name: index for index, name in enumerate(names)}
         points = [positions[name] for name in names]
@@ -105,6 +111,33 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
 
         self.plot.enableAutoRange()
         self.plot.autoRange(padding=0.2)
+
+    # -- interaction ------------------------------------------------------
+
+    def node_at(self, widget_position) -> Optional[str]:
+        """The node under a widget-space point, if the click is close enough."""
+        if not self._positions:
+            return None
+        scene_point = self.mapToScene(widget_position)
+        data_point = self.plot.vb.mapSceneToView(scene_point)
+        x, y = data_point.x(), data_point.y()
+        best, distance = None, None
+        for name, (node_x, node_y) in self._positions.items():
+            current = (node_x - x) ** 2 + (node_y - y) ** 2
+            if distance is None or current < distance:
+                best, distance = name, current
+        if best is None or distance is None:
+            return None
+        # generous but not global: within one layer's spacing
+        return best if distance <= 0.8**2 + 0.8**2 else None
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        node = self.node_at(event.pos())
+        if node is None:
+            super().contextMenuEvent(event)
+            return
+        event.accept()
+        self.node_menu_requested.emit(node, event.globalPos())
 
 
 def _node_colour(attributes: dict[str, Any]) -> tuple[int, int, int]:

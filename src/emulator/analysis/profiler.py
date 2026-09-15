@@ -59,7 +59,7 @@ class Profiler:
         for function_id, entry in self.sorted_entries():
             share = 100.0 * entry["total_us"] / total
             rows.append(
-                "<tr>"
+                f"<tr data-function=\"{function_id}\" title=\"right-click to open the source\">"
                 f"<td class='id'>{function_id}</td>"
                 f"<td>{int(entry['calls'])}</td>"
                 f"<td>{int(entry['commands'])}</td>"
