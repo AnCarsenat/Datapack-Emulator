@@ -140,6 +140,11 @@ class EngineWindow(QMainWindow):
             item.setCheckState(state)
         self._update_selection_label()
 
+    def select_ids(self, ids: list[str]) -> None:
+        """Tick exactly these versions (a project's saved selection); unknown ids are ignored."""
+        known = {version.id for version in versions.VERSIONS}
+        self._check_only([versions.parse(i) for i in ids if i in known])
+
     def selected_versions(self) -> list:
         return [
             versions.parse(item.data(Qt.UserRole))

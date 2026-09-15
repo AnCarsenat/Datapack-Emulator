@@ -355,3 +355,22 @@ def test_loading_another_client_jar_is_an_unsaved_change(window, fake_jar):
     window.projects.mark_saved()
     window.jars.use(window.library.load_jar(fake_jar))
     assert window.projects.modified
+
+
+def test_a_project_restores_the_engine_selection(window, make_pack):
+    from datapack_emulator.project import Project
+
+    pack = _hat_like_pack(make_pack)
+    window.projects.apply(Project(name="p", datapack=pack, engine_versions=["1.20.4", "1.21.4"]))
+    window.runs.open_engine()
+    engine = window.engine_window
+    assert [v.id for v in engine.selected_versions()] == ["1.20.4", "1.21.4"]
+
+    engine.select_ids(["1.21"])
+    window.runs.open_engine()  # reopening the same pack keeps the ticks
+    assert [v.id for v in engine.selected_versions()] == ["1.21"]
+    assert window.projects.capture().engine_versions == ["1.21"]
+
+    window.projects.apply(Project(name="q", datapack=pack, engine_versions=["26.2", "nope"]))
+    assert [v.id for v in engine.selected_versions()] == ["26.2"]
+    engine.close()
