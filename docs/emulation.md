@@ -49,7 +49,14 @@ version (`fill`, `item`, `loot`, `playsound`, `bossbar`, …).
 *Unknown or incomplete command* and a `<--[HERE]` marker, plus an emulator note
 saying which release added it.
 
-Limits: function depth 64, `maxCommandChainLength` 65 536 commands per tick.
+Limits: `maxCommandChainLength` 65 536 commands per tick, as in vanilla. The
+emulator also stops a recursion 1024 function calls deep so it cannot exhaust
+the Python stack; vanilla has no such limit, and it is reported as an
+emulator note, not a game error.
+
+Tick order follows vanilla: `#minecraft:tick` runs, then the game time
+advances and due schedules run, so `schedule … 1t` from a tick function runs
+later in the same server tick.
 
 ## Output
 

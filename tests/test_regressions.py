@@ -253,3 +253,42 @@ def test_append_to_a_non_list_fails(make_pack):
     storage = emulator.world.storage["t:s"]
     assert storage["v"] == 5 and storage["fresh"] == [1]
     assert game_errors(emulator.output.records) == ["Expected a list: got 5"]
+
+
+def test_scheduled_functions_run_after_tick_functions_in_the_same_tick(make_pack):
+    emulator = run(
+        make_pack,
+        "say tick\n"
+        "execute unless score #s o matches 1 run schedule function test:later 1t\n"
+        "scoreboard players set #s o 1\n",
+        ticks=2,
+        extra={
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add o dummy\n",
+            "data/test/function/later.mcfunction": "say later\n",
+        },
+    )
+    said = [
+        (r.tick, r.message)
+        for r in emulator.output.records
+        if r.message in ("[Server] tick", "[Server] later")
+    ]
+    assert said == [(0, "[Server] tick"), (0, "[Server] later"), (1, "[Server] tick")]
+
+
+def test_deep_recursion_is_not_capped_at_64(make_pack):
+    emulator = run(
+        make_pack,
+        "function test:loop\n",
+        extra={
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add o dummy\n",
+            "data/test/function/loop.mcfunction": (
+                "scoreboard players add #d o 1\n"
+                "execute if score #d o matches ..299 run function test:loop\n"
+            ),
+        },
+    )
+    assert emulator.world.scoreboard.get("#d", "o") == 300

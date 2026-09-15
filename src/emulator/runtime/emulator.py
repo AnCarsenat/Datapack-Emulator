@@ -9,6 +9,9 @@ same pack against a range of versions is just a list of emulators — see
 from __future__ import annotations
 
 import logging
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from src.emulator import costs, versions
@@ -30,8 +33,12 @@ log = logging.getLogger(__name__)
 class Emulator:
     """Runs ``#minecraft:load`` once, then ``#minecraft:tick`` every tick."""
 
-    MAX_DEPTH = 64
+    #: not a vanilla rule — vanilla only limits maxCommandChainLength — but a
+    #: guard so a runaway recursion cannot exhaust the Python stack
+    MAX_DEPTH = 1024
     MAX_COMMANDS_PER_TICK = 65_536
+    #: Python frames one nested function call uses, with headroom (measured: ~6)
+    FRAMES_PER_DEPTH = 10
 
     def __init__(
         self,
@@ -75,34 +82,54 @@ class Emulator:
         self.noted.clear()
         self.output.set_tick(None)
 
+    @contextmanager
+    def _stack_headroom(self) -> Iterator[None]:
+        """Deep datapack recursion maps onto Python recursion; make room for it."""
+        needed = self.MAX_DEPTH * self.FRAMES_PER_DEPTH + 1000
+        previous = sys.getrecursionlimit()
+        if previous < needed:
+            sys.setrecursionlimit(needed)
+        try:
+            yield
+        finally:
+            if previous < needed:
+                sys.setrecursionlimit(previous)
+
     def run_load(self) -> float:
         self.loaded = True
         self.output.set_tick(self.world.tick)
-        return self._run_tag("#minecraft:load")
+        with self._stack_headroom():
+            return self._run_tag("#minecraft:load")
 
     def run_tick(self) -> float:
-        """Run one tick: due schedules first, then ``#minecraft:tick``."""
+        """Run one server tick the way vanilla orders it.
+
+        ``#minecraft:tick`` runs first; then the level ticks, which advances the
+        game time and runs every schedule that is now due. A ``schedule ... 1t``
+        made by a tick function therefore runs later in the same server tick.
+        """
         self.commands_run = 0
         self.output.set_tick(self.world.tick)
         start = self.profiler.total_us
 
-        due = [entry for entry in self.schedules if entry[0] <= self.world.tick]
-        self.schedules = [entry for entry in self.schedules if entry[0] > self.world.tick]
-        for _, target in due:
-            self.run_scheduled(target)
-
-        self._run_tag("#minecraft:tick")
+        with self._stack_headroom():
+            self._run_tag("#minecraft:tick")
+            game_time = self.world.tick + 1
+            self.world.tick = game_time  # schedules made from here on count from here
+            due = [entry for entry in self.schedules if entry[0] <= game_time]
+            self.schedules = [entry for entry in self.schedules if entry[0] > game_time]
+            for _, target in due:
+                self.run_scheduled(target)
 
         elapsed = self.profiler.total_us - start
         self.profiler.tick_times.append(elapsed)
         if elapsed > costs.TICK_BUDGET_US:
             self.output.emulator(
-                f"tick {self.world.tick} took an estimated {elapsed / 1000:.1f} ms, over the "
+                f"tick {self.world.tick - 1} took an estimated {elapsed / 1000:.1f} ms, over the "
                 f"{costs.TICK_BUDGET_US / 1000:.0f} ms budget",
                 level=LogLevel.WARNING,
                 version=self.version.id,
             )
-        self.world.tick += 1
         return elapsed
 
     def run(self, ticks: int = 20) -> Profiler:

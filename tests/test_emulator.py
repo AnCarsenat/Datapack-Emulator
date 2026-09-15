@@ -101,6 +101,8 @@ def test_recursion_is_capped(make_pack):
         extra={"data/test/function/loop.mcfunction": "function test:loop\n"},
     )
     assert emulator.profiler.entries["test:loop"]["calls"] == Emulator.MAX_DEPTH - 1
+    notes = [r.message for r in emulator.output.records if "depth limit" in r.message]
+    assert notes and "1024" in notes[0]
 
 
 def test_tag_remove_without_tag_reports_failure(make_pack):
