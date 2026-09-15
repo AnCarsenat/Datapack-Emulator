@@ -1,0 +1,33 @@
+{
+  "pack": {
+    "description": [
+      {
+        "text": "✦ ",
+        "color": "gold",
+        "bold": true
+      },
+      {
+        "text": "Any Hat!",
+        "color": "yellow",
+        "bold": true
+      },
+      {
+        "text": " ✦",
+        "color": "gold",
+        "bold": true
+      },
+      {
+        "text": "\nBy Ancar",
+        "color": "gray",
+        "italic": true
+      }
+    ],
+    "pack_format": 107.1,
+    "supported_formats": {
+      "min_inclusive": 6,
+      "max_inclusive": 107.1
+    },
+    "min_format": 6,
+    "max_format": 107.1
+  }
+}
