@@ -125,3 +125,16 @@ def test_profiler_charges_time(make_pack):
     entry = emulator.profiler.entries["test:tick"]
     assert entry["calls"] == 3 and entry["total_us"] > 0
     assert len(emulator.profiler.tick_times) == 3
+
+
+def test_trigger_on_missing_or_wrong_objective(make_pack):
+    emulator = run(
+        make_pack,
+        "execute as @a run trigger nope\n"
+        "scoreboard objectives add plain dummy\n"
+        "execute as @a run trigger plain\n",
+    )
+    assert game_errors(emulator.output.records) == [
+        "Unknown scoreboard objective 'nope'",
+        "You can only trigger objectives that are 'trigger' type",
+    ]

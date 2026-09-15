@@ -269,10 +269,13 @@ def cmd_trigger(command: Command, context: ExecutionContext) -> CommandResult:
     objective = command.arguments[0]
     board = context.world.scoreboard
     holder = context.executor.id
-    if board.objectives.get(objective) not in (None, "trigger") and objective in board.objectives:
-        if board.objectives[objective] != "trigger":
-            context.game_error("commands.trigger.failed.invalid")
-            return CommandResult.failure()
+    criterion = board.objectives.get(objective)
+    if criterion is None:
+        context.game_error("arguments.objective.notFound", objective)
+        return CommandResult.failure()
+    if criterion != "trigger":
+        context.game_error("commands.trigger.failed.invalid")
+        return CommandResult.failure()
     if (holder, objective) not in board.enabled_triggers:
         context.game_error("commands.trigger.failed.unprimed")
         return CommandResult.failure()
