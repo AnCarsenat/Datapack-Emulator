@@ -258,6 +258,40 @@ QMenuBar::item:selected {
                    </property>
                   </widget>
                  </item>
+                 <item row="4" column="1">
+                  <layout class="QHBoxLayout" name="worldActionsLayout">
+                   <item>
+                    <widget class="QPushButton" name="buttonEnvSummon">
+                     <property name="text">
+                      <string>summon…</string>
+                     </property>
+                     <property name="toolTip">
+                      <string>summon an entity into the current world (starts the command in the logs' command line)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="buttonEnvScore">
+                     <property name="text">
+                      <string>set score…</string>
+                     </property>
+                     <property name="toolTip">
+                      <string>set a score in the current world (starts the command in the logs' command line)</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="buttonEnvWorld">
+                     <property name="text">
+                      <string>show world</string>
+                     </property>
+                     <property name="toolTip">
+                      <string>show the world dock: scoreboard grid, entities and storage of the current world</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
                 </layout>
                </widget>
               </item>
@@ -1072,13 +1106,47 @@ QMenuBar::item:selected {
          </property>
         </widget>
        </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="worldToolsLayout">
        <item>
         <widget class="QLineEdit" name="editWorldFilter">
          <property name="placeholderText">
-          <string>filter…</string>
+          <string>filter holders / entities…</string>
          </property>
          <property name="clearButtonEnabled">
           <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="editObjectiveFilter">
+         <property name="placeholderText">
+          <string>filter objectives…</string>
+         </property>
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonWorldSummon">
+         <property name="text">
+          <string>summon…</string>
+         </property>
+         <property name="toolTip">
+          <string>start a summon command in the command line</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonWorldObjective">
+         <property name="text">
+          <string>objective…</string>
+         </property>
+         <property name="toolTip">
+          <string>start a scoreboard objectives add command in the command line</string>
          </property>
         </widget>
        </item>
@@ -1105,6 +1173,9 @@ QMenuBar::item:selected {
          </property>
          <item>
           <widget class="QTableWidget" name="tableScores">
+           <property name="contextMenuPolicy">
+            <enum>Qt::CustomContextMenu</enum>
+           </property>
            <property name="editTriggers">
             <set>QAbstractItemView::NoEditTriggers</set>
            </property>
@@ -1112,7 +1183,7 @@ QMenuBar::item:selected {
             <bool>true</bool>
            </property>
            <property name="toolTip">
-            <string>rows are score holders, columns objectives; hover a value for the values it took; highlighted cells changed since the last refresh, blue ones are enabled triggers</string>
+            <string>rows are score holders, columns objectives; double-click to set a score, right-click for more; hover a value for the values it took; yellow cells changed since the last refresh, blue ones are enabled triggers</string>
            </property>
            <property name="styleSheet">
             <string notr="true">QTableWidget { font-family: monospace; font-size: 11px; }</string>
@@ -1147,7 +1218,7 @@ QMenuBar::item:selected {
             <enum>Qt::CustomContextMenu</enum>
            </property>
            <property name="toolTip">
-            <string>every entity with its NBT; right-click to copy its data or run commands as it</string>
+            <string>every entity with its NBT; double-click a value to change it, right-click an entity for more</string>
            </property>
            <property name="styleSheet">
             <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
@@ -1185,6 +1256,12 @@ QMenuBar::item:selected {
          </property>
          <item>
           <widget class="QTreeWidget" name="treeStorage">
+           <property name="contextMenuPolicy">
+            <enum>Qt::CustomContextMenu</enum>
+           </property>
+           <property name="toolTip">
+            <string>command storage; double-click a value to change it</string>
+           </property>
            <property name="alternatingRowColors">
             <bool>true</bool>
            </property>

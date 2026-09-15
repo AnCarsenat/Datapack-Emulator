@@ -640,3 +640,56 @@ def test_source_view_runs_functions_and_shows_callers(window):
         for i in range(window.inspector.topLevelItemCount())
     }
     assert "#minecraft:tick" in rows["called by"]
+
+
+def test_world_dock_edits_scores_and_nbt_through_commands(app, window, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    from datapack_emulator.settings import PATHS
+    from datapack_emulator.window.score_graph import ScoreGraphDialog, step_points
+
+    window.datapacks.load(PATHS.SAMPLES / "hat")
+    window.console.run("scoreboard objectives add kills dummy")
+    window.console.run("scoreboard players set Player1 kills 2")
+    window.console.run("summon minecraft:pig 1 2 3")
+    window.console.run("data modify storage demo:mem n set value 4")
+    view = window.world_view
+
+    window.tabs_world.setCurrentIndex(0)
+    view.refresh()
+    row = view._holders.index("Player1")
+    column = view._objectives.index("kills")
+    monkeypatch.setattr(QInputDialog, "getInt", lambda *a, **k: (9, True))
+    window.table_scores.cellDoubleClicked.emit(row, column)
+    board = window.emulator.world.scoreboard
+    assert board.get("Player1", "kills") == 9
+
+    window.edit_objective_filter.setText("kil")
+    assert view._objectives == ["kills"]
+    window.edit_objective_filter.clear()
+
+    ticks, values = step_points(board, "Player1", "kills", window.emulator.world.tick)
+    assert values == [2, 9] and len(ticks) == len(values) + 1
+    ScoreGraphDialog(board, "Player1", "kills", window.emulator.world.tick, window).close()
+
+    window.tabs_world.setCurrentIndex(1)
+    tree = window.tree_entities
+    pig = next(
+        tree.topLevelItem(i)
+        for i in range(tree.topLevelItemCount())
+        if tree.topLevelItem(i).text(0) == "Pig"
+    )
+    pig.setExpanded(True)
+    pos = next(pig.child(i) for i in range(pig.childCount()) if pig.child(i).text(0) == "Pos")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("[7.0d, 8.0d, 9.0d]", True))
+    view.edit_value(pos)
+    assert next(
+        e for e in window.emulator.world.entities if e.type == "minecraft:pig"
+    ).position == [7.0, 8.0, 9.0]
+
+    window.tabs_world.setCurrentIndex(2)
+    storage = window.tree_storage.topLevelItem(0)
+    storage.setExpanded(True)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("12", True))
+    view.edit_value(storage.child(0))
+    assert window.emulator.world.storage["demo:mem"]["n"] == 12

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ScoreGraphDialog</class>
+ <widget class="QDialog" name="ScoreGraphDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>380</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Score over time</string>
+  </property>
+  <layout class="QVBoxLayout" name="scoreGraphLayout">
+   <item>
+    <widget class="QLabel" name="labelScoreGraph">
+     <property name="text">
+      <string>score</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="scoreGraphContainer" native="true">
+     <layout class="QVBoxLayout" name="scoreGraphContainerLayout">
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelScoreGraphHelp">
+     <property name="text">
+      <string>each step is a change recorded by the emulator (the last 64 per score); the value holds until the next change</string>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">color: #666;</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

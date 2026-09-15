@@ -5,13 +5,16 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QInputDialog, QMenu, QTreeWidgetItem
 
 from datapack_emulator.emulator.common import to_snbt
 from datapack_emulator.emulator.runtime.world import Entity, uuid_to_ints
 from datapack_emulator.window.controllers.base import Controller
 from datapack_emulator.window.panels.world import (
+    PATH_ROLE,
+    STORAGE_ROLE,
     UUID_ROLE,
+    VALUE_ROLE,
     Snapshot,
     expand_entity,
     fill_entities,
@@ -38,6 +41,9 @@ class WorldController(Controller):
     def __init__(self, window):
         super().__init__(window)
         self._scores: Snapshot = {}
+        #: the holders and objectives of the grid's rows and columns
+        self._holders: list[str] = []
+        self._objectives: list[str] = []
         self._last_refresh = 0.0
         #: how long the last fill took; a slow dock refreshes less often
         self._fill_seconds = 0.0
@@ -45,6 +51,20 @@ class WorldController(Controller):
     def connect(self) -> None:
         window = self.window
         window.edit_world_filter.textChanged.connect(lambda _text: self.refresh())
+        window.edit_objective_filter.textChanged.connect(lambda _text: self.refresh())
+        window.table_scores.cellDoubleClicked.connect(self._on_score_double_click)
+        window.table_scores.customContextMenuRequested.connect(self.score_menu)
+        window.tree_entities.itemDoubleClicked.connect(self._on_nbt_double_click)
+        window.tree_storage.itemDoubleClicked.connect(self._on_nbt_double_click)
+        window.tree_storage.customContextMenuRequested.connect(self.storage_menu)
+        console = window.console
+        window.world_summon_button.clicked.connect(lambda: console.prefill("summon minecraft:"))
+        window.world_objective_button.clicked.connect(
+            lambda: console.prefill("scoreboard objectives add ")
+        )
+        window.env_summon_button.clicked.connect(lambda: console.prefill("summon minecraft:"))
+        window.env_score_button.clicked.connect(lambda: console.prefill("scoreboard players set "))
+        window.env_world_button.clicked.connect(self.show_dock)
         window.tabs_world.currentChanged.connect(lambda _index: self.refresh())
         window.tree_entities.customContextMenuRequested.connect(self.entity_menu)
         window.tree_entities.itemExpanded.connect(self._on_entity_expanded)
@@ -87,7 +107,13 @@ class WorldController(Controller):
         tab = window.tabs_world.currentIndex()
         started = time.monotonic()
         if tab == TAB_SCORES:
-            self._scores = fill_scoreboard(window.table_scores, world, self._scores, text)
+            self._scores, self._holders, self._objectives = fill_scoreboard(
+                window.table_scores,
+                world,
+                self._scores,
+                text,
+                window.edit_objective_filter.text(),
+            )
         elif tab == TAB_ENTITIES:
             fill_entities(window.tree_entities, world, text)
         else:
@@ -107,6 +133,144 @@ class WorldController(Controller):
         self._scores = {}
         self.refresh()
 
+    def show_dock(self) -> None:
+        self.window.dock_world.show()
+        self.window.dock_world.raise_()
+        self.refresh()
+
+    # -- scores -------------------------------------------------------------
+
+    def _cell(self, row: int, column: int) -> tuple[str, str] | None:
+        if 0 <= row < len(self._holders) and 0 <= column < len(self._objectives):
+            return self._holders[row], self._objectives[column]
+        return None
+
+    def _run(self, command: str) -> None:
+        self.window.console.run(command)
+
+    def _on_score_double_click(self, row: int, column: int) -> None:
+        cell = self._cell(row, column)
+        if cell is not None:
+            self.set_score(*cell)
+
+    def set_score(self, holder: str, objective: str) -> None:
+        emulator = self.window.emulator
+        current = emulator.world.scoreboard.get(holder, objective) if emulator else None
+        value, accepted = QInputDialog.getInt(
+            self.window,
+            "set score",
+            f"{objective} of {holder}:",
+            current or 0,
+            -(2**31),
+            2**31 - 1,
+        )
+        if accepted:
+            self._run(f"scoreboard players set {holder} {objective} {value}")
+
+    def graph(self, holder: str, objective: str) -> None:
+        from datapack_emulator.window.score_graph import ScoreGraphDialog
+
+        emulator = self.window.emulator
+        if emulator is None:
+            return
+        world = emulator.world
+        ScoreGraphDialog(world.scoreboard, holder, objective, world.tick, self.window).exec()
+
+    def score_menu(self, point: QPoint) -> None:
+        window = self.window
+        table = window.table_scores
+        index = table.indexAt(point)
+        cell = self._cell(index.row(), index.column()) if index.isValid() else None
+        menu = QMenu(window)
+        if cell is not None and window.emulator is not None:
+            holder, objective = cell
+            board = window.emulator.world.scoreboard
+            value = board.get(holder, objective)
+            menu.addAction(f"{objective} of {holder}").setEnabled(False)
+            menu.addSeparator()
+            menu.addAction("set…", lambda: self.set_score(holder, objective))
+            menu.addAction(
+                "add 1", lambda: self._run(f"scoreboard players add {holder} {objective} 1")
+            )
+            menu.addAction(
+                "remove 1", lambda: self._run(f"scoreboard players remove {holder} {objective} 1")
+            )
+            reset = menu.addAction(
+                "reset", lambda: self._run(f"scoreboard players reset {holder} {objective}")
+            )
+            reset.setEnabled(value is not None)
+            if board.objectives.get(objective) == "trigger":
+                menu.addAction(
+                    "enable trigger",
+                    lambda: self._run(f"scoreboard players enable {holder} {objective}"),
+                )
+            menu.addSeparator()
+            menu.addAction("graph over time…", lambda: self.graph(holder, objective))
+            copy = menu.addAction(
+                "copy value", lambda: window.navigation.copy_text(str(value), "the value")
+            )
+            copy.setEnabled(value is not None)
+            menu.addSeparator()
+        menu.addAction(
+            "new objective…", lambda: window.console.prefill("scoreboard objectives add ")
+        )
+        menu.exec(table.viewport().mapToGlobal(point))
+
+    # -- NBT ------------------------------------------------------------------
+
+    def _owner(self, item: QTreeWidgetItem) -> tuple[str, str] | None:
+        """``("entity", selector)`` or ``("storage", id)`` for an NBT item."""
+        top = item
+        while top.parent() is not None:
+            top = top.parent()
+        storage = top.data(0, STORAGE_ROLE)
+        if storage:
+            return ("storage", str(storage))
+        emulator = self.window.emulator
+        entity = emulator.world.entity_by_id(str(top.data(0, UUID_ROLE))) if emulator else None
+        return ("entity", entity_selector(entity)) if entity is not None else None
+
+    def _on_nbt_double_click(self, item: QTreeWidgetItem, _column: int) -> None:
+        path = item.data(0, PATH_ROLE)
+        if path:
+            self.edit_value(item)
+
+    def edit_value(self, item: QTreeWidgetItem) -> None:
+        owner = self._owner(item)
+        path = item.data(0, PATH_ROLE)
+        if owner is None or not path:
+            return
+        kind, target = owner
+        text, accepted = QInputDialog.getText(
+            self.window,
+            "change value",
+            f'new SNBT value for {path} (e.g. 5, 1.5d, "text", [1, 2], {{a: 1}}):',
+            text=to_snbt(item.data(0, VALUE_ROLE)),
+        )
+        if accepted and text.strip():
+            self._run(f"data modify {kind} {target} {path} set value {text.strip()}")
+
+    def storage_menu(self, point: QPoint) -> None:
+        window = self.window
+        tree = window.tree_storage
+        item = tree.itemAt(point)
+        menu = QMenu(window)
+        if item is not None and item.data(0, PATH_ROLE):
+            owner = self._owner(item)
+            path = item.data(0, PATH_ROLE)
+            menu.addAction("change value…", lambda: self.edit_value(item))
+            if owner is not None:
+                menu.addAction(
+                    "remove", lambda: self._run(f"data remove storage {owner[1]} {path}")
+                )
+            menu.addAction(
+                "copy value",
+                lambda: window.navigation.copy_text(to_snbt(item.data(0, VALUE_ROLE)), "the value"),
+            )
+        else:
+            menu.addAction("right-click a value").setEnabled(False)
+        menu.exec(tree.viewport().mapToGlobal(point))
+
     # -- entities ---------------------------------------------------------
 
     def entity_menu(self, point: QPoint) -> None:
@@ -119,12 +283,21 @@ class WorldController(Controller):
         entity = None
         if item is not None and window.emulator is not None:
             entity = window.emulator.world.entity_by_id(str(item.data(0, UUID_ROLE)))
+        clicked = tree.itemAt(point)
+        if clicked is not None and clicked.data(0, PATH_ROLE):
+            menu.addAction("change value…", lambda: self.edit_value(clicked))
+            menu.addSeparator()
         if entity is None:
             menu.addAction("right-click an entity").setEnabled(False)
         else:
             navigation = window.navigation
+            selector = entity_selector(entity)
             menu.addAction(entity.display).setEnabled(False)
             menu.addSeparator()
+            menu.addAction("teleport…", lambda: window.console.prefill(f"tp {selector} "))
+            menu.addAction("add tag…", lambda: window.console.prefill(f"tag {selector} add "))
+            kill = menu.addAction("kill", lambda: self._run(f"kill {selector}"))
+            kill.setToolTip("players respawn")
             menu.addAction(
                 "run a command as this entity",
                 lambda: window.console.prefill(f"execute as {entity_selector(entity)} at @s run "),
