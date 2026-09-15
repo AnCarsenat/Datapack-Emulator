@@ -101,15 +101,18 @@ class Profiler:
         ticks = max(self.ticks, 1)
         return {key: value / ticks for key, value in stats.items()}
 
+    def children_index(self) -> dict[CallPath, list[CallPath]]:
+        """Parent path -> child paths (``()`` holds the roots), costliest first."""
+        index: dict[CallPath, list[CallPath]] = {}
+        for path in self.tree:
+            index.setdefault(path[:-1], []).append(path)
+        for paths in index.values():
+            paths.sort(key=lambda path: -self.tree[path]["total_us"])
+        return index
+
     def children(self, path: CallPath) -> list[tuple[CallPath, dict[str, float]]]:
         """The call paths one level below ``path`` (``()`` for the roots), costliest first."""
-        depth = len(path) + 1
-        found = [
-            (key, stats)
-            for key, stats in self.tree.items()
-            if len(key) == depth and key[: len(path)] == path
-        ]
-        return sorted(found, key=lambda item: -item[1]["total_us"])
+        return [(child, self.tree[child]) for child in self.children_index().get(path, [])]
 
     @property
     def total_us(self) -> float:
@@ -167,7 +170,8 @@ class Profiler:
             )
         worst = self.worst_tick_us
         body = "\n".join(rows) or "<tr><td colspan='8'>no data — run the emulator</td></tr>"
-        tree = "\n".join(self._tree_html((), tick_cost)) or "<p>no calls recorded</p>"
+        index = self.children_index()
+        tree = "\n".join(self._tree_html((), tick_cost, index)) or "<p>no calls recorded</p>"
         over = "warn" if worst > costs.TICK_BUDGET_US else ""
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -217,9 +221,12 @@ class Profiler:
 </html>
 """
 
-    def _tree_html(self, path: CallPath, tick_cost: float) -> list[str]:
+    def _tree_html(
+        self, path: CallPath, tick_cost: float, index: dict[CallPath, list[CallPath]]
+    ) -> list[str]:
         out = []
-        for key, stats in self.children(path):
+        for key in index.get(path, []):
+            stats = self.tree[key]
             one = self.per_tick(stats)
             name = escape(key[-1])
             label = (
@@ -230,7 +237,7 @@ class Profiler:
             attribute = (
                 "" if name.startswith(("#", "<", self.DEEPER)) else f' data-function="{name}"'
             )
-            inner = self._tree_html(key, tick_cost)
+            inner = self._tree_html(key, tick_cost, index)
             if inner:
                 out.append(f"<details open{attribute}><summary>{label}</summary>")
                 out.extend(inner)

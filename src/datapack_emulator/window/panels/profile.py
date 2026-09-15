@@ -49,9 +49,7 @@ def summary(profiler: Profiler) -> str:
 
 
 def fill_profile_tree(tree: QTreeWidget, profiler: Profiler) -> None:
-    children: dict[CallPath, list[CallPath]] = {}
-    for path in profiler.tree:
-        children.setdefault(path[:-1], []).append(path)
+    children = profiler.children_index()
     tick_cost = profiler.total_us / max(profiler.ticks, 1) or 1.0
 
     tree.setUpdatesEnabled(False)
@@ -77,11 +75,11 @@ def fill_profile_tree(tree: QTreeWidget, profiler: Profiler) -> None:
             item.setData(column, SORT_ROLE, number)
             item.setTextAlignment(column, Qt.AlignRight | Qt.AlignVCenter)
         item.setToolTip(0, " › ".join(path))
-        for child in sorted(children.get(path, ()), key=lambda p: -profiler.tree[p]["total_us"]):
+        for child in children.get(path, ()):
             add(item, child)
         item.setExpanded(len(path) < EXPANDED_DEPTH)
 
-    for root in sorted(children.get((), ()), key=lambda p: -profiler.tree[p]["total_us"]):
+    for root in children.get((), ()):
         add(tree, root)
     tree.setSortingEnabled(True)
     tree.sortByColumn(1, Qt.DescendingOrder)
