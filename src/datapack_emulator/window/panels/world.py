@@ -25,14 +25,18 @@ KEY_ROLE = Qt.UserRole
 UUID_ROLE = Qt.UserRole + 1
 #: changes listed in a score's tooltip
 HISTORY_SHOWN = 20
+#: entities listed at most; the filter narrows a bigger world down
+MAX_ENTITIES_SHOWN = 1000
+#: the placeholder child that makes an entity expandable before its NBT is built
+PLACEHOLDER = "…"
 
 Snapshot = dict[tuple[str, str], int]
 
 
-def holder_label(world: World, holder: str) -> str:
+def holder_label(entities: dict[str, Entity], holder: str) -> str:
     """A score holder as a row header: players and fake names as they are, other
-    entities by name and a short UUID."""
-    entity = world.entity_by_id(holder)
+    entities by name and a short UUID. ``entities`` maps holder ids to entities."""
+    entity = entities.get(holder)
     if entity is None or entity.is_player:
         return holder
     return f"{entity.display} ({holder[:8]}…)"
@@ -65,15 +69,16 @@ def fill_scoreboard(
     objectives = [
         name for name in board.objectives if not wanted or wanted in name.lower()
     ] or list(board.objectives)
+    by_id = {entity.id: entity for entity in world.entities}
     players = {entity.id for entity in world.players}
     holders = sorted(board.tracked(), key=lambda holder: (holder not in players, holder.lower()))
+    labels = {holder: holder_label(by_id, holder) for holder in holders}
     if wanted:
+        objective_hit = any(wanted in name.lower() for name in objectives)
         holders = [
             holder
             for holder in holders
-            if wanted in holder.lower()
-            or wanted in holder_label(world, holder).lower()
-            or any(wanted in name.lower() for name in objectives)
+            if objective_hit or wanted in holder.lower() or wanted in labels[holder].lower()
         ]
     slots = {objective: slot for slot, objective in board.display_slots.items()}
 
@@ -88,7 +93,7 @@ def fill_scoreboard(
         item = QTableWidgetItem(header)
         item.setToolTip(f"display name: {board.display_names.get(objective, objective)}")
         table.setHorizontalHeaderItem(column, item)
-    table.setVerticalHeaderLabels([holder_label(world, holder) for holder in holders])
+    table.setVerticalHeaderLabels([labels[holder] for holder in holders])
 
     snapshot: Snapshot = {}
     bold = QFont()
@@ -165,25 +170,48 @@ def entity_summary(entity: Entity) -> str:
 
 
 def fill_entities(tree: QTreeWidget, world: World, text_filter: str = "") -> None:
+    """One item per entity; its NBT is built when the item is expanded
+    (:func:`expand_entity`), so a big world stays quick to refresh."""
     wanted = text_filter.strip().lower()
     keys = expanded_keys(tree)
     tree.setUpdatesEnabled(False)
     tree.clear()
+    shown = 0
+    matching = 0
     for entity in world.entities:
         summary = entity_summary(entity)
         if wanted and not any(
             wanted in text.lower() for text in (entity.display, entity.uuid, summary)
         ):
             continue
+        matching += 1
+        if shown >= MAX_ENTITIES_SHOWN:
+            continue
+        shown += 1
         item = QTreeWidgetItem(tree, [entity.display, summary])
         item.setData(0, KEY_ROLE, entity.uuid)
         item.setData(0, UUID_ROLE, entity.uuid)
         item.setToolTip(0, f"UUID {entity.uuid}\nsummoned at tick {entity.born}")
-        for key, value in entity.data().items():
-            _add_nbt(item, key, value, f"{entity.uuid}/{key}")
+        QTreeWidgetItem(item, [PLACEHOLDER, ""])
+        if entity.uuid in keys:
+            expand_entity(item, entity)
+    if matching > shown:
+        QTreeWidgetItem(tree, [f"… {matching - shown} more", "narrow them down with the filter"])
     _restore_expanded(tree, keys)
     tree.resizeColumnToContents(0)
     tree.setUpdatesEnabled(True)
+
+
+def expand_entity(item: QTreeWidgetItem, entity: Entity | None) -> None:
+    """Replace the placeholder under an entity's item with its NBT."""
+    if item.childCount() != 1 or item.child(0).text(0) != PLACEHOLDER:
+        return
+    item.takeChild(0)
+    if entity is None:
+        QTreeWidgetItem(item, ["(gone)", "the entity no longer exists"])
+        return
+    for key, value in entity.data().items():
+        _add_nbt(item, key, value, f"{entity.uuid}/{key}")
 
 
 def fill_storage(

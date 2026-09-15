@@ -54,6 +54,13 @@ PLAYER_DEFAULTS: dict[str, Any] = {
 SYNCED_KEYS = ("Pos", "Rotation", "UUID", "Tags")
 
 
+def normalise_rotation(rotation: list[float]) -> list[float]:
+    """Yaw wrapped to [-180, 180), pitch clamped to [-90, 90], as entities store them."""
+    yaw = (float(rotation[0]) + 180.0) % 360.0 - 180.0
+    pitch = max(-90.0, min(90.0, float(rotation[1])))
+    return [yaw, pitch]
+
+
 def uuid_to_ints(value: str) -> list[int]:
     """A UUID as NBT stores it: four signed 32-bit ints, most significant first."""
     number = _uuid.UUID(value).int
@@ -139,9 +146,10 @@ class Entity:
             self.position = [float(value) for value in position]
         rotation = data.get("Rotation")
         if _numbers(rotation, 2):
-            self.rotation = [float(value) for value in rotation]
+            self.rotation = normalise_rotation(rotation)
         tags = data.get("Tags")
-        self.tags = {str(tag) for tag in tags} if isinstance(tags, list) else set()
+        if isinstance(tags, list):  # without the key, Entity.load keeps the tags
+            self.tags = {str(tag) for tag in tags}
         defaults = {**ENTITY_DEFAULTS, **(PLAYER_DEFAULTS if self.is_player else {})}
         self.nbt = {
             key: copy.deepcopy(value)
@@ -225,9 +233,18 @@ class Scoreboard:
         for name in removed:
             del values[name]
             self._remember(holder, name, None)
+            # the lock lives on the score: a reset score is no longer enabled
+            self.enabled_triggers.discard((holder, name))
         if not values:
             self.scores.pop(holder, None)
         return bool(removed)
+
+    def forget_holder(self, holder: str) -> None:
+        """A removed entity: its scores, trigger locks and history go with it."""
+        self.scores.pop(holder, None)
+        self.enabled_triggers = {pair for pair in self.enabled_triggers if pair[0] != holder}
+        for key in [key for key in self.history if key[0] == holder]:
+            del self.history[key]
 
     def _remember(self, holder: str, objective: str, value: int | None) -> None:
         changes = self.history.setdefault((holder, objective), deque(maxlen=self.HISTORY))
@@ -271,6 +288,8 @@ class World:
             return
         if entity in self.entities:
             self.entities.remove(entity)
+            # vanilla drops the scores of an entity that is removed for good
+            self.scoreboard.forget_holder(entity.id)
 
     @property
     def players(self) -> list[Entity]:

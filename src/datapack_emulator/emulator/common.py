@@ -298,42 +298,77 @@ def nbt_get(store: dict[str, Any], path: str) -> Any:
                 return None
             node = node[part]
         elif isinstance(node, list):
-            try:
-                node = node[int(part)]
-            except (ValueError, IndexError):
+            index = _list_index(node, part)
+            if index is None:
                 return None
+            node = node[index]
         else:
             return None
     return node
 
 
-def nbt_set(store: dict[str, Any], path: str, value: Any) -> None:
+def _list_index(node: list[Any], part: str) -> int | None:
+    """A list index in a path; negative counts from the end, like vanilla."""
+    try:
+        index = int(part)
+    except ValueError:
+        return None
+    if index < 0:
+        index += len(node)
+    return index if 0 <= index < len(node) else None
+
+
+def nbt_set(store: dict[str, Any], path: str, value: Any) -> bool:
+    """Set ``path`` to ``value``, creating missing compounds on the way.
+
+    List elements are addressed by index (``Pos[1]``, ``list[-1]``); an index
+    that does not exist, or a path through something that is neither a
+    compound nor a list, sets nothing and returns False.
+    """
     parts = split_path(path)
     if not parts:
-        return
+        return False
     node: Any = store
     for part in parts[:-1]:
         if isinstance(node, dict):
-            node = node.setdefault(part, {})
+            child = node.get(part)
+            if not isinstance(child, (dict, list)):
+                child = node[part] = {}
+            node = child
+        elif isinstance(node, list):
+            index = _list_index(node, part)
+            if index is None:
+                return False
+            node = node[index]
         else:
-            return
+            return False
+    last = parts[-1]
     if isinstance(node, dict):
-        node[parts[-1]] = value
+        node[last] = value
+        return True
+    if isinstance(node, list):
+        index = _list_index(node, last)
+        if index is None:
+            return False
+        node[index] = value
+        return True
+    return False
 
 
 def nbt_remove(store: dict[str, Any], path: str) -> bool:
     parts = split_path(path)
     if not parts:
         return False
-    node: Any = store
-    for part in parts[:-1]:
-        if isinstance(node, dict) and part in node:
-            node = node[part]
-        else:
-            return False
-    if isinstance(node, dict) and parts[-1] in node:
-        del node[parts[-1]]
+    parent = nbt_get(store, ".".join(parts[:-1])) if len(parts) > 1 else store
+    last = parts[-1]
+    if isinstance(parent, dict) and last in parent:
+        del parent[last]
         return True
+    if isinstance(parent, list):
+        index = _list_index(parent, last)
+        if index is not None:
+            del parent[index]
+            return True
     return False
 
 

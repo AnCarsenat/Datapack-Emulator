@@ -39,7 +39,12 @@ from datapack_emulator.emulator.common import (
     to_snbt,
 )
 from datapack_emulator.emulator.runtime.context import ExecutionContext
-from datapack_emulator.emulator.runtime.world import Entity, ints_to_uuid, wrap_int
+from datapack_emulator.emulator.runtime.world import (
+    Entity,
+    ints_to_uuid,
+    normalise_rotation,
+    wrap_int,
+)
 
 Handler = Callable[[Command, ExecutionContext], CommandResult]
 
@@ -201,6 +206,28 @@ CRITERIA = frozenset(
         "armor",
     }
 )
+#: display slots, with both spellings of the one under player names
+_COLOURS = [
+    "black",
+    "dark_blue",
+    "dark_green",
+    "dark_aqua",
+    "dark_red",
+    "dark_purple",
+    "gold",
+    "gray",
+    "dark_gray",
+    "blue",
+    "green",
+    "aqua",
+    "red",
+    "light_purple",
+    "yellow",
+    "white",
+]
+DISPLAY_SLOTS = frozenset(
+    {"list", "sidebar", "belowName", "below_name", *(f"sidebar.team.{c}" for c in _COLOURS)}
+)
 #: teamkill.<colour>, killedByTeam.<colour>, minecraft.<stat type>:<id>
 CRITERIA_PREFIXES = ("teamkill.", "killedByTeam.", "minecraft.")
 
@@ -264,6 +291,9 @@ def _objectives_setdisplay(rest: list[str], context: ExecutionContext) -> Comman
         context.game_error("command.unknown.command")
         return CommandResult.failure()
     slot, board = rest[0], context.world.scoreboard
+    if slot not in DISPLAY_SLOTS:
+        context.game_error("argument.scoreboardDisplaySlot.invalid", slot)
+        return CommandResult.failure()
     if len(rest) < 2:
         if board.display_slots.pop(slot, None) is None:
             context.game_error("commands.scoreboard.objectives.display.alreadyEmpty")
@@ -740,7 +770,9 @@ def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
         destination = resolve_position(arguments[1:4], context.position)
         if len(arguments) >= 6 and arguments[4] != "facing":
             # relative rotation is relative to the command source, like positions
-            rotation = resolve_position([*arguments[4:6], "0"], [*context.rotation, 0.0])[:2]
+            rotation = normalise_rotation(
+                resolve_position([*arguments[4:6], "0"], [*context.rotation, 0.0])[:2]
+            )
     elif len(arguments) == 3:  # tp <x y z>
         targets = [context.executor] if context.executor else []
         destination = resolve_position(arguments, context.position)
@@ -948,10 +980,10 @@ def cmd_data(command: Command, context: ExecutionContext) -> CommandResult:
     elif action == "remove" and len(arguments) >= 4:
         changed = nbt_remove(target.data, arguments[3])
     elif action == "modify" and len(arguments) >= 6:
-        result = _data_modify(context, [target.data], arguments[3], arguments[4], arguments[5:])
-        if not result.success:
-            return result
-        changed = True
+        modified = _data_modify(context, [target.data], arguments[3], arguments[4], arguments[5:])
+        if modified is None:
+            return CommandResult.failure()
+        changed = modified > 0
     else:
         context.game_error("command.unknown.command")
         return CommandResult.failure()
@@ -973,8 +1005,11 @@ def _data_modify(
     path: str,
     operation: str,
     source: list[str],
-) -> CommandResult:
-    """``data modify <target> <path> <operation> (value|from|string) ...``"""
+) -> int | None:
+    """``data modify <target> <path> <operation> (value|from|string) ...``
+
+    Returns how many elements changed, or None once an error was reported.
+    """
     index = 0
     if operation == "insert" and source:
         index = int(source[0]) if source[0].lstrip("-").isdigit() else 0
@@ -985,44 +1020,52 @@ def _data_modify(
     elif source and source[0] in ("from", "string"):
         found, value = _data_source(context, source[1:])
         if not found:
-            return CommandResult.failure()
+            return None
         if source[0] == "string":  # 1.19.4+: set string <source> [path] [start] [end]
             if isinstance(value, (dict, list)):
                 context.game_error("commands.data.modify.expected_value", value)
-                return CommandResult.failure()
+                return None
             value = _substring(value, source[4:6] if len(source) > 3 else [])
     else:
-        return CommandResult.failure()
+        return None
 
     changed = 0
     for store in stores:
         current = nbt_get(store, path)
         if operation == "set":
-            nbt_set(store, path, copy.deepcopy(value))
+            if current == value:
+                continue  # vanilla counts only elements that actually change
+            if not nbt_set(store, path, copy.deepcopy(value)):
+                context.game_error("arguments.nbtpath.nothing_found", path)
+                return None
             changed += 1
         elif operation == "merge":
             if not isinstance(value, dict):
                 context.game_error("commands.data.modify.expected_object", value)
-                return CommandResult.failure()
+                return None
             if current is None:
-                nbt_set(store, path, copy.deepcopy(value))
+                if not nbt_set(store, path, copy.deepcopy(value)):
+                    context.game_error("arguments.nbtpath.nothing_found", path)
+                    return None
                 changed += 1
             elif not isinstance(current, dict):
                 context.game_error("commands.data.modify.expected_object", current)
-                return CommandResult.failure()
+                return None
             elif merge_compound(current, value):
                 changed += 1
         elif operation in ("append", "prepend", "insert"):
             if current is None:
                 current = []
-                nbt_set(store, path, current)
+                if not nbt_set(store, path, current):
+                    context.game_error("arguments.nbtpath.nothing_found", path)
+                    return None
             elif not isinstance(current, list):
                 context.game_error("commands.data.modify.expected_list", current)
-                return CommandResult.failure()
+                return None
             position = {"append": len(current), "prepend": 0}.get(operation, index)
             current.insert(position, copy.deepcopy(value))
             changed += 1
-    return CommandResult(success=changed > 0, value=changed)
+    return changed
 
 
 def _float_or_none(token: str) -> float | None:

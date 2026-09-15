@@ -167,11 +167,15 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
     command = Command.parse(test.command, source="<test>")
     if command is None:
         return TestResult(test, False, "nothing to run: the command is empty or a comment")
-    first = len(emulator.output.records)
-    who = f" as {test.run_as}" if test.run_as else ""
-    emulator.output.app(f"test: {test.command}{who} (tick {test.at_tick})")
-    result = run_as(emulator, command, test.run_as)
-    records = emulator.output.records[first:]
+    # listen rather than slice the bus: a full bus drops its oldest records
+    records: list[LogRecord] = []
+    emulator.output.listeners.append(records.append)
+    try:
+        who = f" as {test.run_as}" if test.run_as else ""
+        emulator.output.app(f"test: {test.command}{who} (tick {test.at_tick})")
+        result = run_as(emulator, command, test.run_as)
+    finally:
+        emulator.output.listeners.remove(records.append)
 
     visible = [r for r in records if r.failure and r.level >= LogLevel.ERROR]
     crashed = [r for r in records if r.source is LogSource.EMULATOR and r.level >= LogLevel.ERROR]

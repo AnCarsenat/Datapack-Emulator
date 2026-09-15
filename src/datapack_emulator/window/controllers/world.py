@@ -12,6 +12,7 @@ from datapack_emulator.window.controllers.base import Controller
 from datapack_emulator.window.panels.world import (
     UUID_ROLE,
     Snapshot,
+    expand_entity,
     fill_entities,
     fill_scoreboard,
     fill_storage,
@@ -28,20 +29,27 @@ class WorldController(Controller):
         super().__init__(window)
         self._scores: Snapshot = {}
         self._last_refresh = 0.0
+        #: how long the last fill took; a slow dock refreshes less often
+        self._fill_seconds = 0.0
 
     def connect(self) -> None:
         window = self.window
         window.edit_world_filter.textChanged.connect(lambda _text: self.refresh())
         window.tabs_world.currentChanged.connect(lambda _index: self.refresh())
         window.tree_entities.customContextMenuRequested.connect(self.entity_menu)
-        for tree in (window.tree_entities, window.tree_storage):
-            tree.itemExpanded.connect(lambda _item, tree=tree: tree.resizeColumnToContents(0))
+        window.tree_entities.itemExpanded.connect(self._on_entity_expanded)
+        window.tree_storage.itemExpanded.connect(
+            lambda _item: window.tree_storage.resizeColumnToContents(0)
+        )
         window.dock_world.visibilityChanged.connect(lambda visible: visible and self.refresh())
 
     # -- refreshing ---------------------------------------------------------
 
     def refresh_if_due(self) -> None:
-        if time.monotonic() - self._last_refresh >= self.REFRESH_INTERVAL_S:
+        """During runs: refresh at most every REFRESH_INTERVAL_S, and never spend
+        more than a fifth of the time filling the dock."""
+        interval = max(self.REFRESH_INTERVAL_S, 4 * self._fill_seconds)
+        if time.monotonic() - self._last_refresh >= interval:
             self.refresh()
 
     def refresh(self) -> None:
@@ -67,12 +75,22 @@ class WorldController(Controller):
             return
         text = window.edit_world_filter.text()
         tab = window.tabs_world.currentIndex()
+        started = time.monotonic()
         if tab == TAB_SCORES:
             self._scores = fill_scoreboard(window.table_scores, world, self._scores, text)
         elif tab == TAB_ENTITIES:
             fill_entities(window.tree_entities, world, text)
         else:
             fill_storage(window.tree_storage, world.storage, text)
+        self._fill_seconds = time.monotonic() - started
+        self._last_refresh = time.monotonic()
+
+    def _on_entity_expanded(self, item) -> None:
+        window = self.window
+        if item.parent() is None and window.emulator is not None:
+            uuid = str(item.data(0, UUID_ROLE))
+            expand_entity(item, window.emulator.world.entity_by_id(uuid))
+        window.tree_entities.resizeColumnToContents(0)
 
     def forget(self) -> None:
         """A new world: nothing counts as changed on its first refresh."""

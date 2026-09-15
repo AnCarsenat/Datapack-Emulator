@@ -118,6 +118,8 @@ VANILLA: dict[str, str] = {
     "commands.teleport.success.entity.single": "Teleported %s to %s",
     # data
     "commands.data.get.unknown": "Can't get %s; tag doesn't exist",
+    "arguments.nbtpath.nothing_found": "Found no elements matching %s",
+    "argument.scoreboardDisplaySlot.invalid": "Unknown display slot '%s'",
     "commands.data.entity.query": "%s has the following entity data: %s",
     "commands.data.entity.get": "%s on %s after scale factor of %s is %s",
     "commands.data.entity.modified": "Modified entity data of %s",

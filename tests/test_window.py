@@ -444,6 +444,7 @@ def test_world_dock_shows_scores_entities_and_storage(app, window):
     }
     stand = tops["Armor Stand"]
     assert "tags hat_saver" in stand.text(1)
+    stand.setExpanded(True)  # the NBT is built on expansion
     keys = {stand.child(i).text(0): stand.child(i).text(1) for i in range(stand.childCount())}
     assert keys["Pos"] == "[0.0d, 300.0d, 0.0d]" and keys["id"] == '"minecraft:armor_stand"'
     assert stand.data(0, Qt.UserRole + 1)
