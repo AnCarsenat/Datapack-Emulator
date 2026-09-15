@@ -111,6 +111,9 @@ QMenuBar::item:selected {
       </item>
       <item>
        <widget class="QPushButton" name="buttonRun">
+        <property name="toolTip">
+         <string>run a fresh world for the configured ticks (F6)</string>
+        </property>
         <property name="text">
          <string>run emulator</string>
         </property>
@@ -205,14 +208,27 @@ QMenuBar::item:selected {
                    </property>
                   </widget>
                  </item>
-                 <item row="1" column="0">
+                 <item row="1" column="1">
+                  <widget class="QLabel" name="labelVersionNote">
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="wordWrap">
+                    <bool>true</bool>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color: #666;</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
                   <widget class="QLabel" name="labelPlayers">
                    <property name="text">
                     <string>players online</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="1" column="1">
+                 <item row="2" column="1">
                   <widget class="QSpinBox" name="spinPlayers">
                    <property name="minimum">
                     <number>0</number>
@@ -228,7 +244,7 @@ QMenuBar::item:selected {
                    </property>
                   </widget>
                  </item>
-                 <item row="2" column="1">
+                 <item row="3" column="1">
                   <widget class="QLabel" name="labelPlayersHelp">
                    <property name="text">
                     <string>Players are what @a, @p and @r select, what "execute as @a" runs as, and who receives tellraw. With 0, anything aimed at players does nothing.</string>
@@ -241,14 +257,14 @@ QMenuBar::item:selected {
                    </property>
                   </widget>
                  </item>
-                 <item row="3" column="0">
+                 <item row="4" column="0">
                   <widget class="QLabel" name="labelSeed">
                    <property name="text">
                     <string>random seed</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="3" column="1">
+                 <item row="4" column="1">
                   <widget class="QSpinBox" name="spinSeed">
                    <property name="maximum">
                     <number>1000000</number>
@@ -258,7 +274,7 @@ QMenuBar::item:selected {
                    </property>
                   </widget>
                  </item>
-                 <item row="4" column="1">
+                 <item row="5" column="1">
                   <layout class="QHBoxLayout" name="worldActionsLayout">
                    <item>
                     <widget class="QPushButton" name="buttonEnvSummon">
@@ -336,6 +352,9 @@ QMenuBar::item:selected {
                  </item>
                  <item row="1" column="1">
                   <widget class="QComboBox" name="comboSpeed">
+                   <property name="toolTip">
+                    <string>as fast as possible, or real time at 20 ticks per second; can change during a run</string>
+                   </property>
                    <item>
                     <property name="text">
                      <string>as fast as possible</string>
@@ -419,25 +438,40 @@ QMenuBar::item:selected {
                   <property name="text">
                    <string>tick</string>
                   </property>
+                  <property name="toolTip">
+                   <string>the server tick the command runs in, after that tick's functions (0 = the first tick, where load runs too); untick to skip the test</string>
+                  </property>
                  </column>
                  <column>
                   <property name="text">
                    <string>command</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>a command as typed on the server console; use execute as Player1 run … for a player</string>
                   </property>
                  </column>
                  <column>
                   <property name="text">
                    <string>expect output</string>
                   </property>
+                  <property name="toolTip">
+                   <string>text the game output of the command must contain (empty: no check)</string>
+                  </property>
                  </column>
                  <column>
                   <property name="text">
                    <string>expect value</string>
                   </property>
+                  <property name="toolTip">
+                   <string>range the command's result must be in: 5, 1.., ..3 or 1..4 (empty: no check)</string>
+                  </property>
                  </column>
                  <column>
                   <property name="text">
                    <string>result</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>why the test passed or failed; hover for its records, double-click to show them in the logs</string>
                   </property>
                  </column>
                 </widget>
@@ -446,6 +480,9 @@ QMenuBar::item:selected {
                 <layout class="QHBoxLayout" name="testButtonsLayout">
                  <item>
                   <widget class="QPushButton" name="buttonAddTest">
+                   <property name="toolTip">
+                    <string>add an empty test row (then edit its tick, command and expectations)</string>
+                   </property>
                    <property name="text">
                     <string>add test</string>
                    </property>
@@ -453,6 +490,9 @@ QMenuBar::item:selected {
                  </item>
                  <item>
                   <widget class="QPushButton" name="buttonRemoveTest">
+                   <property name="toolTip">
+                    <string>remove the selected tests</string>
+                   </property>
                    <property name="text">
                     <string>remove</string>
                    </property>
@@ -520,6 +560,9 @@ QMenuBar::item:selected {
                  </item>
                  <item>
                   <widget class="QPushButton" name="buttonRunTests">
+                   <property name="toolTip">
+                    <string>run every enabled test in a fresh world and fill the result column (F8)</string>
+                   </property>
                    <property name="text">
                     <string>run tests (F8)</string>
                    </property>
@@ -963,6 +1006,9 @@ QMenuBar::item:selected {
        </item>
        <item>
         <widget class="QComboBox" name="comboLevel">
+         <property name="toolTip">
+          <string>the lowest level shown: debug includes silent failures inside functions and feedback functions send nowhere</string>
+         </property>
          <property name="currentIndex">
           <number>1</number>
          </property>
@@ -990,6 +1036,9 @@ QMenuBar::item:selected {
        </item>
        <item>
         <widget class="QLineEdit" name="editLogFilter">
+         <property name="toolTip">
+          <string>show only records whose message contains this text</string>
+         </property>
          <property name="placeholderText">
           <string>filter text…</string>
          </property>
@@ -1010,6 +1059,9 @@ QMenuBar::item:selected {
        </item>
        <item>
         <widget class="QPushButton" name="buttonClearLogs">
+         <property name="toolTip">
+          <string>remove every record from the logs</string>
+         </property>
          <property name="text">
           <string>clear</string>
          </property>
@@ -1046,6 +1098,9 @@ QMenuBar::item:selected {
       <layout class="QHBoxLayout" name="consoleLayout">
        <item>
         <widget class="QLineEdit" name="editConsole">
+         <property name="toolTip">
+          <string>a command run like on the server console, in the current world; its output appears above</string>
+         </property>
          <property name="placeholderText">
           <string>run a command in the current world, e.g. execute as Player1 run trigger hat — Enter to run, ↑/↓ for history</string>
          </property>
@@ -1059,6 +1114,9 @@ QMenuBar::item:selected {
        </item>
        <item>
         <widget class="QPushButton" name="buttonConsoleRun">
+         <property name="toolTip">
+          <string>run the command in the current world (Enter)</string>
+         </property>
          <property name="text">
           <string>run</string>
          </property>
@@ -1127,6 +1185,9 @@ QMenuBar::item:selected {
       <layout class="QHBoxLayout" name="worldToolsLayout">
        <item>
         <widget class="QLineEdit" name="editWorldFilter">
+         <property name="toolTip">
+          <string>show only score holders and entities whose name, UUID, type or tags contain this text</string>
+         </property>
          <property name="placeholderText">
           <string>filter holders / entities…</string>
          </property>
@@ -1137,6 +1198,9 @@ QMenuBar::item:selected {
        </item>
        <item>
         <widget class="QLineEdit" name="editObjectiveFilter">
+         <property name="toolTip">
+          <string>show only objectives whose name contains this text</string>
+         </property>
          <property name="placeholderText">
           <string>filter objectives…</string>
          </property>
@@ -1166,6 +1230,19 @@ QMenuBar::item:selected {
         </widget>
        </item>
       </layout>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelWorldLegend">
+       <property name="text">
+        <string>yellow: changed since the last refresh · blue: trigger enabled · hover a score for its history · double-click to edit</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #666; font-size: 11px;</string>
+       </property>
+      </widget>
      </item>
      <item>
       <widget class="QTabWidget" name="tabsWorld">
@@ -1306,6 +1383,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>new project</string>
    </property>
+   <property name="statusTip">
+    <string>start a new project from the current settings and tests, under a name you choose</string>
+   </property>
    <property name="shortcut">
     <string>Ctrl+N</string>
    </property>
@@ -1313,6 +1393,9 @@ QMenuBar::item:selected {
   <action name="actionopen_project">
    <property name="text">
     <string>open project…</string>
+   </property>
+   <property name="statusTip">
+    <string>open a .dpemu project (or an older .json one): settings, tests, notes and its datapack</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+O</string>
@@ -1322,6 +1405,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>save project</string>
    </property>
+   <property name="statusTip">
+    <string>save settings, tests, notes and a copy of the datapack into the project's .dpemu file</string>
+   </property>
    <property name="shortcut">
     <string>Ctrl+S</string>
    </property>
@@ -1329,6 +1415,9 @@ QMenuBar::item:selected {
   <action name="actionsave_project_as">
    <property name="text">
     <string>save project as…</string>
+   </property>
+   <property name="statusTip">
+    <string>save the project under another name or folder</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+S</string>
@@ -1338,6 +1427,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>import datapack</string>
    </property>
+   <property name="statusTip">
+    <string>open a datapack folder (the one holding pack.mcmeta)</string>
+   </property>
    <property name="shortcut">
     <string>Ctrl+O</string>
    </property>
@@ -1345,6 +1437,9 @@ QMenuBar::item:selected {
   <action name="actionreload_datapack">
    <property name="text">
     <string>reload datapack</string>
+   </property>
+   <property name="statusTip">
+    <string>read the datapack from disk again, keeping the version and project (after editing files)</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+R</string>
@@ -1354,6 +1449,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>load client jar…</string>
    </property>
+   <property name="statusTip">
+    <string>pick a Minecraft client jar by hand, to check ids and use the game's own messages</string>
+   </property>
    <property name="toolTip">
     <string>read base-game registries and messages from a Minecraft client.jar</string>
    </property>
@@ -1361,6 +1459,9 @@ QMenuBar::item:selected {
   <action name="actiondownload_vanilla">
    <property name="text">
     <string>download client jar for this version</string>
+   </property>
+   <property name="statusTip">
+    <string>download the client jar of the selected version from Mojang (checked with its SHA-1)</string>
    </property>
    <property name="toolTip">
     <string>fetch the jar from Mojang into .cache/vanilla</string>
@@ -1370,6 +1471,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>quit</string>
    </property>
+   <property name="statusTip">
+    <string>close the window (asks to save unsaved changes)</string>
+   </property>
    <property name="shortcut">
     <string>Ctrl+Q</string>
    </property>
@@ -1377,6 +1481,9 @@ QMenuBar::item:selected {
   <action name="actionopen_file_in_editor">
    <property name="text">
     <string>open in external editor</string>
+   </property>
+   <property name="statusTip">
+    <string>open the explorer's selected file with the desktop's default application</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+Return</string>
@@ -1386,6 +1493,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>open in external file manager</string>
    </property>
+   <property name="statusTip">
+    <string>show the explorer's selected file or folder in the desktop's file manager</string>
+   </property>
    <property name="shortcut">
     <string>Ctrl+Shift+Return</string>
    </property>
@@ -1394,25 +1504,40 @@ QMenuBar::item:selected {
    <property name="text">
     <string>open in source view</string>
    </property>
+   <property name="statusTip">
+    <string>show the explorer's selected file in the source tab</string>
+   </property>
   </action>
   <action name="actioncopy_path">
    <property name="text">
     <string>copy path</string>
+   </property>
+   <property name="statusTip">
+    <string>copy the explorer's selected path to the clipboard</string>
    </property>
   </action>
   <action name="actionrun_profiler">
    <property name="text">
     <string>run profiler</string>
    </property>
+   <property name="statusTip">
+    <string>rebuild the profiler report from the current world, without running more ticks</string>
+   </property>
   </action>
   <action name="actionrun_graphview">
    <property name="text">
     <string>run graphview</string>
    </property>
+   <property name="statusTip">
+    <string>rebuild the call graph of the version being emulated</string>
+   </property>
   </action>
   <action name="actionrun_emulator">
    <property name="text">
     <string>run emulator</string>
+   </property>
+   <property name="statusTip">
+    <string>run a fresh world for the configured ticks (no call graph rebuild)</string>
    </property>
    <property name="shortcut">
     <string>F6</string>
@@ -1422,6 +1547,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>step one tick</string>
    </property>
+   <property name="statusTip">
+    <string>run one more tick in the current world (starts one if there is none)</string>
+   </property>
    <property name="shortcut">
     <string>F7</string>
    </property>
@@ -1430,6 +1558,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>stop</string>
    </property>
+   <property name="statusTip">
+    <string>stop the running emulation and refresh the profiler</string>
+   </property>
    <property name="shortcut">
     <string>Shift+F5</string>
    </property>
@@ -1437,6 +1568,9 @@ QMenuBar::item:selected {
   <action name="actionrun_tests">
    <property name="text">
     <string>run tests</string>
+   </property>
+   <property name="statusTip">
+    <string>run the environment tab's tests in a fresh world</string>
    </property>
    <property name="shortcut">
     <string>F8</string>
@@ -1457,6 +1591,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>run all</string>
    </property>
+   <property name="statusTip">
+    <string>run a fresh world for the configured ticks, then refresh the profiler and the call graph</string>
+   </property>
    <property name="toolTip">
     <string>emulate, refresh the profiler and rebuild the call graph</string>
    </property>
@@ -1468,6 +1605,9 @@ QMenuBar::item:selected {
    <property name="text">
     <string>version engine…</string>
    </property>
+   <property name="statusTip">
+    <string>run the pack against many versions at once and compare the results</string>
+   </property>
    <property name="shortcut">
     <string>Ctrl+E</string>
    </property>
@@ -1475,6 +1615,9 @@ QMenuBar::item:selected {
   <action name="actionexport_dot">
    <property name="text">
     <string>export call graph (.dot)</string>
+   </property>
+   <property name="statusTip">
+    <string>write the call graph as a Graphviz .dot file in generated/</string>
    </property>
   </action>
   <action name="actionexplorer">

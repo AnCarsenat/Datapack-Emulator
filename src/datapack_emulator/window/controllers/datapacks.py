@@ -21,6 +21,7 @@ from datapack_emulator.window.panels import (
     build_explorer_model,
     describe_datapack,
     describe_resource,
+    row_help,
 )
 
 #: what the pack label adds for each compatibility status
@@ -29,6 +30,31 @@ COMPATIBILITY_NOTES = {
     "too_new": "  (pack is marked incompatible: made for a newer version)",
     "unknown": "  (pack.mcmeta is invalid for this version)",
 }
+
+
+def version_note(datapack: Datapack, version: versions.Version) -> str:
+    """What the selected version makes of the pack, in a sentence or two."""
+    compatibility = datapack.compatibility(version)
+    notes = []
+    if not version.stable:
+        notes.append("pre-release")
+    if compatibility.status == "compatible":
+        notes.append("lists the pack as compatible")
+    elif compatibility.status in ("too_old", "too_new"):
+        age = "an older" if compatibility.status == "too_old" else "a newer"
+        notes.append(f"lists the pack as made for {age} version (it still loads)")
+    else:
+        detail = compatibility.server_log[0] if compatibility.server_log else compatibility.reason
+        notes.append(f"cannot read pack.mcmeta: {detail} (the pack still loads)")
+    notes.append(
+        "reads function/ folders"
+        if versions.uses_singular_registries(version)
+        else "reads functions/ folders"
+    )
+    overlays = datapack.view_for(version).active_overlays
+    if overlays:
+        notes.append("overlays " + ", ".join(overlays))
+    return f"{version.id}: " + " · ".join(notes)
 
 
 class DatapackController(Controller):
@@ -156,13 +182,16 @@ class DatapackController(Controller):
         window.tree.setModel(build_explorer_model(datapack))
         window.tree.expandToDepth(2)
         if datapack is None:
+            window.version_note.setText("")
             window.pack_label.setText("no datapack loaded")
             self.fill_inspector([])
             return
-        status = datapack.compatibility(window.version).status
+        compatibility = datapack.compatibility(window.version)
         window.pack_label.setText(
-            f"{datapack.name} — emulating {window.version.id}" + COMPATIBILITY_NOTES.get(status, "")
+            f"{datapack.name} — emulating {window.version.id}"
+            + COMPATIBILITY_NOTES.get(compatibility.status, "")
         )
+        window.version_note.setText(version_note(datapack, window.version))
         self.fill_inspector(describe_datapack(datapack, window.version))
 
     def on_tree_clicked(self, index: QModelIndex) -> None:
@@ -198,5 +227,10 @@ class DatapackController(Controller):
         inspector = self.window.inspector
         inspector.clear()
         for key, value in rows:
-            inspector.addTopLevelItem(QTreeWidgetItem([key, str(value)]))
+            item = QTreeWidgetItem([key, str(value)])
+            help_text = row_help(key)
+            if help_text:
+                item.setToolTip(0, help_text)
+            item.setToolTip(1, str(value))
+            inspector.addTopLevelItem(item)
         inspector.resizeColumnToContents(0)

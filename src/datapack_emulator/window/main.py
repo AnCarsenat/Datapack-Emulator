@@ -142,6 +142,7 @@ class MainWindow(QMainWindow):
         self.source_label: QLabel = find(QLabel, "labelSource")
         self.log_counts: QLabel = find(QLabel, "labelLogCounts")
         self.combo_version: QComboBox = find(QComboBox, "comboVersion")
+        self.version_note: QLabel = find(QLabel, "labelVersionNote")
         self.combo_level: QComboBox = find(QComboBox, "comboLevel")
         self.edit_filter: QLineEdit = find(QLineEdit, "editLogFilter")
         self.spin_ticks: QSpinBox = find(QSpinBox, "spinTicks")

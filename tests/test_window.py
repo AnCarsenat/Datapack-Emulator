@@ -717,3 +717,27 @@ def test_session_remembers_recent_items_and_layout(app, window, make_pack, tmp_p
 
     window.session.focus_console()
     assert window.dock_logs.isVisible()
+
+
+def test_help_notes_explain_rows_versions_and_columns(window):
+    from PySide6.QtCore import Qt as QtCore_Qt
+
+    from datapack_emulator.settings import PATHS
+
+    window.datapacks.load(PATHS.SAMPLES / "hat_v2")
+    assert window.version_note.text().startswith("1.21.8: lists the pack as compatible")
+    index = window.combo_version.findData("26.2")
+    window.combo_version.setCurrentIndex(index)
+    assert "cannot read pack.mcmeta" in window.version_note.text()
+    first = window.inspector.topLevelItem(0)
+    assert first.text(0) == "path" and first.toolTip(0) == "the datapack folder"
+    model = window.log_view.model
+    assert "silent in game" in model.headerData(2, QtCore_Qt.Horizontal, QtCore_Qt.ToolTipRole)
+    from PySide6.QtGui import QAction
+
+    missing = [
+        action.objectName()
+        for action in window.findChildren(QAction)
+        if action.objectName().startswith("action") and not action.statusTip()
+    ]
+    assert missing == [], "every menu action explains itself in the status bar"

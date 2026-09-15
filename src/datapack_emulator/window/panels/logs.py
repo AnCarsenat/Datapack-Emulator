@@ -13,6 +13,13 @@ from PySide6.QtGui import QBrush, QColor, QFont
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource
 
 COLUMNS = ("tick", "source", "level", "where", "message")
+COLUMN_HELP = (
+    "the server tick the record was made in",
+    "app: this program · emulator: the emulation engine · game: what Minecraft would print",
+    "debug, info, warning or error; failures inside functions are debug: silent in game",
+    "function:line the record came from; double-click to open it",
+    "right-click to copy it, open its file, analyze its command or add it as a test",
+)
 
 SOURCE_COLOURS = {
     LogSource.APP: QColor("#2c3e50"),
@@ -58,9 +65,11 @@ class LogTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(COLUMNS)
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):  # noqa: N802
-        if role != Qt.DisplayRole or orientation != Qt.Horizontal:
+        if orientation != Qt.Horizontal:
             return None
-        return COLUMNS[section]
+        if role == Qt.ToolTipRole:
+            return COLUMN_HELP[section]
+        return COLUMNS[section] if role == Qt.DisplayRole else None
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if not index.isValid():
