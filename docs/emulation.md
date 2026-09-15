@@ -1,8 +1,8 @@
 # What is emulated
 
 One `Emulator` is one pack, one version and one world. `run(ticks)` runs
-`#minecraft:load` once, then each tick: schedules that are due, then
-`#minecraft:tick`.
+`#minecraft:load` once, then each tick `#minecraft:tick` followed by the
+schedules that became due (see *Tick order* below).
 
 ## The world
 
@@ -11,13 +11,21 @@ Deliberately small: no blocks, chunks, inventories or physics.
 * **entities** — type, UUID, name, position, rotation, dimension, tags, NBT.
   `players` fake players (`Player1`, …) exist from the start.
 * **scoreboard** — objectives with criteria, scores per holder (entities by
-  name/UUID, fake players by name), enabled triggers.
+  name/UUID, fake players by name), enabled triggers. Scores are 32-bit and
+  wrap like Java ints; `*` means every holder with any score.
 * **storage** — `data … storage` compounds.
 * **gamerules** — stored; `maxCommandChainLength` is enforced.
 
 Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
 `#tags`), `tag` (including `tag=` and `!`), `name`, `scores`, `distance`,
-`limit`/`c`, `sort`.
+`x`/`y`/`z` (move the origin), `dx`/`dy`/`dz` (box from the origin),
+`nbt` (vanilla subset matching against summoned/set NBT plus the entity's
+tags), `limit`/`c`, `sort`. `@s[...]` applies its arguments to the executor.
+
+Not evaluated: `team`, `gamemode`, `level`, `advancements`, `predicate`,
+`x_rotation`, `y_rotation` match every entity, and `nbt` keys the emulator does
+not store (player `Health`, `SelectedItem`, `Inventory`, …) fail the check.
+Both produce one emulator note per run.
 
 ## Commands
 
@@ -25,17 +33,17 @@ Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
 
 | command | notes |
 | --- | --- |
-| `execute` | `as at positioned rotated in if unless store run summon`; `anchored align facing on` pass through |
-| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `data` (entity, storage), `dimension`, `loaded`, `function`; others warn and fail |
+| `execute` | `as at positioned rotated in if unless store run summon`; `anchored align facing` pass through; `on` ends the branch (relations are not modelled). `store` binds its target where it appears in the chain; `run return` leaves the function on the first branch that reaches it |
+| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `data` (entity, storage), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
 | `function` | tags, `$` macros with inline SNBT or `with storage|entity [path]` |
 | `schedule` | `function <id> <time> [append|replace]`, `clear`; `t`/`s`/`d` units |
 | `return` | value, `run`, `fail` |
-| `scoreboard` | objectives add/remove; players set/add/remove/reset/get/enable/operation |
+| `scoreboard` | objectives add/remove; players set/add/remove/reset/get/enable/operation (`/=` and `%=` by zero fail), `display` accepted |
 | `trigger` | `set`/`add`, enablement and objective type checked |
 | `tag` | add/remove |
-| `summon`, `kill`, `tp`/`teleport` | |
-| `data` | get/merge/remove/modify on entities and storage (set, merge, append, prepend) |
-| `say me msg tell w tellraw title teammsg` | logged as `game` output |
+| `summon`, `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z>` |
+| `data` | on entities and storage: `get [scale]` (floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced) |
+| `say me msg tell w tellraw title teammsg` | logged as `game` output; text components in JSON or (1.21.5+) SNBT, with `score` and `selector` parts resolved per recipient |
 | `gamerule` | |
 
 **Checked, no state change:** `setblock`, `give`, `clear`, `effect`,
