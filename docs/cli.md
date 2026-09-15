@@ -29,8 +29,9 @@ python -m datapack_emulator.emulator run samples/hat --version 1.21.4 --ticks 20
 | `--dot` | off | also write the call graph as Graphviz |
 
 Prints every record as `[tick] source/level function:line: message`, then a
-per-function table, the report path and call-graph findings (recursion,
-missing functions, functions nothing calls).
+per-function table (calls, commands, self and total ms for the run, and ms per
+tick), the report path and call-graph findings (recursion, missing functions,
+functions nothing calls).
 
 ## `matrix` — many versions
 

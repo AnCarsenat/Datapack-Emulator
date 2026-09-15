@@ -136,6 +136,8 @@ class MainWindow(QMainWindow):
         self.log_table: QTableView = find(QTableView, "logTable")
         self.source_edit: QPlainTextEdit = find(QPlainTextEdit, "sourceEdit")
         self.web_view: QWebEngineView = find(QWebEngineView, "webEngineView")
+        self.tree_profile: QTreeWidget = find(QTreeWidget, "treeProfile")
+        self.profile_summary: QLabel = find(QLabel, "labelProfileSummary")
         self.pack_label: QLabel = find(QLabel, "labelPack")
         self.vanilla_label: QLabel = find(QLabel, "labelVanilla")
         self.graph_label: QLabel = find(QLabel, "labelGraph")

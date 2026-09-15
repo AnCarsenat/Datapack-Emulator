@@ -8,16 +8,37 @@ from pathlib import Path
 
 from datapack_emulator.emulator import costs
 
+#: a call path: the tag or schedule that started it, then each function called
+CallPath = tuple[str, ...]
+
+
+def _stats() -> dict[str, float]:
+    return {"calls": 0.0, "commands": 0.0, "self_us": 0.0, "total_us": 0.0}
+
 
 class Profiler:
-    """Per-function accumulated estimated time and call counts."""
+    """Estimated time and call counts, per function and per call path.
+
+    ``entries`` add up everything a function did wherever it was called from;
+    ``tree`` keeps the same numbers per call path (``#minecraft:tick`` ›
+    ``hat:tick`` › ``hat:swap``), which is what the profiler's tree shows.
+    Divide by ``ticks`` for the cost of one tick.
+    """
 
     #: recent tick durations kept for display
     TICK_HISTORY = 10_000
+    #: deeper calls (recursion) are added to one "…" node at this depth
+    MAX_PATH = 32
+    DEEPER = "…"
 
     def __init__(self) -> None:
         #: function id -> {"calls", "commands", "self_us", "total_us"}
         self.entries: dict[str, dict[str, float]] = {}
+        #: call path -> the same statistics, for that path only
+        self.tree: dict[CallPath, dict[str, float]] = {}
+        self._stack: list[str] = []
+        self._starts: list[float] = []
+        self._total_us = 0.0
         #: the most recent tick durations (endless runs would otherwise grow forever)
         self.tick_times: deque[float] = deque(maxlen=self.TICK_HISTORY)
         #: totals over every tick, not just the recent history
@@ -26,17 +47,48 @@ class Profiler:
         self._worst_tick_us = 0.0
 
     def _entry(self, function_id: str) -> dict[str, float]:
-        return self.entries.setdefault(
-            function_id, {"calls": 0.0, "commands": 0.0, "self_us": 0.0, "total_us": 0.0}
-        )
+        entry = self.entries.get(function_id)
+        if entry is None:
+            entry = self.entries[function_id] = _stats()
+        return entry
+
+    def _path(self) -> CallPath:
+        if len(self._stack) <= self.MAX_PATH:
+            return tuple(self._stack)
+        return (*self._stack[: self.MAX_PATH - 1], self.DEEPER)
 
     def call(self, function_id: str) -> None:
         self._entry(function_id)["calls"] += 1
+
+    def enter(self, name: str) -> None:
+        """A function (or the tag / schedule running functions) starts."""
+        self._stack.append(name)
+        path = self._path()
+        node = self.tree.get(path)
+        if node is None:
+            node = self.tree[path] = _stats()
+        node["calls"] += 1
+        self._starts.append(self._total_us)
+
+    def leave(self) -> None:
+        """The innermost :meth:`enter` ends: its path gets the time spent inside."""
+        if not self._stack:
+            return
+        start = self._starts.pop()
+        # calls nested inside the "…" node are already inside its outermost call
+        if len(self._stack) <= self.MAX_PATH + 1:
+            self.tree[self._path()]["total_us"] += self._total_us - start
+        self._stack.pop()
 
     def charge(self, function_id: str, microseconds: float) -> None:
         entry = self._entry(function_id)
         entry["self_us"] += microseconds
         entry["commands"] += 1
+        self._total_us += microseconds
+        if self._stack:
+            node = self.tree[self._path()]
+            node["self_us"] += microseconds
+            node["commands"] += 1
 
     def charge_total(self, function_id: str, microseconds: float) -> None:
         self._entry(function_id)["total_us"] += microseconds
@@ -44,9 +96,24 @@ class Profiler:
     def sorted_entries(self, key: str = "total_us") -> list[tuple[str, dict[str, float]]]:
         return sorted(self.entries.items(), key=lambda item: -item[1][key])
 
+    def per_tick(self, stats: dict[str, float]) -> dict[str, float]:
+        """``stats`` divided by the ticks run: the cost of one average tick."""
+        ticks = max(self.ticks, 1)
+        return {key: value / ticks for key, value in stats.items()}
+
+    def children(self, path: CallPath) -> list[tuple[CallPath, dict[str, float]]]:
+        """The call paths one level below ``path`` (``()`` for the roots), costliest first."""
+        depth = len(path) + 1
+        found = [
+            (key, stats)
+            for key, stats in self.tree.items()
+            if len(key) == depth and key[: len(path)] == path
+        ]
+        return sorted(found, key=lambda item: -item[1]["total_us"])
+
     @property
     def total_us(self) -> float:
-        return sum(entry["self_us"] for entry in self.entries.values())
+        return self._total_us
 
     @property
     def worst_tick_us(self) -> float:
@@ -64,6 +131,10 @@ class Profiler:
 
     def reset(self) -> None:
         self.entries.clear()
+        self.tree.clear()
+        self._stack.clear()
+        self._starts.clear()
+        self._total_us = 0.0
         self.tick_times.clear()
         self.ticks = 0
         self._tick_total_us = 0.0
@@ -75,24 +146,28 @@ class Profiler:
         # titles and function ids come from the pack: escape them, the report
         # is shown in the app's web view
         title, subtitle = escape(title), escape(subtitle)
+        ticks = self.ticks
+        tick_cost = self.total_us / max(ticks, 1) or 1.0
         rows: list[str] = []
-        total = self.total_us or 1.0
         for function_id, entry in self.sorted_entries():
-            share = 100.0 * entry["total_us"] / total
+            one = self.per_tick(entry)
+            share = 100.0 * one["total_us"] / tick_cost
             rows.append(
                 f'<tr data-function="{escape(function_id)}" title="right-click to open the source">'
                 f"<td class='id'>{escape(function_id)}</td>"
-                f"<td>{int(entry['calls'])}</td>"
-                f"<td>{int(entry['commands'])}</td>"
-                f"<td>{entry['self_us'] / 1000:.3f}</td>"
-                f"<td>{entry['total_us'] / 1000:.3f}</td>"
+                f"<td>{one['calls']:.2f}</td>"
+                f"<td>{one['commands']:.1f}</td>"
+                f"<td>{one['self_us'] / 1000:.4f}</td>"
+                f"<td>{one['total_us'] / 1000:.4f}</td>"
                 f"<td><div class='bar' style='width:{min(share, 100):.1f}%'></div>"
                 f"<span>{share:.1f}%</span></td>"
+                f"<td>{int(entry['calls'])}</td>"
+                f"<td>{entry['total_us'] / 1000:.3f}</td>"
                 "</tr>"
             )
-        ticks = self.ticks
         worst = self.worst_tick_us
-        body = "\n".join(rows) or "<tr><td colspan='6'>no data — run the emulator</td></tr>"
+        body = "\n".join(rows) or "<tr><td colspan='8'>no data — run the emulator</td></tr>"
+        tree = "\n".join(self._tree_html((), tick_cost)) or "<p>no calls recorded</p>"
         over = "warn" if worst > costs.TICK_BUDGET_US else ""
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -102,6 +177,7 @@ class Profiler:
 <style>
  body {{ font-family: system-ui, sans-serif; margin: 12px; color: #111; }}
  h2 {{ margin: 0 0 4px; font-size: 16px; }}
+ h3 {{ margin: 16px 0 4px; font-size: 14px; }}
  p.summary {{ margin: 0 0 12px; color: #555; font-size: 12px; }}
  table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
  th, td {{ text-align: right; padding: 3px 6px; border-bottom: 1px solid #e3e3e3; }}
@@ -110,22 +186,29 @@ class Profiler:
  .bar {{ display: inline-block; height: 9px; background: #f5a623; vertical-align: middle;
          margin-right: 5px; min-width: 1px; }}
  .warn {{ color: #c0392b; font-weight: bold; }}
+ details {{ margin-left: 16px; font-size: 12px; }}
+ summary {{ font-family: monospace; cursor: pointer; padding: 1px 0; }}
+ summary span {{ color: #555; font-family: system-ui, sans-serif; }}
+ .leaf {{ margin-left: 30px; font-family: monospace; font-size: 12px; padding: 1px 0; }}
 </style>
 </head>
 <body>
 <h2>{title}</h2>
 <p class="summary">
  {subtitle}{" &middot; " if subtitle else ""}{ticks} tick(s) &middot;
- total {total / 1000:.2f} ms &middot;
- average {self.average_tick_us / 1000:.2f} ms/tick &middot;
+ total {self.total_us / 1000:.2f} ms &middot;
+ average {self.average_tick_us / 1000:.3f} ms/tick &middot;
  worst <span class="{over}">{worst / 1000:.2f} ms</span>
  (budget {costs.TICK_BUDGET_US / 1000:.0f} ms)
- <br>Times are estimates from a cost model, not measurements &mdash; see
- datapack_emulator/emulator/costs.py.
+ <br>Per tick = the run's totals divided by its ticks. Times are estimates from a
+ cost model, not measurements &mdash; see datapack_emulator/emulator/costs.py.
 </p>
+<h3>Call tree, per tick</h3>
+{tree}
+<h3>Functions</h3>
 <table>
-<thead><tr><th>function</th><th>calls</th><th>commands</th><th>self (ms)</th>
-<th>total (ms)</th><th>share</th></tr></thead>
+<thead><tr><th>function</th><th>calls/tick</th><th>commands/tick</th><th>self ms/tick</th>
+<th>total ms/tick</th><th>share of a tick</th><th>calls</th><th>total ms</th></tr></thead>
 <tbody>
 {body}
 </tbody>
@@ -133,6 +216,28 @@ class Profiler:
 </body>
 </html>
 """
+
+    def _tree_html(self, path: CallPath, tick_cost: float) -> list[str]:
+        out = []
+        for key, stats in self.children(path):
+            one = self.per_tick(stats)
+            name = escape(key[-1])
+            label = (
+                f"{name} <span>{one['total_us'] / 1000:.4f} ms/tick "
+                f"({100.0 * one['total_us'] / tick_cost:.1f}%) &middot; "
+                f"self {one['self_us'] / 1000:.4f} ms &middot; {one['calls']:.2f} calls</span>"
+            )
+            attribute = (
+                "" if name.startswith(("#", "<", self.DEEPER)) else f' data-function="{name}"'
+            )
+            inner = self._tree_html(key, tick_cost)
+            if inner:
+                out.append(f"<details open{attribute}><summary>{label}</summary>")
+                out.extend(inner)
+                out.append("</details>")
+            else:
+                out.append(f'<div class="leaf"{attribute}>{label}</div>')
+        return out
 
     def write_html(
         self, path: Path | str, title: str = "Function profiler", subtitle: str = ""

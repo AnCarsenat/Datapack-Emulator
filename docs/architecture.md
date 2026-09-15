@@ -29,7 +29,7 @@ src/datapack_emulator/     the package (standard src layout)
       library.py           FunctionLibrary: functions and tags a version's server loads
       emulator.py          Emulator: start, load/tick order, dispatch, schedules
     analysis/
-      profiler.py          Profiler and its HTML report
+      profiler.py          Profiler: per function and per call path, HTML report
       graph.py             CallGraph
       explain.py           explain_line: what one command line does (analyze line)
     engine.py              TestEngine, VersionRun
@@ -58,7 +58,7 @@ src/datapack_emulator/     the package (standard src layout)
     score_graph.py         ScoreGraphDialog: a score over time
     panels/                models and widgets the controllers fill
       uiloader.py, explorer.py, inspector.py, logs.py, results.py, graph.py, highlight.py,
-      world.py
+      world.py, profile.py
 tools/generate_version_data.py
 tests/       pytest suite; conftest.py builds synthetic packs and client jars
 .github/     CI workflow, Dependabot, issue and pull request templates

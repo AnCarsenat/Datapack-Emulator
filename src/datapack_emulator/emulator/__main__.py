@@ -91,11 +91,15 @@ def command_run(arguments: argparse.Namespace) -> int:
     )
     profiler = emulator.run(ticks=arguments.ticks)
 
-    print(f"\n{'function':40} {'calls':>6} {'cmds':>7} {'self ms':>9} {'total ms':>9}")
+    print(
+        f"\n{'function':40} {'calls':>6} {'cmds':>7} {'self ms':>9} {'total ms':>9} {'ms/tick':>9}"
+    )
     for function_id, entry in profiler.sorted_entries():
+        one = profiler.per_tick(entry)
         print(
             f"{function_id:40} {int(entry['calls']):6d} {int(entry['commands']):7d} "
-            f"{entry['self_us'] / 1000:9.3f} {entry['total_us'] / 1000:9.3f}"
+            f"{entry['self_us'] / 1000:9.3f} {entry['total_us'] / 1000:9.3f} "
+            f"{one['total_us'] / 1000:9.4f}"
         )
     print(
         f"\n{emulator.version.id}: {arguments.ticks} tick(s), "

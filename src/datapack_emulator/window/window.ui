@@ -339,18 +339,31 @@ QMenuBar::item:selected {
                     <string>∞ until stopped</string>
                    </property>
                    <property name="toolTip">
-                    <string>-1 runs until you press stop; 20 ticks are one second of game time</string>
+                    <string>ticks to run; -1 (∞) runs forever until you press stop (Shift+F5); 20 ticks are one second of game time</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="1" column="0">
+                 <item row="1" column="1">
+                  <widget class="QLabel" name="labelTicksHelp">
+                   <property name="text">
+                    <string>Set ticks to -1 (shown as "∞ until stopped") to run for an infinite number of ticks, until you press stop (Shift+F5).</string>
+                   </property>
+                   <property name="wordWrap">
+                    <bool>true</bool>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color: #666;</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="2" column="0">
                   <widget class="QLabel" name="labelSpeed">
                    <property name="text">
                     <string>speed</string>
                    </property>
                   </widget>
                  </item>
-                 <item row="1" column="1">
+                 <item row="2" column="1">
                   <widget class="QComboBox" name="comboSpeed">
                    <property name="toolTip">
                     <string>as fast as possible, or real time at 20 ticks per second; can change during a run</string>
@@ -367,7 +380,7 @@ QMenuBar::item:selected {
                    </item>
                   </widget>
                  </item>
-                 <item row="2" column="1">
+                 <item row="3" column="1">
                   <widget class="QLabel" name="labelRunHelp">
                    <property name="text">
                     <string>run all (F5) starts a fresh world, step (F7) adds one tick to the current one, stop (Shift+F5) ends a run and refreshes the profiler.</string>
@@ -380,7 +393,7 @@ QMenuBar::item:selected {
                    </property>
                   </widget>
                  </item>
-                 <item row="3" column="1">
+                 <item row="4" column="1">
                   <widget class="QCheckBox" name="checkTestsDuringRuns">
                    <property name="text">
                     <string>run tests during runs</string>
@@ -632,7 +645,99 @@ QMenuBar::item:selected {
          <number>0</number>
         </property>
         <item>
-         <widget class="QWebEngineView" name="webEngineView"/>
+         <widget class="QTabWidget" name="tabsProfiler">
+          <widget class="QWidget" name="tabProfileTree">
+           <attribute name="title">
+            <string>per tick</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="profileTreeLayout">
+            <item>
+             <widget class="QLabel" name="labelProfileSummary">
+              <property name="text">
+               <string>run the emulator to see what each function costs in one tick</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">color: #555;</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTreeWidget" name="treeProfile">
+              <property name="alternatingRowColors">
+               <bool>true</bool>
+              </property>
+              <property name="sortingEnabled">
+               <bool>true</bool>
+              </property>
+              <property name="contextMenuPolicy">
+               <enum>Qt::CustomContextMenu</enum>
+              </property>
+              <property name="toolTip">
+               <string>each row is a call path: a tag or schedule, the function it runs, what that function calls, …; numbers are the average of one tick; double-click or right-click a function to open it</string>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QTreeWidget { font-size: 11px; }</string>
+              </property>
+              <column>
+               <property name="text">
+                <string>call path</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>total ms/tick</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>share</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>self ms/tick</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>calls/tick</string>
+               </property>
+              </column>
+              <column>
+               <property name="text">
+                <string>commands/tick</string>
+               </property>
+              </column>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="tabProfileReport">
+           <attribute name="title">
+            <string>HTML report</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="profileReportLayout">
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QWebEngineView" name="webEngineView"/>
+            </item>
+           </layout>
+          </widget>
+         </widget>
         </item>
        </layout>
       </widget>

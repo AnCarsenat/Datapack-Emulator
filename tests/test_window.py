@@ -796,3 +796,21 @@ def test_log_table_keeps_visible_records_on_long_runs(app, monkeypatch):
             ]
         )
     assert model.record_at(0).message == "[Player1] hello"  # debug records went first
+
+
+def test_profiler_tab_shows_a_per_tick_call_tree(window, make_pack):
+    window.datapacks.load(_hat_like_pack(make_pack))
+    window.spin_ticks.setValue(4)
+    window.runs.run_all()
+    window.runs.wait()
+    tree = window.tree_profile
+    tops = [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())]
+    assert "#minecraft:tick" in tops and "#minecraft:load" in tops
+    tick = next(
+        tree.topLevelItem(i)
+        for i in range(tree.topLevelItemCount())
+        if tree.topLevelItem(i).text(0) == "#minecraft:tick"
+    )
+    child = tick.child(0)
+    assert child.text(0) == "test:tick" and child.text(4) == "1.00"  # one call per tick
+    assert window.profile_summary.text().startswith("average of 4 tick(s)")
