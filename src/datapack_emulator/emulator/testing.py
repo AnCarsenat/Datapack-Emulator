@@ -27,6 +27,14 @@ from datapack_emulator.emulator.vanilla import VanillaAssets
 from datapack_emulator.emulator.versions import Version
 
 
+def _as_int(value: Any, default: int = 0) -> int:
+    """A number from a hand-edited project file; anything unreadable is ``default``."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass
 class CommandTest:
     command: str
@@ -43,7 +51,7 @@ class CommandTest:
     def from_dict(cls, data: dict[str, Any]) -> CommandTest:
         return cls(
             command=str(data.get("command", "")),
-            at_tick=max(0, int(data.get("at_tick", 0))),
+            at_tick=max(0, _as_int(data.get("at_tick"))),
             expect=str(data.get("expect", "")),
             enabled=bool(data.get("enabled", True)),
         )

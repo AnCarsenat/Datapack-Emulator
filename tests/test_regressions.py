@@ -1,5 +1,7 @@
 """One test per bug found in review; each failed before its fix."""
 
+from pathlib import Path
+
 from conftest import chat, game_errors
 
 from datapack_emulator.emulator import Datapack, Emulator
@@ -579,3 +581,43 @@ def test_tick_history_is_bounded_but_statistics_are_complete(make_pack):
     assert profiler.worst_tick_us == 99.0
     expected = (sum(i % 7 for i in range(Profiler.TICK_HISTORY + 500)) + 99.0) / profiler.ticks
     assert abs(profiler.average_tick_us - expected) < 1e-9
+
+
+def test_settings_only_trust_a_real_checkout(tmp_path):
+    from datapack_emulator.settings.main import find_checkout, user_dirs
+
+    other = tmp_path / "other_project"
+    (other / "src" / "whatever").mkdir(parents=True)
+    (other / "pyproject.toml").write_text("")
+    module = other / "venv" / "site-packages" / "datapack_emulator" / "settings" / "main.py"
+    assert find_checkout(module) is None
+
+    checkout = tmp_path / "checkout"
+    (checkout / "src" / "datapack_emulator" / "settings").mkdir(parents=True)
+    (checkout / "pyproject.toml").write_text("")
+    assert (
+        find_checkout(checkout / "src" / "datapack_emulator" / "settings" / "main.py") == checkout
+    )
+
+    data, cache = user_dirs("linux", {"XDG_DATA_HOME": "/d", "XDG_CACHE_HOME": "/c"})
+    assert (data, cache) == (Path("/d/datapack-emulator"), Path("/c/datapack-emulator"))
+    data, cache = user_dirs("win32", {"APPDATA": "/r", "LOCALAPPDATA": "/l"})
+    assert data == Path("/r/datapack-emulator") and cache.parent == Path("/l/datapack-emulator")
+
+
+def test_run_load_alone_reports_load_failures(make_pack):
+    from datapack_emulator.emulator import Datapack, Emulator
+    from datapack_emulator.emulator.runtime.output import OutputBus
+
+    pack = Datapack.load(make_pack({"data/test/function/bad.mcfunction": "notacommand\n"}))
+    output = OutputBus()
+    Emulator(pack, version="1.21.4", output=output).run_load()
+    assert any("Failed to load function test:bad" in r.message for r in output.records)
+
+
+def test_hand_edited_tests_do_not_break_the_project():
+    from datapack_emulator.emulator.testing import CommandTest
+
+    assert CommandTest.from_dict({"command": "say hi", "at_tick": "soon"}).at_tick == 0
+    assert CommandTest.from_dict({"command": "say hi", "at_tick": None}).at_tick == 0
+    assert CommandTest.from_dict({"at_tick": "5"}).at_tick == 5

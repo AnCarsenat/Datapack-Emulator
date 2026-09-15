@@ -13,19 +13,17 @@ import logging
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from datapack_emulator.emulator import versions  # noqa: E402
-from datapack_emulator.emulator.datapack import Datapack  # noqa: E402
-from datapack_emulator.emulator.engine import TestEngine  # noqa: E402
-from datapack_emulator.emulator.runtime.emulator import Emulator  # noqa: E402
-from datapack_emulator.emulator.runtime.output import (  # noqa: E402
+from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.datapack import Datapack
+from datapack_emulator.emulator.engine import TestEngine
+from datapack_emulator.emulator.runtime.emulator import Emulator
+from datapack_emulator.emulator.runtime.output import (
     LogLevel,
     LogRecord,
     LogSource,
     OutputBus,
 )
-from datapack_emulator.emulator.vanilla import VanillaAssets, default_library  # noqa: E402
+from datapack_emulator.emulator.vanilla import VanillaAssets, default_library
 
 LEVELS = {
     "debug": LogLevel.DEBUG,

@@ -117,6 +117,8 @@ class Emulator:
 
     def run_load(self) -> float:
         """Run ``#minecraft:load`` now (``run()`` places it in the first tick)."""
+        if not self.started:
+            self.report_load()
         self.loaded = True
         self.output.set_tick(self.world.tick)
         with self._stack_headroom():
