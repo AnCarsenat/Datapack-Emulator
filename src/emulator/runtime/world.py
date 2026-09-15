@@ -125,7 +125,10 @@ class World:
                 if entity.name == name or entity.uuid == name
             ]
         if selector.kind == "@s":
-            return [context.executor] if context.executor is not None else []
+            executor = context.executor
+            if executor is None or not self._matches(executor, selector, context):
+                return []
+            return [executor]
 
         pool = self.players if selector.is_player_only else list(self.entities)
         pool = [entity for entity in pool if self._matches(entity, selector, context)]
