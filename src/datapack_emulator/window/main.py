@@ -242,6 +242,12 @@ class MainWindow(QMainWindow):
         """A tab page of window.ui by object name (see controllers.base)."""
         return self.findChild(QWidget, name)
 
+    def source_tab_marker(self, unsaved: bool) -> None:
+        """A dot on the source tab, so unsaved edits show from another tab."""
+        index = self.tabs.indexOf(self.tab_page(TAB_SOURCE))
+        if index >= 0:
+            self.tabs.setTabText(index, "● Source" if unsaved else "Source")
+
     @property
     def version(self) -> versions.Version:
         return versions.parse(self.combo_version.currentData() or versions.LATEST)

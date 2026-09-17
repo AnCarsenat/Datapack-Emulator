@@ -222,6 +222,7 @@ class DatapackController(Controller):
             window.pack_label.setText("no datapack loaded")
             self.fill_inspector([])
             window.problems.schedule_refresh()
+            window.editor.check_lines()  # nothing is loaded: nothing is refused
             return
         compatibility = datapack.compatibility(window.version)
         window.pack_label.setText(
