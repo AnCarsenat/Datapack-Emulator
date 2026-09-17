@@ -20,8 +20,16 @@ src/datapack_emulator/     the package (standard src layout)
     commands/
       parser.py            Selector, Subcommand, Command (parse, features, cost, macros)
       result.py            CommandResult
-      handlers.py          cmd_* implementations and the HANDLERS table
+      handlers.py          the HANDLERS table, UNMODELLED / COSMETIC notes
+      helpers.py           selectors, ids checked against the jar, score holders, ints
+      chat.py              say, me, msg, tellraw, title, text components
+      scoreboard.py        scoreboard, trigger
+      entities.py          tag, summon, kill, tp
+      control.py           function (macros), schedule, return
+      data.py              data, gamerule
+      execute.py           execute, its conditions and stores
       items.py             give, clear, item, replaceitem, enchant, loot, if items
+      misc.py              commands that only check their ids (effect, setblock), noop
       registry.py          CommandSet: what exists in a version, who runs it
     runtime/
       output.py            LogSource, LogLevel, LogRecord, OutputBus

@@ -38,10 +38,13 @@ Read [docs/architecture.md](docs/architecture.md) first. In short:
 
 ## Adding a command
 
-1. Write `cmd_<name>(command, context) -> CommandResult` in
-   `src/datapack_emulator/emulator/commands/handlers.py`; report failures with vanilla
+1. Write `cmd_<name>(command, context) -> CommandResult` in the module of
+   its group under `src/datapack_emulator/emulator/commands/` (`chat.py`,
+   `scoreboard.py`, `entities.py`, `data.py`, `execute.py`, `items.py`, … —
+   shared helpers are in `helpers.py`); report failures with vanilla
    translation keys (add missing ones to `runtime/messages.py`).
-2. Register it in `HANDLERS`. Availability per version is already known.
+2. Register it in `HANDLERS` (`commands/handlers.py`). Availability per
+   version is already known.
 3. Give it a cost in `src/datapack_emulator/emulator/costs.py` if the default does not fit.
 4. Document it in [docs/emulation.md](docs/emulation.md).
 
