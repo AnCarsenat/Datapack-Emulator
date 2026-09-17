@@ -11,7 +11,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # a newer push replaces a pull request's run; runs on main all finish
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
@@ -35,7 +36,7 @@ jobs:
         with:
           python-version: "3.13"
       # the Qt-free code: the emulator, the command line, projects, settings
-      - run: pip install "mypy>=1.11"
+      - run: pip install "mypy==2.3.*"
       - run: mypy
 
   test:
@@ -51,7 +52,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: requirements-dev.txt
+          cache-dependency-path: pyproject.toml
       # the emulator core is standard library only; the suite needs pytest
       - run: pip install -e . "pytest>=8" "coverage[toml]>=7"
       - run: coverage run -m pytest
@@ -59,7 +60,7 @@ jobs:
         run: |
           coverage report
           coverage xml
-          echo '### Coverage (Python ${{ matrix.python }})' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Coverage (Python ${{ matrix.python }}, without the window)' >> "$GITHUB_STEP_SUMMARY"
           coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         if: matrix.python == '3.13'

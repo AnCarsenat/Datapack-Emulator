@@ -428,13 +428,12 @@ def blocks_condition_count(arguments: list[str], context: ExecutionContext) -> i
     blocks = context.world.blocks
     version = context.emulator.version
     compared = 0
+    offset = (destination[0] - low[0], destination[1] - low[1], destination[2] - low[2])
     for position in positions(low, high):
         source = blocks.get(context.dimension, position)
         if mode == "masked" and source.is_air:
             continue
-        target = _shifted(
-            position, (destination[0] - low[0], destination[1] - low[1], destination[2] - low[2])
-        )
+        target = _shifted(position, offset)
         other = blocks.get(context.dimension, target)
         if (
             source.id != other.id

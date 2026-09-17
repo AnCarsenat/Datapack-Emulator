@@ -570,11 +570,10 @@ def session_name(session: Session) -> str:
 
 class Shell(DebugCommands):
     def __init__(self, session: Session, arguments: argparse.Namespace):
-        self.session = session
+        self.session: Session = session
         self.arguments = arguments
         self.failed = False
         self.quit = False
-        self.session: Session = session
         self._lines: Iterator[str] = iter(())
         session.debugger.on_pause = self.on_pause
 

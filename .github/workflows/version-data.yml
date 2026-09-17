@@ -2,6 +2,7 @@ name: Refresh version data
 
 # Rebuilds src/datapack_emulator/emulator/version_data.py from misode/mcmeta
 # and opens a pull request when a release or pre-release changed it.
+# Schedules only run from the default branch.
 on:
   schedule:
     - cron: "17 5 * * 1" # Mondays
@@ -13,43 +14,62 @@ permissions:
 
 concurrency:
   group: version-data
-  cancel-in-progress: true
+  cancel-in-progress: false # never stop a run while it pushes
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/mcmeta
+          key: mcmeta-${{ github.run_id }}
+          restore-keys: mcmeta-
       - name: Regenerate
         run: python tools/generate_version_data.py --work-dir "$RUNNER_TEMP/mcmeta"
       - name: Keep only real changes
+        id: changes
         # the snapshot date changes every run; alone, it is not worth a PR
         run: |
           file=src/datapack_emulator/emulator/version_data.py
           if git diff --quiet -I '^Snapshot taken' -- "$file"; then
             git checkout -- "$file"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "no new versions or commands"
           else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
             git diff --stat
           fi
-      - name: Check the new table
+      - name: Test the new table
+        id: tests
+        if: steps.changes.outputs.changed == 'true'
+        # a new release can change what tests expect: open the PR anyway
+        continue-on-error: true
         run: |
-          pip install -e . "pytest>=8" "ruff>=0.6"
-          ruff format src/datapack_emulator/emulator/version_data.py
+          pip install -e . "pytest>=8"
           python -m pytest -q --ignore=tests/test_window.py
       - uses: peter-evans/create-pull-request@v8
+        if: steps.changes.outputs.changed == 'true'
         with:
+          # a token from a secret lets the pull request start CI; the default
+          # token cannot trigger other workflows
+          token: ${{ secrets.VERSION_DATA_TOKEN || github.token }}
           branch: automation/version-data
           delete-branch: true
+          draft: ${{ steps.tests.outcome != 'success' }}
           commit-message: "chore(versions): refresh version data from misode/mcmeta"
           title: "Refresh version data from misode/mcmeta"
           body: |
             `tools/generate_version_data.py` found new or changed versions or
-            command trees. The suite passed on the new table (window tests
-            excluded).
+            command trees.
+
+            Tests on the new table (window tests excluded): **${{ steps.tests.outcome }}**.
+            A failing run opens this pull request as a draft: fix the tests
+            on this branch before merging.
 
             Opened by the scheduled *Refresh version data* workflow.
-          labels: versions

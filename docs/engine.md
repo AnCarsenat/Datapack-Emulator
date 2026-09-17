@@ -97,7 +97,7 @@ it.
 
 Runs are sequential: a large selection with many ticks takes as long as all
 its versions together. The window runs them on a worker thread, so it stays
-usable and can cancel. *one per format* covers 1.13 → 26.3-rc-3 in 23 runs.
+usable and can cancel. *one per format* covers 1.13 → 26.3 in 23 runs.
 Emulators on several threads share the process: the recursion limit is only
 ever raised, and each client jar is read once (`VanillaLibrary.load` locks
 per version).

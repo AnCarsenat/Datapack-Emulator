@@ -63,7 +63,9 @@ Read [docs/architecture.md](docs/architecture.md) first. In short:
 CI runs the same checks (plus the window tests offscreen and a CLI smoke run)
 on every pull request, and puts the coverage table in the run's summary.
 Every Monday a scheduled workflow regenerates `version_data.py` and opens a
-pull request when a release or pre-release changed it.
+pull request when a release or pre-release changed it (a draft when the
+tests fail on the new table). The generator writes the file exactly as ruff
+would format it, so a refresh differs only where the data did.
 
 * lint and format clean, tests green
 * new behaviour comes with a test in `tests/` — the fixtures in
