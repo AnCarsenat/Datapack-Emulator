@@ -747,3 +747,88 @@ def test_world_and_shell_show_the_server_state(make_pack, capsys, monkeypatch):
     monkeypatch.setattr("sys.stdin", io.StringIO("time set noon\n.state\n"))
     assert main(["shell", pack]) == 0
     assert "6000 (day 0)" in capsys.readouterr().out
+
+
+def test_shell_debugger_stops_steps_and_watches(make_pack, tmp_path, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(
+            "\n".join(
+                [
+                    ".step",
+                    "where",
+                    "list",
+                    ".run",
+                    "scoreboard players set #ticks t 40",
+                    "s",
+                    ".break",
+                    ".unbreak all",
+                    ".watch",
+                    ".unwatch 1",
+                    ".eval score #ticks t",
+                    ".break nope:1",
+                    ".break test:tick:9",
+                    ".step",
+                    ".break test:tick:1",
+                    ".step",
+                    "q",
+                    ".eval score #ticks t",
+                ]
+            )
+        ),
+    )
+    code = main(
+        [
+            "shell",
+            pack,
+            "--version",
+            "1.21.4",
+            "--break",
+            "test:tick:1",
+            "--watch",
+            "score #ticks t",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "breakpoint test:tick:1\n" in out
+    assert "stopped: test:tick:1 (breakpoint test:tick:1) at tick 0" in out
+    assert "  score #ticks t = unset" in out
+    assert "#0 test:tick:1" in out and "●->   1 scoreboard players add #ticks t 1" in out
+    assert ".run is not available while stopped" in out
+    assert "→ succeeded (value 40)" in out
+    assert "test:tick:1  (hit 1×)" in out
+    assert "no watches" in out and "\n41\n" in out
+    assert "function minecraft:nope does not exist in 1.21.4" in out
+    assert "test:tick has no command on or after line 9" in out
+    assert "stopped at test:tick:1 (breakpoint test:tick:1) at tick 2" in out
+    assert out.rstrip().endswith("42")  # the stopped line did not run
+
+
+def test_run_prints_debugger_stops(make_pack, tmp_path, capsys):
+    code = main(
+        [
+            "run",
+            str(_pack(make_pack)),
+            "--ticks",
+            "3",
+            "--html",
+            str(tmp_path / "r.html"),
+            "--break",
+            "test:tick:1 if score #ticks t matches 1",
+            "--watch",
+            "score #ticks t",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert (
+        "stop: test:tick:1 (breakpoint test:tick:1 if score #ticks t matches 1) at tick 1"
+        in captured.out
+    )
+    assert "    score #ticks t = 1" in captured.out
+    assert "debugger: 1 stop(s)" in captured.err
+    assert main(["run", str(_pack(make_pack)), "--break", "test:tick:1 score"]) == 2

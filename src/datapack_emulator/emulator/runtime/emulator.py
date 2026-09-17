@@ -30,6 +30,7 @@ from datapack_emulator.emulator.runtime.advancements import (
     AdvancementTree,
 )
 from datapack_emulator.emulator.runtime.context import ExecutionContext
+from datapack_emulator.emulator.runtime.debugger import Debugger
 from datapack_emulator.emulator.runtime.library import FunctionLibrary
 from datapack_emulator.emulator.runtime.living import tick_entities
 from datapack_emulator.emulator.runtime.messages import MessageCatalogue, unknown_command
@@ -91,6 +92,8 @@ class Emulator:
         self._pending_load = False
         #: diagnostics already reported this run (see ExecutionContext.note_once)
         self.noted: set[str] = set()
+        #: asked before every function line when set (runtime/debugger.py)
+        self.debugger: Debugger | None = None
 
     # -- advancements -----------------------------------------------------
 
@@ -205,6 +208,8 @@ class Emulator:
         self._pending_load = False
         self.noted.clear()
         self.output.set_tick(None)
+        if self.debugger is not None:
+            self.debugger.reset()
 
     @contextmanager
     def _stack_headroom(self) -> Iterator[None]:
@@ -272,6 +277,8 @@ class Emulator:
                 self.run_scheduled(target)
             tick_entities(self.world, self.version, self._instant_effect)
             self._advancement_triggers()
+        if self.debugger is not None:
+            self.debugger.finished()
 
         elapsed = self.profiler.total_us - start
         self.profiler.record_tick(elapsed)
@@ -380,7 +387,10 @@ class Emulator:
             self.run_tick()
             started = True
         with self._stack_headroom():
-            return (self.run_command(command, self.root_context()), started)
+            result = self.run_command(command, self.root_context())
+        if self.debugger is not None:
+            self.debugger.finished()
+        return (result, started)
 
     def run_command(self, command: Command, context: ExecutionContext) -> CommandResult:
         """Dispatch one command, after checking it exists in this version."""
@@ -458,9 +468,14 @@ class Emulator:
 
         self.profiler.call(function_id)
         self.profiler.enter(function_id)
+        debugger = self.debugger
+        if debugger is not None:
+            debugger.enter(function_id, context)
         try:
             return self._run_function_body(function, function_id, context, macro_arguments)
         finally:
+            if debugger is not None:
+                debugger.leave()
             self.profiler.leave()
 
     def _run_function_body(
@@ -491,6 +506,8 @@ class Emulator:
                         )
                     break  # vanilla aborts the function on an unresolved macro
                 command = expanded
+            if self.debugger is not None:
+                self.debugger.before(command, inner)
             result = self.run_command(command, inner)
             executed += 1
             if result.returned:
