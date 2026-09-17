@@ -42,15 +42,9 @@ A large version matrix runs on the UI thread and freezes the window.
   common functions beyond `set_count`,
   `set_components`, `set_nbt` (`set_name`, `set_lore`, `enchant_randomly`,
   `copy_components`, `set_damage`, …); share them with item modifiers.
-* **Teams, game modes and levels** — the `team`, `gamemode` and `experience`
-  commands, and the `team=`, `gamemode=` and `level=` selector arguments,
-  which currently match everything.
 * **Effects, attributes and bossbars** — store them on entities (and in NBT:
   `active_effects`, `attributes`) so `effect`, `attribute … get` and `bossbar`
   queries return real values.
-* **Commands that return values** — `time query`, `random value|roll` (seeded
-  like the rest of the world), `worldborder get`, `difficulty`, so
-  `execute store result` sees what the game would give.
 * **Entity relations** — `execute on vehicle|passengers|owner|leasher|…` and
   `ride`: keep vehicle/passenger links and owners on entities.
 * **Per-type entity defaults** — `Health`, `Attributes`, `CanPickUpLoot` and
@@ -63,6 +57,8 @@ A large version matrix runs on the UI thread and freezes the window.
   blockstates only list the combinations) so `if block …[facing=north]`
   matches blocks placed without properties; block updates and drops stay
   out of scope.
+* **Time of day clocks (26.x)** — the clock and timeline subcommands of
+  `time` in 26.1+, and the world clocks they read.
 * **Compare against a real server** — start a Fabric + Carpet server for a
   version, run the same pack and tests over RCON with Carpet fake players and
   `/tick step`, and diff what loaded, what failed and what the tests saw

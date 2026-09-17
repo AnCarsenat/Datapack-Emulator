@@ -168,7 +168,9 @@ All four are open by default and can be toggled from *view*.
   world that has not ticked yet runs its first tick first, like a server
   that is up. The command's feedback and errors appear in the logs, and the
   world dock updates.
-* **world** — the current world (scores, entities, storage, blocks), refreshed after runs, steps, tests and typed
+* **world** — the current world (scores, entities, storage, blocks; the label
+  above them gives the game time, counts, the time of day and the weather),
+  refreshed after runs, steps, tests and typed
   commands (a few times a second during a run), with separate filters for
   holders/entities and objectives, and *summon…* / *objective…* buttons.
   Every change made here runs as a command through the command line, so it

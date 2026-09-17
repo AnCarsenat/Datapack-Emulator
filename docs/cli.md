@@ -220,11 +220,11 @@ Runs the pack for `--ticks` ticks (a fresh world, like run all), then each
 | --- | --- |
 | `--version`, `--ticks`, `--players`, `--seed` | as for `run` |
 | `-c`, `--command COMMAND` | run after the ticks (repeatable) |
-| `--scores`, `--entities`, `--storage`, `--blocks` | print only these (default: all four) |
+| `--scores`, `--entities`, `--storage`, `--blocks`, `--state` | print only these (default: all); `--state` is the time, weather, difficulty, world border, spawn, force-loaded chunks and teams |
 | `--nbt` | entities with their NBT |
 | `--holder TEXT`, `--objective TEXT` | filters, like the dock's |
 | `--history HOLDER OBJECTIVE` | every value the score took and at which game time (the *graph over time* data) |
-| `--json` | JSON on standard output — objectives, scores and enabled triggers, entities with NBT, storage, blocks (only the parts and filters asked for), gamerules; with `--history`, the score's changes. Everything else (commands, records) goes to standard error |
+| `--json` | JSON on standard output — objectives, scores and enabled triggers, entities with NBT, storage, blocks, server state (only the parts and filters asked for), gamerules; with `--history`, the score's changes. Everything else (commands, records) goes to standard error |
 | `--level`, `--sources`, … | records printed while it runs (default `warn`), see [records](#records) |
 | `--vanilla`, `--no-vanilla`, `--download` | see [client jars](#client-jars) |
 
@@ -247,7 +247,7 @@ first tick first. Lines starting with a dot control the session:
 | `.run [N]` | a fresh world for N ticks, default `--ticks` (run all, F5); tests during runs that it does not reach are reported |
 | `.reset` | a fresh world |
 | `.tick` | the game time |
-| `.scores [FILTER]`, `.entities [FILTER]`, `.nbt [FILTER]`, `.storage [FILTER]`, `.blocks [FILTER]`, `.world`, `.json` | the world, as `world` prints it |
+| `.scores [FILTER]`, `.entities [FILTER]`, `.nbt [FILTER]`, `.storage [FILTER]`, `.blocks [FILTER]`, `.state`, `.world`, `.json` | the world, as `world` prints it |
 | `.history HOLDER OBJECTIVE` | a score over time |
 | `.explain COMMAND` | analyze a line |
 | `.profile` | the profiler tab's per-tick call tree |

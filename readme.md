@@ -6,7 +6,8 @@ checked against the real base game read out of a `client.jar`.
 
 * emulates `#minecraft:load` / `#minecraft:tick`, scoreboards, selectors,
   `execute`, macros, schedules, storage, entity NBT, inventories and blocks
-  (setblock, fill, clone, containers, block entity data)
+  (setblock, fill, clone, containers, block entity data), teams, game modes,
+  experience, time, weather, the world border and random sequences
 * knows which commands exist in each version from 1.13 to 26.3 (26.3-rc-3), and which
   `pack.mcmeta` overlays apply
 * prints Minecraft's own error messages, kept apart from the app's own logs

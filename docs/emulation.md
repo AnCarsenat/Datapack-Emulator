@@ -73,16 +73,27 @@ Deliberately small: no chunks, physics or block updates.
   horizontally, -64..319 from 1.18 (0..255 before, and in the Nether and the
   End; a pack's own dimensions count as overworld-like).
 * **storage** — `data … storage` compounds.
+* **server state** (`runtime/state.py`) — the time of day (advancing one tick
+  per tick while `doDaylightCycle` is true), weather, difficulty (easy at
+  start), the world border (center, size, damage, warning — a timed change
+  is applied at once), the world spawn, force-loaded chunks, random
+  sequences (seeded from the world seed and their id), the tick rate and
+  frozen flag (kept, but the emulator keeps ticking), and teams with their
+  options and members. Players keep their game mode (`playerGameType`),
+  experience (`XpLevel`, `XpP`, `XpTotal` — the `level` and `xp` criteria
+  follow) and spawn point in their NBT.
 * **gamerules** — stored; `maxCommandChainLength` is enforced.
 
 Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
-`#tags`), `tag` (including `tag=` and `!`), `name`, `scores`, `distance`,
+`#tags`), `tag` (including `tag=` and `!`), `name`, `scores`, `team`
+(`team=` no team, `team=!` any team), `gamemode`, `level`, `x_rotation` /
+`y_rotation` (ranges wrap around), `distance`,
 `x`/`y`/`z` (move the origin), `dx`/`dy`/`dz` (box from the origin),
 `nbt` (vanilla subset matching against `Entity.data()`), `limit`/`c`, `sort`.
 `@s[...]` applies its arguments to the executor.
 
-Not evaluated: `team`, `gamemode`, `level`, `advancements`, `predicate`,
-`x_rotation`, `y_rotation` match every entity, and `nbt` keys the emulator does
+Not evaluated: `advancements` and `predicate` match every entity, and `nbt`
+keys the emulator does
 not store (effects, attributes, …) fail the check. Both produce one emulator
 note per run.
 
@@ -119,6 +130,19 @@ setting through a filter with no match adds the element).
 | `data` | on one entity, block entity or storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data"); a block without a block entity cannot be read ("The target block is not a block entity") |
 | `say me msg tell w tellraw title teammsg` | logged as `game` output, one record per player who reads it: `[Player1] hi` / `* Player1 waves` for everyone (say, me), `to Player2: text` (tellraw), `to Player1 (actionbar): text` (title), `Server whispers to Player2: text` (msg). Each record names its reader (`recipient`). Text components in JSON or (1.21.5+) SNBT, with `score`, `selector`, `nbt` (storage, entity and block) and `translate` (with its `with` arguments, from the client jar's language file, else the fallback) resolved per reader |
 | `gamerule` | |
+| `time` | `set <time>\|day\|noon\|night\|midnight`, `add`, `query daytime\|gametime\|day`, with vanilla's return values (the 26.x clock subcommands are not modelled) |
+| `weather` | `clear\|rain\|thunder [duration]` (seconds before 1.19.3, a time argument after) |
+| `difficulty` | query (returns 0–3) and set ("did not change" when it is the same) |
+| `worldborder` | `get` (rounded size), `set`/`add` (return the change), `center`, `damage amount\|buffer`, `warning distance\|time`, with vanilla's limits and messages |
+| `random` | `value`/`roll <min..max> [sequence]` (roll is announced to everyone), `reset <*\|sequence> [seed] [includeWorldSeed] [includeSequenceId]`; ranges of at least 2 values |
+| `team` | `add [display name]`, `remove`, `empty`, `join`, `leave`, `list [team]`, `modify` (`displayName`, `color`, `friendlyFire`, `seeFriendlyInvisibles`, `nametagVisibility`, `deathMessageVisibility`, `collisionRule`, `prefix`, `suffix`) with the "Nothing changed" errors |
+| `teammsg`, `tm` | to every player on the sender's team: `[Team] <Player1> text`; "You must be on a team" otherwise |
+| `gamemode`, `defaultgamemode` | players only; returns how many changed |
+| `experience`, `xp` | `add\|set <targets> <amount> [levels\|points]`, `query <player> levels\|points`; points past a level carry over; `set … points` above the level's maximum fails |
+| `seed`, `list [uuids]` | the world seed; the players online |
+| `forceload` | `add`/`remove <from> [to]` (at most 256 chunks), `remove all`, `query [pos]` |
+| `setworldspawn`, `spawnpoint` | stored (`SpawnX`… on players) |
+| `tick` | `rate`, `freeze`/`unfreeze`, `query` are kept; `step` and `sprint` are noted |
 
 **Checked, no state change:** `effect`, `particle` validate their id when a
 client jar is loaded ([vanilla-assets.md](vanilla-assets.md)); `give`,
