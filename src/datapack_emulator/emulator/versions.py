@@ -231,6 +231,14 @@ def supports_min_max_format(version: Version) -> bool:
     return version >= parse(MIN_MAX_FORMAT_SINCE)
 
 
+#: ``weather <kind> <duration>`` took seconds before it took a time argument (22w46a)
+WEATHER_TIME_SINCE = "1.19.3"
+
+
+def weather_takes_time(version: Version) -> bool:
+    return version >= parse(WEATHER_TIME_SINCE)
+
+
 #: ``strict`` placement for setblock, fill and clone (25w03a)
 STRICT_PLACEMENT_SINCE = "1.21.5"
 #: the commandModificationBlockLimit gamerule (23w03a); a fixed 32 768 before

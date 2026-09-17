@@ -34,6 +34,8 @@ log = logging.getLogger(__name__)
 
 #: the call tree's root for scheduled functions
 SCHEDULE_ROOT = "<schedule>"
+#: the gamerule that stops the time of day (renamed with the gamerule overhaul)
+DAYLIGHT_RULES = ("doDaylightCycle", "advance_time", "minecraft:advance_time")
 
 
 class Emulator:
@@ -150,6 +152,8 @@ class Emulator:
                 self.run_load()
             game_time = self.world.tick + 1
             self.world.tick = game_time  # schedules made from here on count from here
+            if self.world.rule_enabled(DAYLIGHT_RULES):
+                self.world.state.day_time += 1
             due = [entry for entry in self.schedules if entry[0] <= game_time]
             self.schedules = [entry for entry in self.schedules if entry[0] > game_time]
             for _, target in due:

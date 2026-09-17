@@ -28,6 +28,7 @@ from datapack_emulator.emulator.common import (
 )
 from datapack_emulator.emulator.runtime.blocks import Blocks
 from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory, has_equipment
+from datapack_emulator.emulator.runtime.state import GAME_MODES, ServerState
 
 if TYPE_CHECKING:  # pragma: no cover
     from datapack_emulator.emulator.runtime.context import ExecutionContext
@@ -277,8 +278,17 @@ class World:
         }
         self.tick: int = 0
         self.random = random.Random(seed)
+        #: time of day, weather, difficulty, world border, teams, …
+        self.state = ServerState(seed=seed)
         for index in range(players):
             self.spawn(Entity(type="minecraft:player", name=f"Player{index + 1}", is_player=True))
+
+    def rule_enabled(self, names: tuple[str, ...], default: bool = True) -> bool:
+        """A boolean gamerule under any of its spellings."""
+        for name in names:
+            if name in self.gamerules:
+                return str(self.gamerules[name]).lower() == "true"
+        return default
 
     # -- entities ---------------------------------------------------------
 
@@ -375,6 +385,30 @@ class World:
         for raw in arguments.get("scores", []):
             if not self._matches_scores(entity, raw):
                 return False
+        for raw in arguments.get("team", []):
+            negated = raw.startswith("!")
+            wanted = raw.lstrip("!").strip()
+            team = self.state.team_of(entity.id)
+            if not wanted:  # `team=` is on no team, `team=!` on any team
+                if (team is not None) != negated:
+                    return False
+            elif (team is not None and team.name == wanted) == negated:
+                return False
+        for raw in arguments.get("gamemode", []):
+            negated = raw.startswith("!")
+            mode = raw.lstrip("!").strip()
+            if not entity.is_player:
+                return False
+            if (_game_mode(entity) == mode) == negated:
+                return False
+        for raw in arguments.get("level", []):
+            level = entity.nbt.get("XpLevel", 0) if entity.is_player else None
+            if level is None or not in_range(level, raw):
+                return False
+        for key, axis in (("x_rotation", 1), ("y_rotation", 0)):
+            for raw in arguments.get(key, []):
+                if not _in_wrapped_range(entity.rotation[axis], raw):
+                    return False
         origin = _selector_origin(selector, context)
         for raw in arguments.get("distance", []):
             distance = distance_squared(entity.position, origin) ** 0.5
@@ -420,9 +454,33 @@ class World:
 
 
 #: selector arguments the world model has nothing to check against
-UNMODELLED_SELECTOR_ARGUMENTS = frozenset(
-    {"team", "gamemode", "level", "advancements", "predicate", "x_rotation", "y_rotation"}
-)
+UNMODELLED_SELECTOR_ARGUMENTS = frozenset({"advancements", "predicate"})
+
+
+def _game_mode(entity: Entity) -> str:
+    index = entity.nbt.get("playerGameType", 0)
+    return GAME_MODES[index] if isinstance(index, int) and 0 <= index < 4 else "survival"
+
+
+def _wrap_degrees(value: float) -> float:
+    return (value + 180.0) % 360.0 - 180.0
+
+
+def _in_wrapped_range(value: float, expression: str) -> bool:
+    """``x_rotation``/``y_rotation``: bounds wrap around like angles
+    (``170..-170`` is the 20 degrees around the back)."""
+    low, sep, high = expression.strip().partition("..")
+    try:
+        if not sep:
+            return _wrap_degrees(float(expression)) == _wrap_degrees(value)
+        angle = _wrap_degrees(value)
+        lower = _wrap_degrees(float(low)) if low else -180.0
+        upper = _wrap_degrees(float(high)) if high else 180.0
+    except ValueError:
+        return False
+    if lower > upper:
+        return angle >= lower or angle <= upper
+    return lower <= angle <= upper
 
 
 def _float_argument(selector: Selector, key: str) -> float | None:
