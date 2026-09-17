@@ -127,7 +127,9 @@ def drop(context: ExecutionContext, position: list[float], stack: ItemStack) -> 
     while remaining > 0:
         count = min(remaining, stack.max_count)
         remaining -= count
-        entity = Entity(type="minecraft:item", position=list(position))
+        entity = Entity(
+            type="minecraft:item", uuid=context.world.new_uuid(), position=list(position)
+        )
         entity.nbt = {
             "Item": stack.copy(count).to_nbt(context.emulator.version),
             "PickupDelay": 10,

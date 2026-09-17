@@ -45,6 +45,8 @@ class SnapshotController(Controller):
         if window.emulator is None:
             self.status("run, step or type a command first")
             return None
+        if window.debug.busy():  # a half-run tick is not a world to come back to
+            return None
         snapshot = capture(window.emulator, label)
         self.snapshots.append(snapshot)
         self.fill()
@@ -60,18 +62,38 @@ class SnapshotController(Controller):
         if window.emulator is None or len(chosen) != 1:
             self.status("select one snapshot to rewind to")
             return
+        if window.debug.busy():  # the stopped tick would go on in the restored world
+            return
+        schedule = window.runs.schedule
         window.runs.stop(refresh=False)
+        if schedule is not None:  # the tests of the abandoned run never ran
+            window.environment.show_results(schedule.by_index())
+        else:  # the results are of ticks that are being undone (the shell too)
+            window.environment.show_results({})
         restore(window.emulator, chosen[0])
+        shown = self._shown(chosen[0])
+        window.output.app(f"rewound to {shown}: game time {window.emulator.world.tick}")
         window.log_view.flush()
         window.runs.show_tick()
         window.world_view.refresh()
         window.runs.run_profiler(switch_tab=False)
-        self.status(f"rewound to {chosen[0].name}: game time {window.emulator.world.tick}")
+        self._forget_comparison()
+        self.status(f"rewound to {shown}: game time {window.emulator.world.tick}")
 
     def remove_selected(self) -> None:
         chosen = self.selected()
         self.snapshots = [snapshot for snapshot in self.snapshots if snapshot not in chosen]
+        self._forget_comparison()
         self.fill()
+
+    def _shown(self, snapshot: Snapshot) -> str:
+        """Its number and name: two snapshots may share a name."""
+        return f"{self.snapshots.index(snapshot) + 1}. {snapshot.name}"
+
+    def _forget_comparison(self) -> None:
+        """The changes shown are of snapshots or a world that are gone."""
+        self.changes.clear()
+        self.label.setText("take a snapshot, run, then compare")
 
     # -- comparing -------------------------------------------------------------
 
@@ -88,12 +110,13 @@ class SnapshotController(Controller):
             if window.emulator is None:
                 self.status("no world to compare with")
                 return
-            before, after = chosen[0], capture(window.emulator)
+            # the world as it is: comparing it does not copy it
+            before, after = chosen[0], window.emulator.world
             where = "the world now"
         else:
             order = {id(snapshot): index for index, snapshot in enumerate(self.snapshots)}
             before, after = sorted(chosen, key=lambda snapshot: order[id(snapshot)])
-            where = after.name
+            where = self._shown(after)
         changes = compare(before, after, window.version)
         self.changes.clear()
         for change in changes:
@@ -102,12 +125,13 @@ class SnapshotController(Controller):
             self.changes.addTopLevelItem(item)
         for column in (KIND_COLUMN, BEFORE_COLUMN):
             self.changes.resizeColumnToContents(column)
-        self.label.setText(f"{before.name} → {where}: {len(changes)} change(s)")
+        self.label.setText(f"{self._shown(before)} → {where}: {len(changes)} change(s)")
         self.status(self.label.text())
 
     # -- the list ---------------------------------------------------------------
 
     def fill(self) -> None:
+        kept = self.selected()
         self._filling = True
         try:
             self.tree.clear()
@@ -125,8 +149,13 @@ class SnapshotController(Controller):
                 item.setData(0, SNAPSHOT_ROLE, snapshot)
                 item.setToolTip(0, "double-click to name it")
                 self.tree.addTopLevelItem(item)
+                if snapshot in kept:  # a rename or a removal keeps the selection
+                    item.setSelected(True)
             for column in (0, 1):
                 self.tree.resizeColumnToContents(column)
+            last = self.tree.topLevelItem(self.tree.topLevelItemCount() - 1)
+            if last is not None:
+                self.tree.scrollToItem(last)
         finally:
             self._filling = False
         self.rewind_button.setEnabled(bool(self.snapshots))
@@ -134,17 +163,22 @@ class SnapshotController(Controller):
         self.remove_button.setEnabled(bool(self.snapshots))
 
     def _renamed(self, item: QTreeWidgetItem, column: int) -> None:
-        if self._filling or column != 0:
+        # every column is editable (Qt flags are per item), but only the name
+        # is kept; filling again puts the other columns back
+        if self._filling:
             return
         snapshot = item.data(0, SNAPSHOT_ROLE)
         if snapshot is not None:
-            snapshot.label = item.text(0).strip()
+            if column == 0:
+                snapshot.label = item.text(0).strip()
             self.fill()
 
     def forget(self) -> None:
-        """A new world (another pack or version): the old snapshots are gone."""
+        """A new world (a run, another pack or another version): the old
+        snapshots belong to a world that is gone (the shell says the same)."""
         if self.snapshots:
+            count = len(self.snapshots)
             self.snapshots = []
-            self.changes.clear()
-            self.label.setText("take a snapshot, run, then compare")
+            self._forget_comparison()
             self.fill()
+            self.status(f"{count} snapshot(s) forgotten: this is a new world")

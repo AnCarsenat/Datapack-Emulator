@@ -256,12 +256,18 @@ def world_to_dict(world: World, version=None) -> dict[str, Any]:
         "state": {
             "day_time": world.state.day_time,
             "weather": world.state.weather,
+            "weather_duration": world.state.weather_duration,
             "difficulty": world.state.difficulty,
+            "default_game_mode": world.state.default_game_mode,
+            "tick_rate": world.state.tick_rate,
+            "frozen": world.state.frozen,
+            "seed": world.state.seed,
             "border": {
                 "center": list(world.state.border.center),
                 "size": world.state.border.size,
             },
             "spawn": list(world.state.spawn),
+            "spawn_angle": world.state.spawn_angle,
             "forced_chunks": {
                 dimension: sorted(map(list, chunks))
                 for dimension, chunks in world.state.forced_chunks.items()
@@ -278,9 +284,28 @@ def world_to_dict(world: World, version=None) -> dict[str, Any]:
                 team.name: {
                     "display_name": team.display_name or team.name,
                     "color": team.color,
+                    "friendly_fire": team.friendly_fire,
+                    "see_friendly_invisibles": team.see_friendly_invisibles,
+                    "nametag_visibility": team.nametag_visibility,
+                    "death_message_visibility": team.death_message_visibility,
+                    "collision_rule": team.collision_rule,
+                    "prefix": team.prefix,
+                    "suffix": team.suffix,
                     "members": list(team.members),
                 }
                 for team in world.state.teams.values()
+            },
+            "bossbars": {
+                bar.id: {
+                    "name": bar.name,
+                    "color": bar.color,
+                    "style": bar.style,
+                    "value": bar.value,
+                    "max": bar.max,
+                    "visible": bar.visible,
+                    "players": list(bar.players),
+                }
+                for bar in world.state.bossbars.values()
             },
         },
     }

@@ -244,14 +244,20 @@ All six are open by default and can be toggled from *view*.
     its block entity data as a tree; double-click a value to change it
     (`data modify block`).
   * *snapshots*: worlds kept aside. *take* keeps the world as it is (entities,
-    blocks, scores, storage, server state, advancement progress and the
-    schedules); double-click a row to name it. *rewind* puts the selected one
-    back and the world goes on from there (the pack is not reloaded, so the
-    version and the profiler stay). *compare* shows what changed between two
-    selected snapshots, or between one and the world now — scores,
-    objectives, entities and their NBT, storage, blocks, gamerules and the
-    server state, as *before → after*. A new world (another pack or version)
-    forgets them; they are not saved with the project.
+    blocks, scores, storage, server state, advancement progress, the
+    schedules and the profiler); double-click a row to name it. *rewind* puts
+    the selected one back and the world goes on from there: the pack is not
+    reloaded (the version stays), and the profiler's ticks go back with the
+    world, so its averages match what is on screen. *compare* shows what
+    changed between two selected snapshots, or between one and the world now
+    — scores, objectives, triggers, entities and their NBT, storage, blocks
+    and their block entity data, gamerules and each field of the server
+    state, as *before → after*. Snapshots belong to the world they were taken
+    in: anything that builds a new world (a run, a reload, another pack or
+    another version) forgets them, as the shell does; they are not saved with
+    the project. Taking one or rewinding is refused while the debugger is
+    stopped. Each snapshot is a full copy of the world, so a big world costs
+    memory (and a moment) per snapshot; *remove* frees them.
 
 * **debugger** <a id="debugger-dock"></a> — breakpoints, stepping and
   watches ([command line](cli.md#the-debugger): the shell's `.break`,
