@@ -42,17 +42,10 @@ A large version matrix runs on the UI thread and freezes the window.
   common functions beyond `set_count`,
   `set_components`, `set_nbt` (`set_name`, `set_lore`, `enchant_randomly`,
   `copy_components`, `set_damage`, …); share them with item modifiers.
-* **Effects, attributes and bossbars** — store them on entities (and in NBT:
-  `active_effects`, `attributes`) so `effect`, `attribute … get` and `bossbar`
-  queries return real values.
-* **Entity relations** — `execute on vehicle|passengers|owner|leasher|…` and
-  `ride`: keep vehicle/passenger links and owners on entities.
-* **Per-type entity defaults** — `Health`, `Attributes`, `CanPickUpLoot` and
-  friends by entity type (from the jar's data where possible), so
-  `data get entity` on a zombie looks like the game's.
-* **Entity behaviour over time** — item entities merging, despawning after
-  6000 ticks and being picked up by players; projectiles and falling blocks
-  are probably out of scope.
+* **Entity data from the game** — maximum health and base attributes by
+  type are a table in the code; the game has them only in code, so a
+  generated table per version (like `version_data.py`) would be the next
+  step. Regeneration, hunger and effects' side effects stay out of scope.
 * **Default block states** — read each block's default state (the jar's
   blockstates only list the combinations) so `if block …[facing=north]`
   matches blocks placed without properties; block updates and drops stay

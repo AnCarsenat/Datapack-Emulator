@@ -33,6 +33,8 @@ src/datapack_emulator/     the package (standard src layout)
       state.py             time, weather, difficulty, worldborder, random, seed, list,
                            tick, forceload, setworldspawn, spawnpoint
       players.py           gamemode, defaultgamemode, experience, team, teammsg
+      living.py            effect, attribute, damage, ride
+      bossbar.py           bossbar
       misc.py              commands that only check their ids (effect), noop
       registry.py          CommandSet: what exists in a version, who runs it
     runtime/
@@ -41,6 +43,7 @@ src/datapack_emulator/     the package (standard src layout)
       world.py             Entity, Scoreboard, World, selector resolution
       blocks.py            Block, BlockPredicate, Blocks: the sparse block world
       state.py             ServerState: time, weather, border, teams, random sequences
+      living.py            Living (attributes, effects), health, item entities each tick
       inventory.py         ItemStack, Inventory, item parsing, per-version item NBT
       loot.py              loot table evaluation for the loot command
       context.py           ExecutionContext (the command source; silent in functions)
