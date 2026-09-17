@@ -524,6 +524,9 @@ def test_engine_window_runs_the_environment_tests(window, make_pack):
     engine.select_ids(["1.20.4", "1.21.4"])
     engine.check_run_tests.setChecked(True)
     engine.run_matrix()
+    assert engine.running and not engine.button_run.isEnabled()
+    engine.wait()
+    assert not engine.running and engine.button_run.isEnabled()
     assert [run.tests_summary for run in engine._runs] == ["0/1", "1/1"]
     assert engine._runs[0].status in ("errors", "tests failed")
     headers = [
@@ -1147,3 +1150,46 @@ def test_debugger_stops_steps_and_keeps_breakpoints(app, window, make_pack, tmp_
     assert debug.debugger.breakpoints[("test:tick", 3)].condition == "if score #t n matches 5"
     assert not debug.debugger.breakpoints[("test:inner", 2)].enabled
     assert debug.tree_watches.topLevelItemCount() == 0
+
+
+def test_engine_window_runs_in_the_background_and_cancels(window, make_pack):
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "say hi\n",
+        }
+    )
+    window.datapacks.load(pack)
+    window.runs.open_engine()
+    engine = window.engine_window
+    engine.select_ids(["1.20.4", "1.21.4", "1.21.5"])
+    engine.spin_ticks.setValue(engine.spin_ticks.maximum())
+    engine.run_matrix()
+    engine.run_matrix()  # a second run waits for the first
+    assert "cancel it first" in engine.statusBar().currentMessage()
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    deadline = time.monotonic() + 10
+    while not engine.statusBar().currentMessage().startswith("["):
+        assert time.monotonic() < deadline
+        QApplication.processEvents()
+        time.sleep(0.005)
+    time.sleep(0.1)  # a few ticks
+    engine.cancel(wait=True)
+    assert not engine.running
+    assert engine._runs[-1].status == "cancelled"
+    assert engine._runs[-1].ticks < engine.spin_ticks.maximum()
+    not_run = 3 - len(engine._runs)
+    assert not_run >= 1
+    assert f"cancelled: {len(engine._runs)} version(s)" in engine.statusBar().currentMessage()
+    assert f"{not_run} version(s) not run" in engine.statusBar().currentMessage()
+    # a finished run reports every version
+    engine.spin_ticks.setValue(2)
+    engine.run_matrix()
+    engine.wait()
+    assert [run.status for run in engine._runs] != [] and len(engine._runs) == 3
+    assert all(run.ticks == 2 for run in engine._runs)
+    assert engine.statusBar().currentMessage().startswith("done: 3 version(s)")
+    engine.close()

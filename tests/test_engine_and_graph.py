@@ -95,3 +95,22 @@ def test_multi_version_packs_are_not_warned_for_their_legacy_forms(make_pack):
 
     assert folder_notes(spanning) == [LogLevel.INFO]
     assert folder_notes(only_modern) == [LogLevel.WARNING]
+
+
+def test_engine_runs_can_be_cancelled(make_pack):
+    from datapack_emulator.emulator import Datapack
+    from datapack_emulator.emulator.engine import TestEngine
+
+    pack = Datapack.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}))
+    engine = TestEngine(pack, ticks=10)
+    calls = []
+
+    def cancelled():
+        calls.append(1)
+        return len(calls) > 4
+
+    runs = engine.run(["1.20.4", "1.21.4"], cancelled=cancelled)
+    assert len(runs) == 1
+    assert runs[0].cancelled and runs[0].status == "cancelled" and runs[0].ticks == 3
+    assert any("cancelled after 3 tick(s)" in record.message for record in runs[0].records)
+    assert engine.run(["1.20.4"], cancelled=lambda: True) == []

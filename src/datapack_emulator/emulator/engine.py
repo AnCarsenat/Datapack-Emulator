@@ -34,6 +34,8 @@ from datapack_emulator.emulator.vanilla import VanillaAssets, VanillaLibrary
 from datapack_emulator.emulator.versions import Version
 
 Progress = Callable[[int, int, Version], None]
+#: asked between ticks and versions; True ends the run early
+Cancelled = Callable[[], bool]
 
 
 @dataclass
@@ -61,6 +63,8 @@ class VersionRun:
     graph: CallGraph | None = None
     #: command tests run during the ticks, when the engine was given any
     tests: list[TestResult] = field(default_factory=list)
+    #: the run was cancelled before its last tick (``ticks`` says how far it got)
+    cancelled: bool = False
 
     # -- summaries --------------------------------------------------------
 
@@ -95,11 +99,13 @@ class VersionRun:
 
     @property
     def status(self) -> str:
-        """errors > tests failed > warnings > unsupported > ok.
+        """cancelled > errors > tests failed > warnings > unsupported > ok.
 
         "unsupported" only means the pack's metadata does not claim this version:
         the game still loads it, so real problems take precedence.
         """
+        if self.cancelled:
+            return "cancelled"
         if self.errors:
             return "errors"
         if self.tests_passed < len(self.tests):
@@ -172,7 +178,12 @@ class TestEngine:
 
     # -- running ----------------------------------------------------------
 
-    def run_version(self, version: str | Version, output: OutputBus | None = None) -> VersionRun:
+    def run_version(
+        self,
+        version: str | Version,
+        output: OutputBus | None = None,
+        cancelled: Cancelled | None = None,
+    ) -> VersionRun:
         version = versions.parse(version)
         bus = output or OutputBus()
         first_record = len(bus.records)
@@ -212,9 +223,15 @@ class TestEngine:
         emulator.start()
         if self.ticks <= 0:
             emulator.run(ticks=0)
+        done = 0
         for _ in range(self.ticks):
+            if cancelled is not None and cancelled():
+                run.cancelled = True
+                bus.app(f"cancelled after {done} tick(s)", version=version.id)
+                break
             tick = emulator.world.tick
             emulator.run_tick()
+            done += 1
             if schedule is not None:
                 schedule.after_tick(emulator, tick)
         if schedule is not None:
@@ -237,7 +254,7 @@ class TestEngine:
         graph = CallGraph.from_pack(view)
         run.profiler = emulator.profiler
         run.graph = graph
-        run.ticks = self.ticks
+        run.ticks = done
         run.commands = int(sum(entry["commands"] for entry in emulator.profiler.entries.values()))
         run.total_us = emulator.profiler.total_us
         run.worst_tick_us = emulator.profiler.worst_tick_us
@@ -252,7 +269,10 @@ class TestEngine:
         version_list: Iterable[str | Version] | None = None,
         progress: Progress | None = None,
         output: OutputBus | None = None,
+        cancelled: Cancelled | None = None,
     ) -> list[VersionRun]:
+        """One run per version, in order. A cancelled run is kept (marked) and
+        the versions after it are skipped."""
         chosen = (
             [versions.parse(item) for item in version_list]
             if version_list is not None
@@ -260,9 +280,14 @@ class TestEngine:
         )
         results: list[VersionRun] = []
         for index, version in enumerate(chosen, start=1):
+            if cancelled is not None and cancelled():
+                break
             if progress is not None:
                 progress(index, len(chosen), version)
-            results.append(self.run_version(version, output=output))
+            run = self.run_version(version, output=output, cancelled=cancelled)
+            results.append(run)
+            if run.cancelled:
+                break
         return results
 
     # -- static checks ----------------------------------------------------
@@ -341,6 +366,7 @@ class TestEngine:
             "errors": "#c0392b",
             "unsupported": "#7f8c8d",
             "tests failed": "#8e44ad",
+            "cancelled": "#555555",
         }
         for run in results:
             rows.append(

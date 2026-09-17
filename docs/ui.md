@@ -300,8 +300,15 @@ way to cover a wide range), all/none, or tick versions by hand; plus ticks,
 players and seed. *run tests* also runs the environment tab's tests in every
 version, each in its tick.
 
+*run matrix* runs the versions one after another on a background thread,
+so the window stays usable: rows appear as each version finishes, and the
+progress bar and status bar follow. *cancel* stops after the current tick —
+the versions that ran stay, the one running shows as `cancelled` with the
+ticks it reached, and the rest are skipped. While a run goes, the selection
+and settings are locked; closing the window or switching the pack cancels it.
+
 Right, top: one row per version — format, status (`ok`, `warnings`,
-`errors`, `tests failed`, `unsupported`), commands run, total and worst-tick
+`errors`, `tests failed`, `unsupported`, `cancelled`), commands run, total and worst-tick
 time, counts, tests passed (`3/4`), unknown commands, active overlays.
 
 Right, bottom: the records of the selected version, with the same source /

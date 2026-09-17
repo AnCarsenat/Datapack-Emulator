@@ -19,6 +19,7 @@ from datapack_emulator.cli.common import (
     chosen_versions,
     count,
     err,
+    interruptible,
     library_for,
     load_inputs,
     parse_version,
@@ -299,7 +300,8 @@ def command_matrix(arguments: argparse.Namespace) -> int:
     warn_unreached(tests, ticks)
     engine = engine_for(arguments, inputs, tests, ticks)
     bus = printing_bus(arguments) if arguments.verbose else None
-    results = engine.run(chosen, progress=progress, output=bus)
+    with interruptible() as interrupt:
+        results = engine.run(chosen, progress=progress, output=bus, cancelled=interrupt)
 
     print(
         f"\n{'version':10} {'format':7} {'status':12} {'cmds':>6} {'total ms':>9} "
@@ -323,6 +325,8 @@ def command_matrix(arguments: argparse.Namespace) -> int:
     print(f"\nmatrix report: {report}")
     if arguments.junit is not None:
         print(f"junit report: {write_junit(results, arguments.junit, inputs.datapack.name)}")
+    if cancelled_note(results, len(chosen)):
+        return FAILED
     if arguments.strict and any(run.status in ("errors", "tests failed") for run in results):
         return FAILED
     return OK
@@ -415,11 +419,13 @@ def command_test(arguments: argparse.Namespace) -> int:
     single = vanilla_for(arguments, chosen[0], inputs) if len(chosen) == 1 else None
     engine = engine_for(arguments, inputs, tests, ticks, vanilla=single)
     bus = printing_bus(arguments) if arguments.verbose else None
-    results: list[VersionRun] = []
-    for index, version in enumerate(chosen, start=1):
-        if len(chosen) > 1:
-            progress(index, len(chosen), version)
-        results.append(engine.run_version(version, output=bus))
+    progress_of = progress if len(chosen) > 1 else None
+    with interruptible() as interrupt:
+        results = engine.run(chosen, progress=progress_of, output=bus, cancelled=interrupt)
+    if not results:
+        err("stopped before the first version ran")
+        return FAILED
+    stopped = cancelled_note(results, len(chosen))
 
     failed = 0
     for run in results:
@@ -431,7 +437,19 @@ def command_test(arguments: argparse.Namespace) -> int:
     print(f"\n{total - failed}/{total} passed {where}")
     if arguments.junit:
         print(f"junit report: {write_junit(results, arguments.junit, inputs.datapack.name)}")
-    return FAILED if failed else OK
+    return FAILED if failed or stopped else OK
+
+
+def cancelled_note(results: list[VersionRun], chosen: int) -> bool:
+    """Say when Ctrl+C cut the run short; whether it did."""
+    if not results or not results[-1].cancelled:
+        return False
+    run = results[-1]
+    err(
+        f"stopped: {run.version.id} after {run.ticks} tick(s); "
+        f"{chosen - len(results)} version(s) not run"
+    )
+    return True
 
 
 def register_test(subparsers) -> None:

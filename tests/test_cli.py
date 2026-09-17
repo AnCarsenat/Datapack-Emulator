@@ -881,3 +881,35 @@ def test_project_debug_edits_breakpoints_and_watches(make_pack, tmp_path, capsys
     assert "    score #ticks t = 1" not in out and "  score #ticks t = 1" in out
     assert Project.load(Path(path)).breakpoints == []
     assert Project.load(Path(path)).watches == ["score #ticks t"]
+
+
+def test_ctrl_c_stops_a_matrix_after_the_current_tick(make_pack, capsys, monkeypatch):
+    import signal
+
+    from datapack_emulator.cli.common import interruptible
+    from datapack_emulator.emulator.runtime.emulator import Emulator
+
+    with interruptible() as interrupt:
+        assert not interrupt()
+        signal.raise_signal(signal.SIGINT)
+        assert interrupt()
+        with pytest.raises(KeyboardInterrupt):
+            signal.raise_signal(signal.SIGINT)
+    assert "stopping after this tick" in capsys.readouterr().err
+
+    ticks = []
+    original = Emulator.run_tick
+
+    def run_tick(self):
+        ticks.append(1)
+        if len(ticks) == 3:
+            signal.raise_signal(signal.SIGINT)
+        return original(self)
+
+    monkeypatch.setattr(Emulator, "run_tick", run_tick)
+    pack = str(_pack(make_pack))
+    code = main(["matrix", pack, "--versions", "1.20.4", "1.21.4", "--ticks", "10", "--no-vanilla"])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "stopped: 1.20.4 after 3 tick(s); 1 version(s) not run" in captured.err
+    assert "cancelled" in captured.out and "1.21.4" not in captured.out.split("matrix report")[0]

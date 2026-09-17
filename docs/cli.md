@@ -128,7 +128,11 @@ a project ticked in the engine window, otherwise every known version.
 | `--verbose` | print every version's records as they come (the engine window's lower pane), filtered as in [records](#records) |
 
 Output is one row per version: format, status, commands, total ms, worst ms,
-warnings, errors, tests passed, unknown commands, overlays. See
+warnings, errors, tests passed, unknown commands, overlays. The first Ctrl+C
+stops after the current tick, like the engine window's *cancel*: the
+versions that ran are reported (the current one as `cancelled`), the
+command exits with `1`, and a second Ctrl+C quits at once. `test` does the
+same. See
 [engine.md](engine.md).
 
 ## `test` — a project's tests

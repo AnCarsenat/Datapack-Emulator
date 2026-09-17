@@ -4,9 +4,12 @@ choosing versions, printing records."""
 from __future__ import annotations
 
 import argparse
+import contextlib
+import signal
 import sys
+import threading
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
@@ -32,6 +35,39 @@ OK = 0
 FAILED = 1
 USAGE = 2
 CRASHED = 3
+
+
+class Interrupt:
+    """Whether Ctrl+C was pressed (see ``interruptible``)."""
+
+    def __init__(self) -> None:
+        self.requested = False
+
+    def __call__(self) -> bool:
+        return self.requested
+
+
+@contextlib.contextmanager
+def interruptible() -> Iterator[Interrupt]:
+    """The first Ctrl+C asks a long run to stop at its next tick, so what ran
+    is still reported (as the engine window's *cancel* does); a second one
+    interrupts at once."""
+    interrupt = Interrupt()
+    if threading.current_thread() is not threading.main_thread():
+        yield interrupt
+        return
+
+    def handler(_signum, _frame) -> None:
+        if interrupt.requested:
+            raise KeyboardInterrupt
+        interrupt.requested = True
+        err("stopping after this tick (Ctrl+C again to quit at once)")
+
+    previous = signal.signal(signal.SIGINT, handler)
+    try:
+        yield interrupt
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 class CliError(Exception):

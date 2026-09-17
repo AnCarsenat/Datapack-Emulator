@@ -24,8 +24,8 @@ COLUMNS = (
 COLUMN_HELP = {
     "version": "the Minecraft version this row ran",
     "format": "its pack format",
-    "status": "errors › tests failed › warnings › unsupported (the metadata does not claim this "
-    "version; it still loads) › ok",
+    "status": "cancelled (stopped before its last tick) › errors › tests failed › warnings › "
+    "unsupported (the metadata does not claim this version; it still loads) › ok",
     "commands": "commands run in all ticks",
     "total ms": "estimated time of every tick together (a cost model, not a measurement)",
     "worst ms": "estimated time of the slowest tick; 50 ms is a whole tick",
@@ -41,6 +41,7 @@ STATUS_COLOURS = {
     "warnings": QColor("#b9770e"),
     "errors": QColor("#c0392b"),
     "unsupported": QColor("#7f8c8d"),
+    "cancelled": QColor("#555555"),
     "tests failed": QColor("#8e44ad"),
 }
 

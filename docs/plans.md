@@ -6,15 +6,7 @@ Nothing here is promised; cross an entry out (or delete it) once it lands.
 
 ## Recommended next
 
-### 1. Run the engine window in the background
-
-A large version matrix runs on the UI thread and freezes the window.
-
-* **Touches:** `window/engine_window.py`, `ui` progress and a cancel button.
-* **How:** a `QThread` worker like the client-jar download; results come back
-  version by version through signals; the output bus of each run stays
-  per-worker.
-* **Size:** small to medium.
+Nothing is queued here right now; take the next item from the lists below.
 
 ## Reported
 

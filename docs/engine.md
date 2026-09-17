@@ -57,7 +57,8 @@ for run in engine.run(chosen):
 | `missing_functions`, `unreachable`, `cycles` | from the call graph |
 | `profiler`, `graph` | the full objects |
 | `tests`, `tests_passed`, `tests_summary` | the command tests' results, and `"3/4"` (or `-` without tests) |
-| `status` | `errors` › `tests failed` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
+| `cancelled` | the run was stopped before its last tick (`ticks` is how many ran) |
+| `status` | `cancelled` › `errors` › `tests failed` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
 | `warnings`, `errors`, `chat`, `count(source, level)` | summaries |
 
 ## Choosing versions
@@ -67,6 +68,13 @@ for run in engine.run(chosen):
 | `pack.declared_versions()` | what `pack.mcmeta` claims |
 | `TestEngine.version_range(a, b)` | inclusive range |
 | `TestEngine.format_boundaries(list)` | first release of each pack format |
+
+`engine.run(versions, progress=…, output=…, cancelled=…)` runs them in order.
+`cancelled` is asked before each version and between ticks; once it answers
+`True`, the current run stops (it is kept, marked `cancelled`) and the rest
+are skipped. `run_version` takes the same callback. The engine window runs
+the engine on a worker thread and its *cancel* button sets it; the command
+line's first Ctrl+C does.
 
 `engine.run()` with no list uses the declared versions, or the newest release
 at or below `pack_format` (`versions.closest_to_pack_format`) when nothing is

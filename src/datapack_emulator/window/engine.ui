@@ -234,6 +234,19 @@ selection-background-color: rgb(228, 251, 255);</string>
           </widget>
          </item>
          <item>
+          <widget class="QPushButton" name="buttonCancel">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="toolTip">
+            <string>stop after the current tick; the versions that ran (and how far the current one got) stay in the table</string>
+           </property>
+           <property name="text">
+            <string>cancel</string>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QPushButton" name="buttonExport">
            <property name="toolTip">
             <string>write the results table as generated/&lt;pack&gt;-matrix.html</string>
