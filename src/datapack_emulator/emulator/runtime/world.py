@@ -1,8 +1,8 @@
 """The emulated server state: entities, scoreboards, storage, selectors.
 
-Deliberately small — no blocks, no chunks, no physics.  Enough to make
-selectors, scores, tags and NBT behave, which is what datapack logic is built
-out of.
+Deliberately small — no chunks, no physics, blocks only where commands put
+them (see :mod:`runtime.blocks`).  Enough to make selectors, scores, tags, NBT
+and blocks behave, which is what datapack logic is built out of.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from datapack_emulator.emulator.common import (
     parse_snbt,
     split_arguments,
 )
+from datapack_emulator.emulator.runtime.blocks import Blocks
 from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory, has_equipment
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -263,10 +264,11 @@ class Scoreboard:
 
 
 class World:
-    """Entities, scoreboard, command storage and gamerules."""
+    """Entities, blocks, scoreboard, command storage and gamerules."""
 
     def __init__(self, players: int = 1, seed: int = 0) -> None:
         self.entities: list[Entity] = []
+        self.blocks = Blocks()
         self.scoreboard = Scoreboard(clock=lambda: self.tick)
         self.storage: dict[str, dict[str, Any]] = {}
         self.gamerules: dict[str, str] = {
