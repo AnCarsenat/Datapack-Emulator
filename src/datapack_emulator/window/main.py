@@ -54,6 +54,7 @@ from datapack_emulator.window.controllers import (
     ProjectController,
     RunController,
     SessionController,
+    SnapshotController,
     WorldController,
 )
 from datapack_emulator.window.controllers.base import (
@@ -102,6 +103,7 @@ class MainWindow(QMainWindow):
         self.debug = DebugController(self)
         self.problems = ProblemsController(self)
         self.editor = EditorController(self)
+        self.snapshots = SnapshotController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -116,6 +118,7 @@ class MainWindow(QMainWindow):
             self.debug,
             self.problems,
             self.editor,
+            self.snapshots,
         ):
             controller.connect()
         self._wire_actions()

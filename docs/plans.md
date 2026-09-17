@@ -49,9 +49,6 @@ Nothing is queued here right now; take the next item from the lists below.
 * **Smarter editing** — the source view edits and checks lines as you
   type; completion of commands, ids and selector options, and renaming a
   function across the pack, would come next.
-* **World snapshots** — save the world at a tick, rewind to it, and compare two
-  snapshots (scores, entities, storage, inventories) to see what a tick
-  changed.
 * **Profiler** — the most expensive individual commands, comparing two runs
   (before/after a change), and a flame graph of the call tree.
 * **Installed copies** — ship a default pack inside the package (today the

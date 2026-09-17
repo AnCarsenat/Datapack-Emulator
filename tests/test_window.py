@@ -1614,3 +1614,58 @@ def test_source_view_edits_save_and_check_lines(app, window, make_pack, monkeypa
     image.write_bytes(b"\x89PNG")
     navigation.show_source(image)
     assert edit.isReadOnly()
+
+
+def test_world_snapshots_rewind_and_compare(app, window, make_pack):
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add t dummy\n",
+            "data/test/function/tick.mcfunction": "scoreboard players add #ticks t 1\n",
+        }
+    )
+    window.datapacks.load(pack)
+    snapshots = window.snapshots
+    window.runs.step()
+    first = snapshots.take("start")
+    assert first is not None and snapshots.tree.topLevelItemCount() == 1
+    window.console.run("summon pig 1 2 3")
+    window.runs.step()
+    snapshots.take()
+    assert [s.name for s in snapshots.snapshots] == ["start", "tick 2"]
+
+    # compare the two, then rewind to the first
+    snapshots.tree.selectAll()
+    snapshots.compare_selected()
+    rows = [
+        snapshots.changes.topLevelItem(row).text(0)
+        for row in range(snapshots.changes.topLevelItemCount())
+    ]
+    assert "state game time" in rows and "score #ticks t" in rows
+    assert any(row.startswith("entity ") for row in rows)
+    assert "2 change(s)" not in snapshots.label.text()
+    snapshots.tree.clearSelection()
+    snapshots.tree.topLevelItem(0).setSelected(True)
+    snapshots.rewind()
+    world = window.emulator.world
+    assert world.tick == 1 and world.scoreboard.get("#ticks", "t") == 1
+    assert not [e for e in world.entities if not e.is_player]
+    assert "rewound to start" in window.statusBar().currentMessage()
+    # the world goes on from there
+    window.runs.step()
+    assert window.emulator.world.scoreboard.get("#ticks", "t") == 2
+
+    # comparing one snapshot with the world now
+    snapshots.compare_selected()
+    assert "start → the world now" in snapshots.label.text()
+
+    # renaming, removing, and a new world forgetting them
+    item = snapshots.tree.topLevelItem(0)
+    item.setText(0, "checkpoint")
+    assert snapshots.snapshots[0].label == "checkpoint"
+    snapshots.tree.topLevelItem(1).setSelected(True)
+    snapshots.remove_selected()
+    assert len(snapshots.snapshots) == 1
+    window.datapacks.reload()
+    assert snapshots.snapshots == [] and snapshots.tree.topLevelItemCount() == 0

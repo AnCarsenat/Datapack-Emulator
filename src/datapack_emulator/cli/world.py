@@ -61,6 +61,7 @@ from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.datapack import DatapackSet
 from datapack_emulator.emulator.runtime.debugger import Debugger, DebugStopped
 from datapack_emulator.emulator.runtime.emulator import Emulator
+from datapack_emulator.emulator.runtime.snapshot import Snapshot, capture, compare, restore
 from datapack_emulator.emulator.testing import (
     CommandTest,
     TestResult,
@@ -111,6 +112,8 @@ class Session:
         self.vanilla = vanilla_for(arguments, self.version, inputs)
         #: the last run tests' results, by position in ``tests``
         self.results: dict[int, TestResult] = {}
+        #: worlds kept aside (.snapshot), in the order they were taken
+        self.snapshots: list[Snapshot] = []
         #: breakpoints and watches, kept across new worlds (checked in the shell)
         self.debugger = Debugger()
         if project is not None:
@@ -494,6 +497,10 @@ Lines starting with a dot control the session:
            .state                time, weather, difficulty, border, teams
            .world / .json        everything, as text or JSON
            .history HOLDER OBJ   the values a score took and when
+  worlds   .snapshot [LABEL]     keep this world aside; .snapshots lists them
+           .rewind N             put snapshot N back
+           .diff N [M]           what changed between N and M (or the world now)
+           .unsnapshot N|all
   analyze  .explain COMMAND      analyze a command line
            .profile              the per-tick call tree
            .report [FILE]        write the HTML profiler report
@@ -641,6 +648,50 @@ class Shell(DebugCommands):
 
     def do_json(self, session: Session, rest: str) -> None:
         print_world(session, self.view_arguments(json=True, holder=rest))
+
+    # -- snapshots -------------------------------------------------------
+
+    def do_snapshot(self, session: Session, rest: str) -> None:
+        session.snapshots.append(capture(session.emulator, rest.strip()))
+        print(f"{len(session.snapshots)}. {session.snapshots[-1].describe()}")
+
+    def do_snapshots(self, session: Session, rest: str) -> None:
+        if not session.snapshots:
+            print("no snapshots (.snapshot [LABEL] takes one)")
+        for number, snapshot in enumerate(session.snapshots, start=1):
+            print(f"{number}. {snapshot.describe()}")
+
+    def _snapshot(self, session: Session, text: str) -> Snapshot:
+        return session.snapshots[_position(session.snapshots, text, "snapshot")]
+
+    def do_rewind(self, session: Session, rest: str) -> None:
+        if not rest:
+            raise CliError("usage: .rewind N (see .snapshots)")
+        snapshot = self._snapshot(session, rest)
+        restore(session.emulator, snapshot)
+        session.results = {}
+        print(f"rewound to {snapshot.name}: game time {session.emulator.world.tick}")
+
+    def do_unsnapshot(self, session: Session, rest: str) -> None:
+        if rest == "all":
+            session.snapshots.clear()
+        elif rest:
+            del session.snapshots[_position(session.snapshots, rest, "snapshot")]
+        else:
+            raise CliError("usage: .unsnapshot N|all")
+        self.do_snapshots(session, "")
+
+    def do_diff(self, session: Session, rest: str) -> None:
+        words = _words(rest)
+        if not words:
+            raise CliError("usage: .diff N [M] (M, or the world now)")
+        before = self._snapshot(session, words[0])
+        after = self._snapshot(session, words[1]) if len(words) > 1 else capture(session.emulator)
+        changes = compare(before, after, session.version)
+        for change in changes:
+            print(change.format())
+        where = after.name if len(words) > 1 else "the world now"
+        print(f"{len(changes)} change(s) from {before.name} to {where}")
 
     def do_history(self, session: Session, rest: str) -> None:
         words = _words(rest)

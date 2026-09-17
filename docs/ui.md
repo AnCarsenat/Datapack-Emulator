@@ -233,6 +233,15 @@ All six are open by default and can be toggled from *view*.
     (and dimension outside the overworld) with its state and item count, and
     its block entity data as a tree; double-click a value to change it
     (`data modify block`).
+  * *snapshots*: worlds kept aside. *take* keeps the world as it is (entities,
+    blocks, scores, storage, server state, advancement progress and the
+    schedules); double-click a row to name it. *rewind* puts the selected one
+    back and the world goes on from there (the pack is not reloaded, so the
+    version and the profiler stay). *compare* shows what changed between two
+    selected snapshots, or between one and the world now — scores,
+    objectives, entities and their NBT, storage, blocks, gamerules and the
+    server state, as *before → after*. A new world (another pack or version)
+    forgets them; they are not saved with the project.
 
 * **debugger** <a id="debugger-dock"></a> — breakpoints, stepping and
   watches ([command line](cli.md#the-debugger): the shell's `.break`,
