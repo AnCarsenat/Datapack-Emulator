@@ -153,7 +153,7 @@ class Command:
         self.is_macro = raw.lstrip().startswith("$")
         #: for ``execute``: the chain before ``run``
         self.subcommands: list[Subcommand] = []
-        #: for ``execute ... run <command>``: the wrapped command
+        #: for ``execute … run <command>`` and ``return run <command>``: the wrapped command
         self.child: Command | None = None
 
     # -- parsing ----------------------------------------------------------
@@ -172,6 +172,9 @@ class Command:
         command = cls(raw=text, name=tokens[0], arguments=tokens[1:], source=source, line=line)
         if command.name == "execute":
             command._parse_execute(tokens[1:])
+        elif command.name == "return" and len(tokens) > 2 and tokens[1] == "run":
+            # the wrapped command is parsed (and checked) with the line
+            command.child = Command.parse(" ".join(tokens[2:]), source=source, line=line)
         return command
 
     def _parse_execute(self, tokens: list[str]) -> None:

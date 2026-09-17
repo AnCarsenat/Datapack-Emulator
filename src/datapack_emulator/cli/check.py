@@ -9,6 +9,7 @@ import json
 from datapack_emulator.cli.common import (
     FAILED,
     OK,
+    CliError,
     add_source_arguments,
     add_vanilla_arguments,
     add_version_selection,
@@ -17,12 +18,17 @@ from datapack_emulator.cli.common import (
     vanilla_for,
     versions_given,
 )
-from datapack_emulator.emulator.analysis.problems import SEVERITIES, count, find_problems
+from datapack_emulator.emulator.analysis.problems import CODES, SEVERITIES, count, find_problems
 
 
 def command_check(arguments: argparse.Namespace) -> int:
     inputs = load_inputs(arguments.source)
-    if versions_given(arguments):
+    several = versions_given(arguments)
+    if several and arguments.version:
+        raise CliError("give --version or a list of versions, not both")
+    if arguments.boundaries and not several:
+        raise CliError("--boundaries needs a list of versions (--versions, --from/--to, …)")
+    if several:
         chosen = chosen_versions(arguments, inputs, [inputs.version(arguments)])
     else:
         chosen = [inputs.version(arguments)]
@@ -61,7 +67,8 @@ def command_check(arguments: argparse.Namespace) -> int:
             f"{totals['info']} note(s)"
         )
     if arguments.json:
-        print(json.dumps(report if len(chosen) > 1 else report[0], indent=2))
+        # a list whenever versions were chosen as a list, even if one matched
+        print(json.dumps(report if several else report[0], indent=2))
     return FAILED if failed else OK
 
 
@@ -89,11 +96,9 @@ def register(subparsers) -> None:
     check.add_argument(
         "--code",
         action="append",
+        choices=CODES,
         metavar="CODE",
-        help="only these kinds (repeatable): function-not-loaded, tag-not-loaded, "
-        "selector-option, snbt, unknown-id, missing-function, missing-tag, text-component, "
-        "json, condition, item-function, loot-table, loot-entry, advancement, recipe, "
-        "unused-function, recursion",
+        help="only these kinds (repeatable): " + ", ".join(CODES),
     )
     check.add_argument("--strict", action="store_true", help="exit with 1 on warnings too")
     check.add_argument("--json", action="store_true", help="print JSON")

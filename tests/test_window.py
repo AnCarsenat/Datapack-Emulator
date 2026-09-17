@@ -1393,6 +1393,7 @@ def test_problems_dock(app, window, make_pack):
     from test_problems import BAD_PACK
 
     window.datapacks.load(make_pack(BAD_PACK))
+    app.processEvents()  # the check runs once the load is over
     problems = window.problems
     assert problems.problems and "error(s)" in problems.label.text()
     count_all = problems.tree.topLevelItemCount()
@@ -1400,14 +1401,16 @@ def test_problems_dock(app, window, make_pack):
     errors = problems.tree.topLevelItemCount()
     assert 0 < errors < count_all
     problems.edit_filter.setText("tpye")
+    problems.fill()  # the filter waits for typing to pause
     assert problems.tree.topLevelItemCount() == 1
     item = problems.tree.topLevelItem(0)
-    assert item.text(1) == "test:tick:1" and item.text(3) == "selector-option"
+    assert item.text(1) == "test:tick:1" and item.text(3) == "function-not-loaded"
     problems.open(item)
     assert window.navigation.source_path.name == "tick.mcfunction"
     assert window.source_edit.textCursor().blockNumber() == 0
     # a fixed pack checks clean after a reload
     window.datapacks.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}))
+    app.processEvents()
     problems.edit_filter.clear()
     problems.combo_severity.setCurrentText("info")
     assert problems.problems == [] and problems.tree.topLevelItemCount() == 0
@@ -1450,3 +1453,34 @@ def test_inspector_and_source_reveal_the_explorer_row_and_the_graph(app, window,
     window.navigation.source_path = None
     window.navigation.show_in_graph()
     assert "open a function" in window.statusBar().currentMessage()
+
+
+def test_problems_check_once_and_only_when_shown(app, window, make_pack):
+    from unittest import mock
+
+    from test_problems import BAD_PACK
+
+    problems = window.problems
+    with mock.patch(
+        "datapack_emulator.window.controllers.problems.find_problems",
+        wraps=__import__(
+            "datapack_emulator.emulator.analysis.problems", fromlist=["find_problems"]
+        ).find_problems,
+    ) as checked:
+        window.datapacks.load(make_pack(BAD_PACK))
+        app.processEvents()
+        assert checked.call_count == 1
+        window.dock_problems.hide()
+        window.datapacks.reload()
+        app.processEvents()
+        assert checked.call_count == 1 and problems.stale
+        window.dock_problems.show()
+        app.processEvents()
+        assert checked.call_count == 2 and not problems.stale
+    with mock.patch(
+        "datapack_emulator.window.controllers.problems.find_problems",
+        side_effect=RecursionError("deep"),
+    ):
+        problems.refresh()
+    assert problems.label.text() == "the check failed: RecursionError: deep"
+    assert window.datapack is not None
