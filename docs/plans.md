@@ -46,9 +46,9 @@ Nothing is queued here right now; take the next item from the lists below.
   (conditions, item functions, loot entries, advancement criteria); validating
   recipes, loot tables, predicates, item modifiers and worldgen against the
   version's schemas (Spyglass mcdoc) would catch every field.
-* **Edit in the source view** — it is read-only today; editing with save
-  (Ctrl+S in the view) and an automatic reload, with the analysis updating as
-  you type.
+* **Smarter editing** — the source view edits and checks lines as you
+  type; completion of commands, ids and selector options, and renaming a
+  function across the pack, would come next.
 * **World snapshots** — save the world at a tick, rewind to it, and compare two
   snapshots (scores, entities, storage, inventories) to see what a tick
   changed.

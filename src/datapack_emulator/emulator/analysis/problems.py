@@ -140,6 +140,30 @@ def find_problems(
     return sorted(unique, key=lambda p: (order[p.severity], p.resource, p.line, p.code))
 
 
+def text_problems(text: str, suffix: str, version: str | Version) -> dict[int, str]:
+    """What the version would refuse in one file's text, by line (1-based):
+    function lines for ``.mcfunction``, the parse error for JSON. The source
+    view underlines these as you type; ``check --lines`` prints them."""
+    import json
+
+    from datapack_emulator.emulator.runtime.library import line_problems
+
+    suffix = suffix.lower()
+    if suffix == ".mcfunction":
+        return line_problems(text, command_set(versions.parse(version)))
+    if suffix in (".json", ".mcmeta") and text.strip():
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as exc:
+            # an error at the end points past the text: mark the last line
+            lines = text.splitlines()
+            line = min(exc.lineno, len(lines))
+            while line > 1 and not lines[line - 1].strip():
+                line -= 1
+            return {line: f"not valid JSON: {exc.msg} (line {exc.lineno})"}
+    return {}
+
+
 def count(problems: list[Problem]) -> dict[str, int]:
     return {severity: sum(p.severity == severity for p in problems) for severity in SEVERITIES}
 

@@ -29,7 +29,7 @@ layout changes are made in Qt Designer, never in code.
 
 | menu | entries |
 | --- | --- |
-| file | new / open / save / save as project ([projects](projects.md)) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
+| file | new / open / save / save as project ([projects](projects.md)) · save file / revert file (the source view) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor · show in call graph (the source view's function) |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · check pack (the problems dock) · version engine… · export call graph (.dot) |
 | debug | toggle breakpoint · remove all breakpoints · continue · step into · step over · step out · pause (see the [debugger](#debugger-dock)) |
@@ -133,7 +133,18 @@ current version.
   use (another overlay's copy), the id its folders give is shown.
 * **Source** — the selected file with syntax highlighting for `.mcfunction`
   (commands, subcommands, selectors, resource locations, NBT, macros,
-  comments) and JSON/`pack.mcmeta`. Right-click a line to:
+  comments) and JSON/`pack.mcmeta`, **editable**: the label shows `●` while
+  there are unsaved edits, Ctrl+S (with the focus in the view) or *file ›
+  save file* (Ctrl+Alt+S) writes the file and reloads the datapacks, and
+  *file › revert file* reads it again. Opening another file or closing the
+  window with unsaved edits asks to save, discard or stay; a file saved
+  inside a project's packs marks the project changed (saving the project
+  keeps the edit). While you type, lines the emulated version would refuse
+  are underlined in red with a mark in the gutter — unknown or missing
+  commands and subcommands, unknown selector options, macro lines that are
+  not templates (or macros before 1.20.2), JSON that does not parse — and
+  hovering one says why; the full list is in the problems dock after a
+  save. Images are shown read-only. Right-click a line to:
   * **analyze this line** (also Ctrl+I): the inspector explains it without
     running it — what the command does, each `execute` step in words (who,
     where, which condition), what each selector matches, the functions and
@@ -304,7 +315,8 @@ file type or folders.
 | Ctrl+R | reload datapacks |
 | Ctrl+N / Ctrl+Shift+O | new / open project |
 | Ctrl+Alt+O | open last project |
-| Ctrl+S / Ctrl+Shift+S | save / save project as |
+| Ctrl+S / Ctrl+Shift+S | save the project (the source view's file when it has the focus and unsaved edits) / save project as |
+| Ctrl+Alt+S | save the source view's file |
 | Ctrl+Return | open selection in external editor |
 | Ctrl+Shift+Return | open selection in external file manager |
 | Ctrl+P | quick open |

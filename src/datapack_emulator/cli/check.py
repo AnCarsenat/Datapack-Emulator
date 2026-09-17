@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from datapack_emulator.cli.common import (
     FAILED,
@@ -18,7 +19,31 @@ from datapack_emulator.cli.common import (
     vanilla_for,
     versions_given,
 )
-from datapack_emulator.emulator.analysis.problems import CODES, SEVERITIES, count, find_problems
+from datapack_emulator.emulator.analysis.problems import (
+    CODES,
+    SEVERITIES,
+    count,
+    find_problems,
+    text_problems,
+)
+
+
+def check_lines(arguments: argparse.Namespace, chosen: list) -> int:
+    """``--lines FILE``: what the source view underlines, per file and line."""
+    found = False
+    for file in arguments.lines:
+        try:
+            text = file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise CliError(f"cannot read {file}: {exc}") from exc
+        for version in chosen:
+            prefix = f"{version.id} " if len(chosen) > 1 else ""
+            for line, message in sorted(text_problems(text, file.suffix, version).items()):
+                found = True
+                print(f"{prefix}{file}:{line}: {message}")
+    if not found:
+        print("no refused lines")
+    return FAILED if found else OK
 
 
 def command_check(arguments: argparse.Namespace) -> int:
@@ -32,6 +57,8 @@ def command_check(arguments: argparse.Namespace) -> int:
         chosen = chosen_versions(arguments, inputs, [inputs.version(arguments)])
     else:
         chosen = [inputs.version(arguments)]
+    if arguments.lines:
+        return check_lines(arguments, chosen)
     lowest = SEVERITIES.index(arguments.severity)
     codes = set(arguments.code or [])
     report = []
@@ -99,6 +126,14 @@ def register(subparsers) -> None:
         choices=CODES,
         metavar="CODE",
         help="only these kinds (repeatable): " + ", ".join(CODES),
+    )
+    check.add_argument(
+        "--lines",
+        action="append",
+        type=Path,
+        metavar="FILE",
+        help="instead of the pack: the lines of a .mcfunction or JSON file the version would "
+        "refuse, as the source view underlines them (repeatable; the pack gives the version)",
     )
     check.add_argument("--strict", action="store_true", help="exit with 1 on warnings too")
     check.add_argument("--json", action="store_true", help="print JSON")

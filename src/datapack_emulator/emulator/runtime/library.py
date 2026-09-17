@@ -187,6 +187,41 @@ def macro_template_problem(raw: str) -> str:
     return "" if names else "No variables in macro"
 
 
+def line_problems(text: str, commands: CommandSet) -> dict[int, str]:
+    """Every line of function text this version would refuse, by line number
+    (1-based) — what the source view underlines while you type."""
+    from datapack_emulator.emulator.commands.parser import Command
+
+    macros = versions.supports_macros(commands.version)
+    found: dict[int, str] = {}
+    for number, raw in enumerate(text.splitlines(), start=1):
+        command = Command.parse(raw, line=number)
+        if command is None:
+            continue
+        if command.is_macro:
+            if not macros:
+                found[number] = (
+                    f"macro lines need {versions.MACROS_SINCE}: in {commands.version.id} this "
+                    "is an unknown command"
+                )
+            else:
+                problem = macro_template_problem(command.raw)
+                if problem:
+                    found[number] = problem
+            continue
+        option = unknown_selector_option(command)
+        if option:
+            found[number] = f"Unknown option '{option}'"
+            continue
+        missing = commands.missing_features(command.features())
+        if missing:
+            feature, since = missing[0]
+            found[number] = f"{commands.version.id} has no {feature}" + (
+                f" (added in {since.id})" if since else ""
+            )
+    return found
+
+
 def _parse_failure(
     function: Function, commands: CommandSet, macros_supported: bool
 ) -> LoadFailure | None:

@@ -230,6 +230,7 @@ class DatapackController(Controller):
         window.version_note.setText(version_note(datapack, window.version))
         self.fill_inspector(describe_datapack(datapack, window.version))
         window.problems.schedule_refresh()
+        window.editor.check_lines()  # the version may have changed
 
     def on_tree_clicked(self, index: QModelIndex) -> None:
         window = self.window

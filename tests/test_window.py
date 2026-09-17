@@ -1550,3 +1550,67 @@ def test_navigation_follows_tags_overlays_and_hubs(app, window, make_pack):
     menu = navigation.path_menu(pack / "data/test/function/f5.mcfunction", in_explorer=True)
     labels = [action.text() for action in menu.actions()]
     assert "show in explorer" not in labels and "show in call graph" in labels
+
+
+def test_source_view_edits_save_and_check_lines(app, window, make_pack, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "say one\n",
+            "data/test/function/other.mcfunction": "say other\n",
+        }
+    )
+    window.datapacks.load(pack)
+    navigation, editor, edit = window.navigation, window.editor, window.source_edit
+    navigation.open_function("test:tick")
+    assert not edit.isReadOnly() and not editor.modified
+    edit.setPlainText("say one\nfrobnicate\nkill @e[tpye=pig]")
+    edit.document().setModified(True)
+    assert editor.modified and window.source_label.text().startswith("● ")
+    editor.check_lines()
+    assert set(edit.line_marks) == {2, 3}
+    assert "tpye" in edit.line_marks[3]
+
+    # leaving the file asks first; cancel stays
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: QMessageBox.Cancel)
+    navigation.open_function("test:other")
+    assert navigation.source_path.name == "tick.mcfunction"
+
+    # Ctrl+S with the focus in the view saves the file and reloads the pack
+    edit.setFocus()
+    monkeypatch.setattr(edit, "hasFocus", lambda: True)
+    edit.setPlainText("say two")
+    edit.document().setModified(True)
+    window._action("actionsave_project").trigger()
+    path = pack / "data/test/function/tick.mcfunction"
+    assert path.read_text() == "say two\n"
+    assert not editor.modified
+    assert "say two" in [
+        c.raw for c in window.datapack.view_for(window.version).function("test:tick").content
+    ]
+    assert not window.source_label.text().startswith("● ")
+
+    # revert throws edits away; discard lets another file open
+    edit.setPlainText("say three")
+    edit.document().setModified(True)
+    window._action("actionrevert_file").trigger()
+    assert edit.toPlainText() == "say two\n" and not editor.modified
+    edit.setPlainText("say four")
+    edit.document().setModified(True)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: QMessageBox.Discard)
+    navigation.open_function("test:other")
+    assert navigation.source_path.name == "other.mcfunction"
+    assert path.read_text() == "say two\n"
+
+    # JSON errors are marked on their line; images stay read-only
+    navigation.show_source(pack / "data/minecraft/tags/function/tick.json")
+    edit.setPlainText('{\n  "values": [\n')
+    editor.check_lines()
+    assert list(edit.line_marks) == [2]  # the error is past the end: the last line
+    edit.document().setModified(False)
+    image = pack / "pack.png"
+    image.write_bytes(b"\x89PNG")
+    navigation.show_source(image)
+    assert edit.isReadOnly()

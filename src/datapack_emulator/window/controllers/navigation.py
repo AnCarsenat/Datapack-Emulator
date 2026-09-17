@@ -110,19 +110,26 @@ class NavigationController(Controller):
         """Open a file in the source view; ``reveal`` selects it in the
         explorer too (not when the click came from the explorer)."""
         window = self.window
+        if not window.editor.maybe_discard():
+            return
         self.source_path = path
-        window.source_label.setText(f"{path}:{line}" if line else str(path))
         self._detach_highlighter()
         if path.suffix.lower() == ".png":
             window.source_edit.setPlainText(f"{path.name}: binary image")
+            window.editor.opened(path, text_file=False)
+            window.source_label.setText(str(path))
             window.debug.refresh_gutter()
             return
+        readable = True
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             text = f"cannot read {path}: {exc}"
+            readable = False
         self._highlighter = highlighter_for(path, window.source_edit.document())
         window.source_edit.setPlainText(text)
+        window.editor.opened(path, text_file=readable)
+        window.source_label.setText(f"{path}:{line}" if line else str(path))
         if line > 0:
             block = window.source_edit.document().findBlockByNumber(line - 1)
             if block.isValid():

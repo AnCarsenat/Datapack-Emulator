@@ -44,6 +44,7 @@ from datapack_emulator.window.controllers import (
     ConsoleController,
     DatapackController,
     DebugController,
+    EditorController,
     EnvironmentController,
     JarController,
     LogController,
@@ -100,6 +101,7 @@ class MainWindow(QMainWindow):
         self.session = SessionController(self)
         self.debug = DebugController(self)
         self.problems = ProblemsController(self)
+        self.editor = EditorController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -113,6 +115,7 @@ class MainWindow(QMainWindow):
             self.session,
             self.debug,
             self.problems,
+            self.editor,
         ):
             controller.connect()
         self._wire_actions()
@@ -126,7 +129,7 @@ class MainWindow(QMainWindow):
         self.projects.mark_saved()  # the default pack is not a change to save
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
-        if self.projects.confirm_close():
+        if self.editor.maybe_discard() and self.projects.confirm_close():
             self.runs.stop(refresh=False)
             self.session.save()
             event.accept()
@@ -246,7 +249,7 @@ class MainWindow(QMainWindow):
             "actionnew_project": self.projects.new,
             "actionopen_project": self.projects.open,
             "actionopen_last_project": lambda: self.session.open_last_project(),
-            "actionsave_project": self.projects.save,
+            "actionsave_project": lambda: self.editor.save_or_project(),
             "actionsave_project_as": self.projects.save_as,
             "actionload_vanilla": self.jars.load_by_hand,
             "actiondownload_vanilla": self.jars.download,
