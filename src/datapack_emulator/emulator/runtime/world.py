@@ -56,7 +56,6 @@ PLAYER_DEFAULTS: dict[str, Any] = {
 LIVING_DEFAULTS: dict[str, Any] = {
     "AbsorptionAmount": 0.0,
     "HurtTime": 0,
-    "HurtByTimestamp": 0,
     "DeathTime": 0,
     "FallFlying": 0,
 }
@@ -65,7 +64,16 @@ MOB_DEFAULTS: dict[str, Any] = {
     "CanPickUpLoot": 0,
     "PersistenceRequired": 0,
     "LeftHanded": 0,
-    "NoAI": 0,
+}
+#: what armor stands add
+ARMOR_STAND_DEFAULTS: dict[str, Any] = {
+    "Invisible": 0,
+    "Small": 0,
+    "ShowArms": 0,
+    "NoBasePlate": 0,
+    "Marker": 0,
+    "DisabledSlots": 0,
+    "Pose": {},
 }
 #: kept in the entity's own fields, not in ``nbt``
 SYNCED_KEYS = (
@@ -164,7 +172,9 @@ class Entity:
         if self.living is not None:
             defaults.update(LIVING_DEFAULTS)
             defaults["Health"] = self.living.max_health()
-            if not self.is_player and self.type != "minecraft:armor_stand":
+            if self.type == "minecraft:armor_stand":
+                defaults.update(ARMOR_STAND_DEFAULTS)
+            elif not self.is_player:
                 defaults.update(MOB_DEFAULTS)
         if self.is_player:
             defaults.update(PLAYER_DEFAULTS)
@@ -236,7 +246,7 @@ class Entity:
             for key, value in data.items()
             if key not in SYNCED_KEYS
             and key not in ("id", "Dimension")
-            and not (key in defaults and defaults[key] == value)
+            and not (key != "Health" and key in defaults and defaults[key] == value)
         }
 
     def __repr__(self) -> str:
@@ -361,6 +371,10 @@ class World:
 
     def spawn(self, entity: Entity) -> Entity:
         entity.born = self.tick
+        if entity.living is not None:
+            # health is stored when an entity appears: raising its maximum later
+            # does not heal it
+            entity.nbt.setdefault("Health", entity.living.max_health())
         self.entities.append(entity)
         return entity
 
@@ -375,9 +389,11 @@ class World:
         """Killed players respawn with full health; any other entity is removed,
         and its riders get off."""
         if entity.is_player:
-            entity.nbt.pop("Health", None)
             if entity.living is not None:
                 entity.living.effects.clear()
+                from datapack_emulator.emulator.runtime.living import set_health
+
+                set_health(self, entity, entity.living.max_health())  # respawned
             return
         dismount(entity)
         for passenger in list(entity.passengers):

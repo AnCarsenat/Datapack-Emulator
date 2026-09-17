@@ -45,11 +45,7 @@ def cmd_execute(command: Command, context: ExecutionContext) -> CommandResult:
     for subcommand in chain:
         next_branches: list[tuple[ExecutionContext, tuple[PendingStore, ...]]] = []
         for current, stores in branches:
-            if (
-                subcommand.name == "store"
-                and subcommand.arguments[1:2] == ["block"]
-                and _store_block(current, subcommand.arguments)[1] is None
-            ):
+            if subcommand.name == "store" and not _store_target_ok(current, subcommand):
                 continue  # vanilla fails before running anything
             for successor in _execute_step(subcommand.name, subcommand.arguments, current, context):
                 pending = (
@@ -159,19 +155,36 @@ def _execute_step(
 
 def related(context: ExecutionContext, entity: Entity, relation: str) -> list[Entity]:
     """``execute on``: the entities ``relation`` leads to (none when it does not apply)."""
+    from datapack_emulator.emulator.runtime.living import OWNABLE
+
     world = context.world
     if relation == "vehicle":
         return [entity.vehicle] if entity.vehicle is not None else []
     if relation == "passengers":
         return list(entity.passengers)
     if relation == "controller":
-        return entity.passengers[:1]
-    keys = {
-        "owner": ("Owner",),
-        "origin": ("Owner", "Thrower", "owner"),
-        "leasher": ("leash", "Leash"),
-    }.get(relation)
-    if keys is None:
+        # only a mob with AI is steered by a mob riding it (players steering
+        # saddled animals is not modelled)
+        rider = entity.passengers[0] if entity.passengers else None
+        if (
+            rider is None
+            or entity.is_player
+            or entity.living is None
+            or entity.type == "minecraft:armor_stand"
+            or entity.nbt.get("NoAI")
+            or rider.is_player
+            or rider.living is None
+            or rider.type == "minecraft:armor_stand"
+        ):
+            return []
+        return [rider]
+    if relation == "owner":
+        keys = ("Owner",) if entity.type in OWNABLE else ()
+    elif relation == "origin":
+        keys = ("Thrower",) if entity.type == "minecraft:item" else ("Owner", "owner")
+    elif relation == "leasher":
+        keys = ("leash", "Leash")
+    else:
         # attacker and target need combat and AI
         context.note_once(f"'execute on {relation}': not modelled, so the branch ends")
         return []
@@ -217,6 +230,20 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
             data = entity.data(context.emulator.version)
             nbt_set(data, arguments[3], _stored_number(value, arguments[4:6]))
             entity.apply_data(data)
+
+
+def _store_target_ok(context: ExecutionContext, subcommand: Subcommand) -> bool:
+    kind = subcommand.arguments[1:2]
+    if kind == ["block"]:
+        return _store_block(context, subcommand.arguments)[1] is not None
+    if kind == ["bossbar"] and len(subcommand.arguments) > 2:
+        from datapack_emulator.emulator.commands.bossbar import bossbars
+
+        bar_id = normalise_id(subcommand.arguments[2])
+        if bar_id not in bossbars(context):
+            context.game_error("commands.bossbar.unknown", bar_id)
+            return False
+    return True
 
 
 def _store_block(context: ExecutionContext, arguments: list[str]):

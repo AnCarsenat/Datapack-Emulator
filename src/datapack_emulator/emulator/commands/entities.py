@@ -56,6 +56,14 @@ def cmd_summon(command: Command, context: ExecutionContext) -> CommandResult:
     return CommandResult(success=True, value=1)
 
 
+def _known_type(context: ExecutionContext, entity_type: str) -> bool:
+    assets = context.emulator.vanilla
+    known = assets.knows("entity_type", entity_type) if assets is not None else None
+    if known is None:
+        return entity_type.startswith("minecraft:")
+    return known
+
+
 def build_entity(context: ExecutionContext, entity_type: str, data: dict) -> Entity | None:
     """Spawn an entity from NBT, with its ``Passengers`` riding it; None when a
     UUID is already taken (nothing is spawned then)."""
@@ -79,7 +87,11 @@ def build_entity(context: ExecutionContext, entity_type: str, data: dict) -> Ent
         for rider in riders if isinstance(riders, list) else []:
             if not isinstance(rider, dict) or not isinstance(rider.get("id"), str):
                 continue
-            passenger = make(normalise_id(rider["id"]), rider, entity.position)
+            rider_type = normalise_id(rider["id"])
+            # vanilla drops passengers it cannot create
+            if rider_type == "minecraft:player" or not _known_type(context, rider_type):
+                continue
+            passenger = make(rider_type, rider, entity.position)
             if passenger is None:
                 return None
             mount(passenger, entity)

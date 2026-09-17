@@ -98,6 +98,7 @@ def test_damage_health_and_death(world):
     assert visible_errors(records) == ["Target is invulnerable to the given damage type"]
     emulator.typed("summon zombie ~ ~ ~ {Tags:[z],Health:5f}")
     emulator.typed("effect give @e[tag=z] instant_health")  # hurts the undead
+    emulator.run_tick()  # instant effects take hold on the entity's tick
     assert all(entity.type != "minecraft:zombie" for entity in emulator.world.entities)
 
 
@@ -186,12 +187,18 @@ def test_bossbars(world):
 
 def test_items_age_merge_despawn_and_get_picked_up(world):
     emulator = world()
-    emulator.typed('summon item 5 0 5 {Item:{id:"minecraft:stone",count:2},PickupDelay:0}')
-    emulator.typed('summon item 5 0 5 {Item:{id:"minecraft:stone",count:3},PickupDelay:10}')
-    emulator.run_tick()
+    emulator.typed(
+        'summon item 5 0 5 {Item:{id:"minecraft:stone",count:2},PickupDelay:100,Tags:[small]}'
+    )
+    emulator.typed('summon item 5.6 0.1 5 {Item:{id:"minecraft:stone",count:3},PickupDelay:10}')
+    for _ in range(39):
+        emulator.run_tick()
+    assert len([e for e in emulator.world.entities if e.type == "minecraft:item"]) == 2
+    emulator.run_tick()  # a still item looks for neighbours every 40 ticks
     items = [e for e in emulator.world.entities if e.type == "minecraft:item"]
-    assert len(items) == 1 and items[0].nbt["Item"]["count"] == 5
-    assert items[0].nbt["PickupDelay"] == 10  # the larger delay of the two
+    # the bigger stack takes the smaller one
+    assert len(items) == 1 and items[0].nbt["Item"]["count"] == 5 and not items[0].tags
+    assert items[0].nbt["PickupDelay"] == 59  # the larger delay, then its own tick
     items[0].nbt["Age"] = 5999
     emulator.run_tick()
     assert not any(e.type == "minecraft:item" for e in emulator.world.entities)
@@ -205,3 +212,126 @@ def test_items_age_merge_despawn_and_get_picked_up(world):
     for _ in range(3):
         emulator.run_tick()
     assert item in emulator.world.entities and item.nbt["Age"] == -32768
+
+
+def test_effect_updates_immunities_and_hidden_effects(world):
+    emulator = world()
+    emulator.typed("effect give Player1 speed infinite")
+    assert emulator.typed("effect give Player1 speed infinite 0 true")[0].success
+    _, records = emulator.typed("effect give Player1 speed 10 0 maybe")
+    assert visible_errors(records)
+    emulator.typed("effect clear Player1")
+    emulator.typed("effect give Player1 speed 10 0")
+    assert emulator.typed("effect give Player1 speed 2 1")[0].success
+    effect = emulator.world.players[0].living.effects["minecraft:speed"]
+    assert effect.amplifier == 1 and effect.hidden is not None
+    for _ in range(40):
+        emulator.run_tick()
+    effect = emulator.world.players[0].living.effects["minecraft:speed"]
+    assert effect.amplifier == 0 and 0 < effect.duration < 200
+    emulator.typed("summon zombie ~ ~ ~ {Tags:[z]}")
+    emulator.typed("summon spider ~ ~ ~ {Tags:[s]}")
+    assert not emulator.typed("effect give @e[tag=z] regeneration")[0].success
+    assert emulator.typed("effect give @e[type=!item] poison 10 1")[0].value == 1
+    assert emulator.typed("effect give Player1 instant_health")[0].success
+    assert not emulator.typed("effect give Player1 instant_health")[0].success
+
+
+def test_instant_damage_follows_java_arithmetic(world):
+    emulator = world()
+    emulator.typed("effect give Player1 instant_damage 1 255")
+    emulator.run_tick()
+    assert emulator.world.players[0].data()["Health"] == 20.0
+    emulator.typed("gamemode creative Player1")
+    emulator.typed("effect give Player1 instant_damage")
+    emulator.run_tick()
+    assert emulator.world.players[0].data()["Health"] == 20.0
+
+
+def test_damage_cooldown_armor_stands_and_numbers(world):
+    emulator = world()
+    assert emulator.typed("damage Player1 1")[0].success
+    _, records = emulator.typed("damage Player1 1")
+    assert visible_errors(records) == ["Target is invulnerable to the given damage type"]
+    assert emulator.typed("damage Player1 3")[0].success  # only the difference hurts
+    assert emulator.world.players[0].data()["Health"] == 17.0
+    emulator.typed("summon armor_stand ~ ~ ~ {Tags:[a]}")
+    assert not emulator.typed("damage @e[tag=a,limit=1] 1000")[0].success
+    assert emulator.typed("damage @e[tag=a,limit=1] 1000 minecraft:player_attack")[0].success
+    for _ in range(20):
+        emulator.run_tick()
+    _, records = emulator.typed("damage Player1 0.00001")
+    assert chat(records) == ["Applied 1.0E-5 damage to Player1"]
+    emulator.typed("scoreboard objectives add hp health")
+    emulator.typed("damage Player1 1000")
+    assert emulator.world.scoreboard.get("Player1", "hp") == 20
+
+
+def test_attributes_per_kind_ranges_and_versions(world):
+    emulator = world()
+    emulator.typed("summon pig ~ ~ ~ {Tags:[p]}")
+    _, records = emulator.typed("attribute @e[tag=p,limit=1] attack_damage get")
+    assert visible_errors(records) == ["Entity Pig has no attribute Attack Damage"]
+    emulator.typed("attribute Player1 max_health base set 5000")
+    assert emulator.typed("attribute Player1 max_health get")[0].value == 1024
+    assert emulator.typed("attribute Player1 max_health get 1e30")[0].value == 2147483647
+    emulator.typed("summon zombie ~ ~ ~ {Tags:[z]}")
+    emulator.typed("attribute @e[tag=z,limit=1] max_health base set 40")
+    zombie = [e for e in emulator.world.entities if "z" in e.tags][0]
+    assert zombie.data()["Health"] == 20.0  # raising the maximum does not heal
+    assert "NoAI" not in zombie.data()
+    old = world("1.16.5")
+    assert not old.typed("attribute Player1 generic.max_health base reset")[0].success
+    mid = world("1.20.5")
+    assert mid.typed(
+        'attribute Player1 generic.movement_speed modifier add 1-2-3-4-5 "my mod" 2 add_value'
+    )[0].success
+    modifiers = mid.world.players[0].data(mid.version)["attributes"]
+    speed = [a for a in modifiers if a["id"].endswith("movement_speed")][0]
+    assert speed["modifiers"][0] == {
+        "uuid": [1, 131075, 262144, 5],
+        "name": "my mod",
+        "amount": 2.0,
+        "operation": "add_value",
+    }
+    assert not mid.typed(
+        "attribute Player1 generic.movement_speed modifier add foo:bar 2 add_value"
+    )[0].success
+
+
+def test_relations_and_store_bossbar_follow_vanilla(world):
+    emulator = world()
+    emulator.typed('summon armor_stand ~ ~ ~ {Tags:[s],Passengers:[{id:"minecraft:zombie"}]}')
+    assert emulator.typed("execute as @e[tag=s] on controller run say x")[0].value == 0
+    emulator.typed('summon pig ~ ~ ~ {Tags:[p],Passengers:[{id:"minecraft:zombie"}]}')
+    assert emulator.typed("execute as @e[tag=p] on controller run say x")[0].success
+    from datapack_emulator.emulator.runtime.world import uuid_to_ints
+
+    owner = uuid_to_ints(emulator.world.players[0].uuid)
+    emulator.typed("summon arrow ~ ~ ~ {Tags:[a]}")
+    arrow = emulator.world.entities[-1]
+    arrow.nbt["Owner"] = owner
+    assert not emulator.typed("execute as @e[tag=a] on owner run say x")[0].success
+    assert emulator.typed("execute as @e[tag=a] on origin run say x")[0].success
+    emulator.typed("bossbar add t:b x")
+    emulator.typed("execute store result bossbar t:b value run scoreboard players set #x o -5")
+    _, records = emulator.typed("execute store result bossbar t:nope value run say hi")
+    assert visible_errors(records) == ["No bossbar exists with the ID 't:nope'"]
+    assert "[Server] hi" not in chat(records)
+    _, records = emulator.typed("bossbar add t:c")
+    assert visible_errors(records)
+    emulator.typed('summon pig ~ ~ ~ {Tags:[q],Passengers:[{id:"minecraft:player"},{id:"nope:x"}]}')
+    pig = [e for e in emulator.world.entities if "q" in e.tags][0]
+    assert pig.passengers == []
+
+
+def test_items_respect_their_owner_and_boats_are_not_living(world):
+    emulator = world()
+    emulator.typed(
+        'summon item 0 0 0 {Item:{id:"minecraft:dirt",count:1},Owner:[I;1,2,3,4],PickupDelay:0}'
+    )
+    emulator.run_tick()
+    assert emulator.world.players[0].inventory.get("container.0") is None
+    old = world("1.20.4")
+    old.typed("summon boat")
+    assert old.world.entities[-1].living is None
