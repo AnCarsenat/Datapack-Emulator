@@ -12,7 +12,7 @@ did; from 1.19.3 load comes first.
 
 ## The world
 
-Deliberately small: no blocks, chunks or physics.
+Deliberately small: no chunks, physics or block updates.
 
 * **entities** — type, UUID, name, position, rotation, dimension, tags and
   the rest of their NBT. `Entity.data()` is what `data get entity` shows:
@@ -47,6 +47,25 @@ Deliberately small: no blocks, chunks or physics.
   `data merge`/`modify` on a mob loads its items back; killed players drop
   their items as `minecraft:item` entities unless `keepInventory`
   (`keep_inventory` from 1.21.11) is true.
+* **blocks** (`runtime/blocks.py`) — only the positions a command set are
+  stored, per dimension; everything else is air. A block keeps its id, the
+  block-state properties it was given and, for blocks with a block entity,
+  its NBT; containers (chests, barrels, shulker boxes, hoppers, dispensers,
+  furnaces, …) keep their items as slots `container.0…`, shown in the
+  version's item format (`Items`, always present). This is a model:
+  * default block states are not known — a block has only the properties
+    it was placed with, so `if block … stairs[facing=north]` does not match
+    `stairs` placed without `facing` (an emulator note says so);
+  * which blocks have a block entity and how many slots a container has
+    come from lists in the code, not from the game;
+  * nothing ticks: no gravity, fluids, redstone, block updates or drops
+    (`setblock … destroy` drops nothing).
+
+  With a client jar, block ids are checked and block-state properties and
+  their values are read from `assets/minecraft/blockstates`
+  (`Block minecraft:stone does not have property 'color'`). Positions must be
+  in the world's height (-64..319 in the overworld from 1.18, 0..255
+  otherwise: `That position is out of this world!`).
 * **storage** — `data … storage` compounds.
 * **gamerules** — stored; `maxCommandChainLength` is enforced.
 
@@ -72,9 +91,12 @@ setting through a filter with no match adds the element).
 
 | command | notes |
 | --- | --- |
-| `execute` | `as at positioned rotated in if unless store run summon`; `anchored align facing` pass through; `on` ends the branch (relations are not modelled). `store` binds its target where it appears in the chain; `run return` leaves the function on the first branch that reaches it |
-| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `data` (entity, storage), `items entity <targets> <slots> <predicate>` (slot wildcards like `container.*`; the count is the number of matching items), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
-| `function` | tags, `$` macros with inline SNBT or `with storage|entity [path]` |
+| `execute` | `as at positioned rotated in align if unless store run summon`; `anchored facing` pass through; `on` ends the branch (relations are not modelled). `store` (score, storage, entity, block) binds its target where it appears in the chain; `run return` leaves the function on the first branch that reaches it |
+| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `block <pos> <predicate>` (id or `#tag` from the jar or the pack, properties, NBT subset), `blocks <start> <end> <destination> all\|masked` (the count is the number of blocks compared), `data` (entity, block, storage), `items entity\|block <…> <slots> <predicate>` (slot wildcards like `container.*`; the count is the number of matching items), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
+| `setblock` | `replace`, `keep`, `destroy` and `strict`; "Could not set the block" when nothing changes |
+| `fill` | `replace [filter]`, `keep`, `hollow`, `outline`, `destroy`, `strict`; counts the blocks that changed; limited by `commandModificationBlockLimit` (32 768 by default: "Too many blocks in the specified area") |
+| `clone` | `replace`, `masked`, `filtered <predicate>` with `normal`, `force` and `move`; `from`/`to` dimensions (1.20.2+); overlapping regions need `force` |
+| `function` | tags, `$` macros with inline SNBT or `with storage\|entity\|block [path]` |
 | `schedule` | `function <id> <time> [append|replace]`, `clear`; `t`/`s`/`d` units |
 | `return` | value, `run`, `fail` |
 | `scoreboard` | every subcommand: objectives `list`, `add` (criteria checked, display name), `remove`, `setdisplay`, `modify`; players `list`, `get`, `set`, `add`, `remove`, `reset`, `enable` (trigger objectives only), `operation`, `display`. Vanilla feedback and errors: read-only criteria (`health`, `food`, …), invalid integers, negative `add` amounts, one holder for `get`. `operation` combines every target with every source, creates missing scores as 0, and divides with `floorDiv` / `floorMod` (`/=` and `%=` by zero fail) |
@@ -84,20 +106,20 @@ setting through a filter with no match adds the element).
 | `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z> [<yaw> <pitch>]` |
 | `give` | players only; stacks onto matching stacks (selected slot, offhand, container order), then empty slots; what does not fit drops as item entities; at most 100 stacks |
 | `clear` | `[targets] [item predicate] [maxCount]`: removes matching items (not the ender chest); `maxCount 0` only counts. Predicates: an id, `*`, `#tag` (from the client jar or the pack), `[component=value]`, `[component]`, `!` negation, `|` alternatives, and the old `{nbt}` subset; `~` sub-predicates and `count` are noted and not checked. Items are taken in slot order; a negative count is rejected |
-| `item` | counts must be 1–99 (1–64 before 1.20.5) and fit the item's stack; `replace entity <targets> <slot> with <item> [count]`, `replace entity … from entity <source> <slot> [modifier]`, `modify entity <targets> <slot> <modifier>` (pack item modifiers: `set_count`, `set_components`, `set_nbt`); `block` forms are noted (no blocks) |
-| `replaceitem` | `entity <targets> <slot> <item> [count]` (before 1.17) |
+| `item` | counts must be 1–99 (1–64 before 1.20.5) and fit the item's stack; `replace entity\|block <…> <slot> with <item> [count]` (`air` empties the slot), `replace … from entity\|block <source> <slot> [modifier]`, `modify entity\|block <…> <slot> <modifier>` (pack item modifiers: `set_count`, `set_components`, `set_nbt`); a block must be a container with that slot ("Target position 1, 2, 3 is not a container", "The target does not have slot container.30") |
+| `replaceitem` | `entity\|block <…> <slot> <item> [count]` (before 1.17) |
 | `enchant` | adds the enchantment to the held item in the version's format (`Enchantments`, `enchantments.levels`, `enchantments`); which items accept it is not checked |
-| `loot` | `give` (what does not fit is lost), `spawn` and `replace entity <targets> <slot> [count]` (numbered slots from that one) with a `loot <table>` source, from the pack or the client jar: rolls (uniform ranges inclusive), weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`, stacks split to their limit; returns the number of stacks. Conditions count as passing and other functions are skipped (noted). `fish`, `kill`, `mine` and `insert` are noted |
-| `data` | on one entity or a storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data") |
-| `say me msg tell w tellraw title teammsg` | logged as `game` output, one record per player who reads it: `[Player1] hi` / `* Player1 waves` for everyone (say, me), `to Player2: text` (tellraw), `to Player1 (actionbar): text` (title), `Server whispers to Player2: text` (msg). Each record names its reader (`recipient`). Text components in JSON or (1.21.5+) SNBT, with `score`, `selector`, `nbt` (storage and entity) and `translate` (with its `with` arguments, from the client jar's language file, else the fallback) resolved per reader |
+| `loot` | targets `give` (what does not fit is lost), `spawn`, `insert <pos>` (into a container, like a hopper) and `replace entity\|block <…> <slot> [count]` (numbered slots from that one); sources `loot <table>`, `fish <table> <pos> [tool]`, `kill <entity>` (its `entities/<type>` table) and `mine <pos> [tool]` (the block's `blocks/<id>` table; `minecraft:contents` dynamic entries give the container's items), from the pack or the client jar: rolls (uniform ranges inclusive), weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`, stacks split to their limit; returns the number of stacks. Conditions count as passing and other functions are skipped (noted); the tool and the fishing context are not modelled |
+| `data` | on one entity, block entity or storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data"); a block without a block entity cannot be read ("The target block is not a block entity") |
+| `say me msg tell w tellraw title teammsg` | logged as `game` output, one record per player who reads it: `[Player1] hi` / `* Player1 waves` for everyone (say, me), `to Player2: text` (tellraw), `to Player1 (actionbar): text` (title), `Server whispers to Player2: text` (msg). Each record names its reader (`recipient`). Text components in JSON or (1.21.5+) SNBT, with `score`, `selector`, `nbt` (storage, entity and block) and `translate` (with its `with` arguments, from the client jar's language file, else the fallback) resolved per reader |
 | `gamerule` | |
 
-**Checked, no state change:** `setblock`, `effect`, `particle` validate their
-id when a client jar is loaded ([vanilla-assets.md](vanilla-assets.md)); `give`,
-`clear`, `item`, `summon`, `enchant` check theirs too.
+**Checked, no state change:** `effect`, `particle` validate their id when a
+client jar is loaded ([vanilla-assets.md](vanilla-assets.md)); `give`,
+`clear`, `item`, `summon`, `enchant`, `setblock`, `fill` check theirs too.
 
 **Dispatched and costed only:** every other command vanilla has in that
-version (`fill`, `playsound`, `bossbar`, …).
+version (`place`, `playsound`, `bossbar`, …).
 
 **Not in that version:** answered like the game, with the translated
 *Unknown or incomplete command* and a `<--[HERE]` marker, plus an emulator note
@@ -140,11 +162,11 @@ in a muted red); only commands run directly — typed in the logs dock's
 command line, or run by a test — produce
 `error`-level game records. Every failure record has `failure=True` either way.
 
-Limitations of the emulator itself (a condition or `data … block` it cannot
-evaluate, `execute on`, selector arguments it cannot check) are noted once per
+Limitations of the emulator itself (a condition it cannot evaluate, `execute
+on`, selector arguments it cannot check, default block states) are noted once per
 run at `info` level, so they do not mark a working pack as having warnings.
 So is every command that runs without changing the emulated world, with the
-reason (`'fill' runs, but blocks are not modelled`, `'effect' runs, but status
+reason (`'weather' runs, but the weather is not modelled`, `'effect' runs, but status
 effects are not modelled (the effect id is still checked)`, …); purely
 cosmetic ones (`particle`, `playsound`, `stopsound`) are not noted. The
 *analyze this line* action shows the same information for any line.

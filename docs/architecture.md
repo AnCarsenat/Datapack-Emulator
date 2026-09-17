@@ -29,12 +29,14 @@ src/datapack_emulator/     the package (standard src layout)
       data.py              data, gamerule
       execute.py           execute, its conditions and stores
       items.py             give, clear, item, replaceitem, enchant, loot, if items
-      misc.py              commands that only check their ids (effect, setblock), noop
+      blocks.py            setblock, fill, clone, if block/blocks, block positions
+      misc.py              commands that only check their ids (effect), noop
       registry.py          CommandSet: what exists in a version, who runs it
     runtime/
       output.py            LogSource, LogLevel, LogRecord, OutputBus
       messages.py          vanilla strings, MessageCatalogue
       world.py             Entity, Scoreboard, World, selector resolution
+      blocks.py            Block, BlockPredicate, Blocks: the sparse block world
       inventory.py         ItemStack, Inventory, item parsing, per-version item NBT
       loot.py              loot table evaluation for the loot command
       context.py           ExecutionContext (the command source; silent in functions)

@@ -9,7 +9,7 @@ The Minecraft client jar already contains most of what the base game knows.
 | --- | --- |
 | `version.json` | version id, data version, data pack format |
 | `assets/minecraft/lang/en_us.json` | every message string; entity, effect and attribute ids |
-| `assets/minecraft/blockstates/*.json` | block registry |
+| `assets/minecraft/blockstates/*.json` | block registry, and each block's state properties and values |
 | `assets/minecraft/items/*.json` | item registry |
 | `assets/minecraft/particles/*.json` | particle registry |
 | `data/minecraft/<registry>/` | advancement, banner_pattern, chat_type, damage_type, dimension_type, enchantment, instrument, jukebox_song, loot_table, painting_variant, recipe, structure |

@@ -6,26 +6,7 @@ Nothing here is promised; cross an entry out (or delete it) once it lands.
 
 ## Recommended next
 
-### 1. Blocks
-
-A sparse block model so `setblock`, `fill`, `clone`, `execute if block|blocks`,
-`data … block`, containers (`item … block`, `loot insert`, `loot … mine`) and
-macros `with block` work. It is the largest gap left: `hat_v2`'s 1.16 path and
-many real packs move items through blocks.
-
-* **Touches:** a new `runtime/blocks.py` (a dict of `(dimension, x, y, z)` →
-  block state and block entity NBT), `commands/misc.py`, `commands/data.py`,
-  `commands/execute.py` and `commands/items.py`, `analysis/explain.py` (drop
-  the "not modelled" notes),
-  the world dock (a blocks tab), `docs/emulation.md`.
-* **How:** only positions a command touches are stored; everything else is
-  air. Block states parsed from `stone[facing=up]{…}`; containers reuse
-  `Inventory` with `container.N` slots; `fill`/`clone` capped by vanilla's
-  32 768 block limit; block tags from the client jar. Loot `mine` needs block
-  loot tables, which the jar has.
-* **Size:** large.
-
-### 2. Function debugger
+### 1. Function debugger
 
 Breakpoints on function lines, then step command by command (step into a
 called function, step over, continue) while watching scores, NBT, the
@@ -39,7 +20,7 @@ executor and the position.
   hands the context to the UI.
 * **Size:** medium to large.
 
-### 3. Run the engine window in the background
+### 2. Run the engine window in the background
 
 A large version matrix runs on the UI thread and freezes the window.
 
@@ -57,7 +38,8 @@ A large version matrix runs on the UI thread and freezes the window.
   world model can answer (scores, entity properties, NBT, random chance), and
   keep per-player advancement progress.
 * **Loot conditions and functions** — evaluate loot table conditions (random
-  chance, entity/score checks) and the common functions beyond `set_count`,
+  chance, entity/score checks, `match_tool` with the `mine` tool) and the
+  common functions beyond `set_count`,
   `set_components`, `set_nbt` (`set_name`, `set_lore`, `enchant_randomly`,
   `copy_components`, `set_damage`, …); share them with item modifiers.
 * **Teams, game modes and levels** — the `team`, `gamemode` and `experience`
@@ -77,7 +59,10 @@ A large version matrix runs on the UI thread and freezes the window.
 * **Entity behaviour over time** — item entities merging, despawning after
   6000 ticks and being picked up by players; projectiles and falling blocks
   are probably out of scope.
-* **Macros `with block`** — once blocks exist.
+* **Default block states** — read each block's default state (the jar's
+  blockstates only list the combinations) so `if block …[facing=north]`
+  matches blocks placed without properties; block updates and drops stay
+  out of scope.
 * **Compare against a real server** — start a Fabric + Carpet server for a
   version, run the same pack and tests over RCON with Carpet fake players and
   `/tick step`, and diff what loaded, what failed and what the tests saw

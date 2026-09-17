@@ -5,12 +5,13 @@ cost and how they call each other — for **any Minecraft version you pick**,
 checked against the real base game read out of a `client.jar`.
 
 * emulates `#minecraft:load` / `#minecraft:tick`, scoreboards, selectors,
-  `execute`, macros, schedules, storage, entity NBT and inventories
+  `execute`, macros, schedules, storage, entity NBT, inventories and blocks
+  (setblock, fill, clone, containers, block entity data)
 * knows which commands exist in each version from 1.13 to 26.3 (26.3-rc-3), and which
   `pack.mcmeta` overlays apply
 * prints Minecraft's own error messages, kept apart from the app's own logs
 * shows the world as it runs — a scoreboard grid with each score's history,
-  entities with their full NBT, command storage — and runs commands typed
+  entities with their full NBT, command storage, placed blocks — and runs commands typed
   into it
 * command tests at any tick, in the window, during runs and across versions —
   and in CI: `datapack-emulator-cli test` exits non-zero on a failure and
