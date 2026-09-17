@@ -31,10 +31,15 @@ class SessionController(Controller):
         super().__init__(window)
         self.recent_projects: list[str] = []
         self.recent_datapacks: list[str] = []
+        #: start on the last project instead of the sample datapack
+        self.open_last_on_launch = True
         self._default_state = QByteArray()
 
     def connect(self) -> None:
         window = self.window
+        action = window._action("actionopen_last_on_launch")
+        if action is not None:
+            action.toggled.connect(self._set_open_last_on_launch)
         window.recent_projects_menu.aboutToShow.connect(self._fill_recent_projects)
         window.recent_datapacks_menu.aboutToShow.connect(self._fill_recent_datapacks)
         window.remove_datapack_menu.aboutToShow.connect(self._fill_remove_datapack)
@@ -55,6 +60,10 @@ class SessionController(Controller):
         data = self._read()
         self.recent_projects = _paths(data.get("recent_projects"))
         self.recent_datapacks = _paths(data.get("recent_datapacks"))
+        self.open_last_on_launch = data.get("open_last_on_launch", True) is not False
+        action = window._action("actionopen_last_on_launch")
+        if action is not None:
+            action.setChecked(self.open_last_on_launch)
         geometry = data.get("geometry")
         docks = data.get("docks")
         if isinstance(geometry, str):
@@ -67,6 +76,7 @@ class SessionController(Controller):
         data = {
             "recent_projects": self.recent_projects,
             "recent_datapacks": self.recent_datapacks,
+            "open_last_on_launch": self.open_last_on_launch,
             "geometry": bytes(window.saveGeometry().toBase64()).decode(),
             "docks": bytes(window.saveState().toBase64()).decode(),
         }
@@ -130,6 +140,35 @@ class SessionController(Controller):
             self.status("no recent project yet: open or save one first")
             return False
         return self.open_project(existing[0])
+
+    def _set_open_last_on_launch(self, checked: bool) -> None:
+        self.open_last_on_launch = checked
+        self.save()
+        self.status(
+            "the last project will open on launch"
+            if checked
+            else "the sample datapack will open on launch"
+        )
+
+    def start(self, path: Path | None = None, open_last: bool | None = None) -> None:
+        """What the window opens with: a path from the command line, else the
+        project opened most recently, else the sample datapack."""
+        window = self.window
+        if path is not None:
+            if path.suffix.lower() in (".dpemu", ".json") and path.is_file():
+                if window.projects.open_path(path):
+                    return
+            elif path.exists():
+                window.datapacks.load(path)
+                window.session.remember_datapack(path)
+                return
+            self.status(f"cannot open {path}")
+        wanted = self.open_last_on_launch if open_last is None else open_last
+        if wanted:
+            existing = [Path(entry) for entry in self.recent_projects if Path(entry).exists()]
+            if existing and window.projects.open_path(existing[0]):
+                return
+        window.datapacks.open_default()
 
     def clear_recent_projects(self) -> None:
         self.recent_projects = []

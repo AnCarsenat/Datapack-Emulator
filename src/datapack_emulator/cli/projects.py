@@ -18,6 +18,7 @@ from datapack_emulator.project import (
     SUFFIX,
     Project,
     list_projects,
+    opens_last_project,
     recent_datapacks,
     recent_projects,
 )
@@ -152,6 +153,17 @@ def command_recent(arguments: argparse.Namespace) -> int:
             print(f"  {path}" + ("" if path.exists() else "  (missing)"))
         if not paths:
             print("  none")
+    first = recent_projects()
+    print(
+        "the window starts on "
+        + (
+            f"{first[0]}"
+            if opens_last_project() and first
+            else "the sample datapack"
+            if not opens_last_project()
+            else "the sample datapack (no recent project)"
+        )
+    )
     return OK
 
 

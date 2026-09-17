@@ -382,6 +382,16 @@ def recent_datapacks() -> list[Path]:
     return _recent("recent_datapacks")
 
 
+def opens_last_project() -> bool:
+    """Whether the window starts on the project used most recently (its
+    *file › open the last project on launch*)."""
+    try:
+        data = json.loads(state_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    return not isinstance(data, dict) or data.get("open_last_on_launch", True) is not False
+
+
 def default_sample() -> Path | None:
     """The datapack to open on a cold start: the first one in ``samples/``."""
     if not PATHS.SAMPLES.is_dir():

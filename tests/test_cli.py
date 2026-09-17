@@ -1331,3 +1331,19 @@ def test_check_lines_options_and_unknown_suffixes(make_pack, tmp_path, capsys):
     assert main(["check", pack, "--lines", str(other)]) == 0
     out = capsys.readouterr()
     assert "not checked" in out.err and "no refused lines" in out.out
+
+
+def test_project_recent_says_what_the_window_starts_on(make_pack, tmp_path, capsys, monkeypatch):
+    from datapack_emulator.project import state_file
+
+    path = _project(tmp_path, make_pack, [])
+    state_file().parent.mkdir(parents=True, exist_ok=True)
+    state_file().write_text(
+        '{"recent_projects": ["%s"], "open_last_on_launch": true}' % path, encoding="utf-8"
+    )
+    assert main(["project", "recent"]) == 0
+    out = capsys.readouterr().out
+    assert f"the window starts on {path}" in out
+    state_file().write_text('{"open_last_on_launch": false}', encoding="utf-8")
+    assert main(["project", "recent"]) == 0
+    assert "the window starts on the sample datapack" in capsys.readouterr().out

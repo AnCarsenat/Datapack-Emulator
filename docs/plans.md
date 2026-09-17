@@ -10,12 +10,7 @@ Nothing is queued here right now; take the next item from the lists below.
 
 ## Reported
 
-* **Open the last project on launch** (bug / feature) — the window starts on
-  the first sample pack even when a project was open last time. Reopen the
-  most recent project (the first entry of *open recent project*, as
-  *open last project* does) when it still exists, and fall back to the
-  sample only when there is none; a command-line flag or setting could turn
-  it off.
+Nothing reported is waiting right now.
 
 ## Emulation gaps
 

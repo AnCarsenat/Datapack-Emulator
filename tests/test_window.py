@@ -1809,3 +1809,65 @@ def test_source_view_save_guards_and_breakpoints_follow_edits(app, window, make_
     assert editor.save()
     assert path.read_bytes() == b"say a\r\nsay b\r\nsay c\r\n"
     assert not window.tabs.tabText(index).startswith("●")
+
+
+def test_the_window_opens_the_last_project_on_launch(app, tmp_path, monkeypatch, make_pack):
+    from datapack_emulator.settings import PATHS
+
+    monkeypatch.setattr(PATHS, "PROJECTS", tmp_path / "projects")
+    monkeypatch.setattr(PATHS, "GENERATED", tmp_path / "generated")
+    monkeypatch.setattr(PATHS, "CACHE", tmp_path / ".cache")
+    from datapack_emulator.window import MainWindow
+
+    pack = make_pack({"data/test/function/tick.mcfunction": "say hi\n"})
+    first = MainWindow()
+    try:
+        first.datapacks.load(pack)
+        first.project.name = "kept"
+        assert first.projects.save()
+        saved = first.project.path
+        assert saved is not None and first.session.recent_projects
+    finally:
+        first.projects.modified = False
+        first.close()
+
+    # a fresh window starts on it, and says so
+    again = MainWindow()
+    try:
+        assert again.project.name == "kept"
+        assert again.datapack is not None and again.datapack.name == pack.name
+        assert again.session.open_last_on_launch
+    finally:
+        again.projects.modified = False
+        again.close()
+
+    # the command line and the menu entry both say "the sample instead"
+    plain = MainWindow(open_last=False)
+    try:
+        assert plain.project.name != "kept"
+        plain.session._set_open_last_on_launch(False)
+    finally:
+        plain.projects.modified = False
+        plain.close()
+
+    remembered = MainWindow()
+    try:
+        assert not remembered.session.open_last_on_launch
+        assert remembered.project.name != "kept"  # the setting is kept
+        # a path given on the command line wins over both
+        chosen = MainWindow(start_path=saved)
+        assert chosen.project.name == "kept"
+        chosen.projects.modified = False
+        chosen.close()
+    finally:
+        remembered.projects.modified = False
+        remembered.close()
+
+
+def test_the_window_entry_point_reads_its_arguments():
+    from datapack_emulator.app import parse_arguments
+
+    assert parse_arguments([]).path is None and parse_arguments([]).open_last is None
+    assert parse_arguments(["--no-last-project"]).open_last is False
+    assert parse_arguments(["--last-project"]).open_last is True
+    assert parse_arguments(["some/project.dpemu"]).path.name == "project.dpemu"
