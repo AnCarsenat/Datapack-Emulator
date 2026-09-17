@@ -1,0 +1,254 @@
+"""``execute``: the context chain, conditions and stores."""
+
+from __future__ import annotations
+
+from datapack_emulator.emulator.commands.helpers import find_holders, find_targets
+from datapack_emulator.emulator.commands.items import items_condition_count
+from datapack_emulator.emulator.commands.parser import (
+    Command,
+    Selector,
+    Subcommand,
+    resolve_position,
+)
+from datapack_emulator.emulator.commands.result import CommandResult
+from datapack_emulator.emulator.common import nbt_get, nbt_set, normalise_id, normalise_tagged_id
+from datapack_emulator.emulator.runtime.context import ExecutionContext
+from datapack_emulator.emulator.runtime.world import Entity
+
+#: a store waiting for the command's result, bound to the context it appeared in
+PendingStore = tuple[Subcommand, ExecutionContext]
+
+
+def cmd_execute(command: Command, context: ExecutionContext) -> CommandResult:
+    # each branch carries the stores seen so far, each bound to the context at
+    # its position in the chain (vanilla records the location to store in there)
+    branches: list[tuple[ExecutionContext, tuple[PendingStore, ...]]] = [(context, ())]
+    subcommands = command.subcommands
+    trailing_test = (
+        command.child is None
+        and bool(subcommands)
+        and subcommands[-1].name
+        in (
+            "if",
+            "unless",
+        )
+    )
+    chain = subcommands[:-1] if trailing_test else subcommands
+
+    for subcommand in chain:
+        next_branches: list[tuple[ExecutionContext, tuple[PendingStore, ...]]] = []
+        for current, stores in branches:
+            for successor in _execute_step(subcommand.name, subcommand.arguments, current, context):
+                pending = (
+                    stores + ((subcommand, current),) if subcommand.name == "store" else stores
+                )
+                next_branches.append((successor, pending))
+        branches = next_branches
+        if not branches:
+            break
+
+    if command.child is None:
+        # `execute ... if|unless <cond>` with no `run` is a test; its result is
+        # the condition's count (how many entities matched for `if entity`)
+        last = subcommands[-1] if trailing_test else None
+        total = 0
+        for current, stores in branches:
+            if last is None:
+                count = 1
+            elif last.name == "if":
+                count = condition_count(last.arguments, current)
+            else:
+                count = int(not evaluate_condition(last.arguments, current))
+            total += count
+            result = CommandResult(success=count > 0, value=count)
+            for subcommand, bound in stores:
+                _apply_store(subcommand, bound, result)
+        if total:
+            context.feedback("commands.execute.conditional.pass_count", total)
+        else:
+            context.feedback("commands.execute.conditional.fail")
+        return CommandResult(success=total > 0, value=total)
+
+    successes = 0
+    total = 0
+    for current, stores in branches:
+        result = context.emulator.run_command(command.child, current)
+        if result.success:
+            successes += 1
+        total += result.value
+        for subcommand, bound in stores:
+            _apply_store(subcommand, bound, result)
+        if result.returned:
+            # `execute ... run return` leaves the function on the first context
+            # that reaches it; the remaining contexts never run.
+            return CommandResult(success=result.success, value=result.value, returned=True)
+    return CommandResult(success=successes > 0, value=total if total else successes)
+
+
+def _execute_step(
+    name: str, arguments: list[str], current: ExecutionContext, origin: ExecutionContext
+) -> list[ExecutionContext]:
+    """The contexts one ``execute`` subcommand turns ``current`` into."""
+    world = origin.world
+    if name == "as" and arguments:
+        return [
+            current.branch(executor=entity)
+            for entity in world.select(Selector.parse(arguments[0]), current)
+        ]
+    if name == "at" and arguments:
+        return [
+            current.branch(
+                position=list(entity.position),
+                rotation=list(entity.rotation),
+                dimension=entity.dimension,
+            )
+            for entity in world.select(Selector.parse(arguments[0]), current)
+        ]
+    if name == "positioned":
+        if arguments and arguments[0] == "as" and len(arguments) > 1:
+            return [
+                current.branch(position=list(entity.position))
+                for entity in world.select(Selector.parse(arguments[1]), current)
+            ]
+        return [current.branch(position=resolve_position(arguments, current.position))]
+    if name == "rotated":
+        if arguments and arguments[0] == "as" and len(arguments) > 1:
+            return [
+                current.branch(rotation=list(entity.rotation))
+                for entity in world.select(Selector.parse(arguments[1]), current)
+            ]
+        return [current]
+    if name == "in" and arguments:
+        return [current.branch(dimension=normalise_id(arguments[0]))]
+    if name in ("if", "unless"):
+        return [current] if evaluate_condition(arguments, current) == (name == "if") else []
+    if name == "summon" and arguments:
+        entity = world.spawn(
+            Entity(type=normalise_id(arguments[0]), position=list(current.position))
+        )
+        return [current.branch(executor=entity)]
+    if name == "on":
+        # vehicles, passengers, owners, leashes and attackers are not modelled:
+        # vanilla ends the branch when the relation does not apply
+        current.note_once(
+            f"'execute on {' '.join(arguments)}': entity relations are not emulated, "
+            "so the branch ends"
+        )
+        return []
+    # store (bound by the caller), anchored, align, facing: nothing to change
+    return [current]
+
+
+def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: CommandResult) -> None:
+    arguments = subcommand.arguments
+    if len(arguments) < 4:
+        return
+    mode, target = arguments[0], arguments[1]
+    value = result.value if mode == "result" else int(result.success)
+    if target == "score":
+        for holder in find_holders(context, arguments[2]):
+            context.world.scoreboard.set(holder, arguments[3], value)
+    elif target == "storage":
+        store = context.world.storage.setdefault(normalise_id(arguments[2]), {})
+        nbt_set(store, arguments[3], _stored_number(value, arguments[4:6]))
+    elif target == "entity":
+        for entity in find_targets(context, arguments[2]):
+            if entity.is_player:  # player data cannot be modified
+                continue
+            data = entity.data(context.emulator.version)
+            nbt_set(data, arguments[3], _stored_number(value, arguments[4:6]))
+            entity.apply_data(data)
+
+
+def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
+    """``store ... <path> <type> <scale>``: integer types truncate, like vanilla."""
+    numeric_type = type_and_scale[0] if type_and_scale else "int"
+    try:
+        scale = float(type_and_scale[1]) if len(type_and_scale) > 1 else 1.0
+    except ValueError:
+        scale = 1.0
+    scaled = value * scale
+    if numeric_type in ("float", "double"):
+        return scaled
+    return int(scaled)  # byte, short, int, long
+
+
+def condition_count(arguments: list[str], context: ExecutionContext) -> int:
+    """The value a passing ``if`` condition reports: matched entities for
+    ``entity``, otherwise 1 (0 when it fails)."""
+    if arguments and arguments[0] == "entity" and len(arguments) >= 2:
+        return len(context.world.select(Selector.parse(arguments[1]), context))
+    if arguments and arguments[0] == "items":
+        return items_condition_count(arguments, context) or 0
+    return int(evaluate_condition(arguments, context))
+
+
+def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
+    if not arguments:
+        return False
+    kind = arguments[0]
+    board = context.world.scoreboard
+
+    if kind == "score" and len(arguments) >= 5:
+        holders = find_holders(context, arguments[1])
+        if not holders:
+            return False
+        value = board.get(holders[0], arguments[2])
+        if value is None:
+            return False
+        if arguments[3] == "matches":
+            from datapack_emulator.emulator.common import in_range
+
+            return in_range(value, arguments[4])
+        if len(arguments) >= 6:
+            others = find_holders(context, arguments[4])
+            if not others:
+                return False
+            other = board.get(others[0], arguments[5])
+            if other is None:
+                return False
+            return {
+                "<": value < other,
+                "<=": value <= other,
+                "=": value == other,
+                ">=": value >= other,
+                ">": value > other,
+            }.get(arguments[3], False)
+        return False
+
+    if kind == "entity" and len(arguments) >= 2:
+        return bool(context.world.select(Selector.parse(arguments[1]), context))
+
+    if kind == "data" and len(arguments) >= 4:
+        if arguments[1] == "storage":
+            store = context.world.storage.get(normalise_id(arguments[2]), {})
+            return nbt_get(store, arguments[3]) is not None
+        if arguments[1] == "entity":
+            return any(
+                nbt_get(entity.data(context.emulator.version), arguments[3]) is not None
+                for entity in find_targets(context, arguments[2])
+            )
+        return False
+
+    if kind == "items":
+        return bool(items_condition_count(arguments, context))
+
+    if kind == "dimension" and len(arguments) >= 2:
+        return context.dimension == normalise_id(arguments[1])
+
+    if kind == "loaded":
+        return True
+
+    if kind == "function" and len(arguments) >= 2:
+        target = normalise_tagged_id(arguments[1])
+        ids = context.emulator.library.resolve_tag(target) if target.startswith("#") else [target]
+        # vanilla: passes on the first function that returns a non-zero value;
+        # a function that ends without `return` does not count
+        for function_id in ids:
+            result = context.emulator.run_function(function_id, context)
+            if result.has_return and result.success and result.value != 0:
+                return True
+        return False
+
+    context.note_key_once("emulator.condition", kind)
+    return False
