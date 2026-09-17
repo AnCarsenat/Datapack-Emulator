@@ -16,7 +16,8 @@ DISABLED_COLOUR = QColor("#bdbdbd")
 STOPPED_COLOUR = QColor("#fff59d")
 GUTTER_BACKGROUND = QColor("#f3f3f3")
 NUMBER_COLOUR = QColor("#9e9e9e")
-MARK_COLOUR = QColor("#d32f2f")
+#: a refused line, in the gutter: amber, so it is not read as a breakpoint
+MARK_COLOUR = QColor("#ef8c00")
 
 
 class _Gutter(QWidget):
@@ -106,8 +107,9 @@ class SourceEdit(QPlainTextEdit):
             line = self.cursorForPosition(event.pos()).blockNumber() + 1
             if line in self.line_marks:
                 QToolTip.showText(event.globalPos(), self.line_marks[line], self)
-                return True
-            QToolTip.hideText()
+            else:  # no blurb over every other line
+                QToolTip.hideText()
+            return True
         return super().viewportEvent(event)
 
     # -- geometry ----------------------------------------------------------
@@ -158,7 +160,8 @@ class SourceEdit(QPlainTextEdit):
                 if line == self.stopped_line:
                     painter.fillRect(QRect(0, int(top), width, height), STOPPED_COLOUR)
                 elif line in self.line_marks:
-                    painter.fillRect(QRect(width - 3, int(top), 3, height), MARK_COLOUR)
+                    # two pixels clear of the line number
+                    painter.fillRect(QRect(width - 6, int(top), 3, height), MARK_COLOUR)
                 if line in self.breakpoints:
                     painter.setRenderHint(QPainter.Antialiasing)
                     painter.setPen(Qt.NoPen)

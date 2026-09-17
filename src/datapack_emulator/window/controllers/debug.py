@@ -12,6 +12,8 @@ until the answer is given, and replacing the world answers ``stop`` first.
 
 from __future__ import annotations
 
+from difflib import SequenceMatcher
+
 from PySide6.QtCore import QEventLoop, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -293,7 +295,8 @@ class DebugController(Controller):
             tree.resizeColumnToContents(0)
         window.dock_debug.show()
         window.dock_debug.raise_()
-        window.navigation.open_function(pause.function_id, pause.line)
+        # a stop must not wait on a dialog: the view follows without asking
+        window.navigation.open_function(pause.function_id, pause.line, ask=False)
         window.source_edit.set_stopped_line(pause.line)
         self.refresh_values()
         self.fill_breakpoints()
@@ -381,6 +384,24 @@ class DebugController(Controller):
         finally:
             self._filling = False
         self.refresh_gutter()
+
+    def shift_breakpoints(self, path, before: str, after: str) -> None:
+        """A saved edit moved the lines: the breakpoints of that file follow."""
+        if before == after:
+            return
+        function_id = self.window.navigation.function_at(path)
+        if function_id is None or not self.debugger.breakpoints:
+            return
+        old, new = before.splitlines(), after.splitlines()
+        moved: dict[int, int] = {}
+        for tag, start, end, other_start, _ in SequenceMatcher(
+            None, old, new, autojunk=False
+        ).get_opcodes():
+            if tag == "equal":
+                for offset in range(end - start):
+                    moved[start + offset + 1] = other_start + offset + 1
+        self.debugger.move(function_id, moved)
+        self.fill_breakpoints()
 
     def refresh_gutter(self) -> None:
         window = self.window

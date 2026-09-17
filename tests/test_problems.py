@@ -241,4 +241,6 @@ def test_line_problems_for_the_editor():
     assert modern[6] == "No variables in macro"
     old = line_problems(text, command_set(parse("1.19")))
     assert "macro lines need" in old[5]
-    assert "execute:on" in old[7] and "added in" in old[7]
+    assert old[3] == "unknown command `frobnicate`"  # not a feature key
+    assert "execute subcommand `on` needs 1.19.4" in old[7]
+    assert "emulated as 1.19" in old[7]

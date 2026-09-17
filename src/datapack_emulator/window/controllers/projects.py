@@ -53,7 +53,10 @@ class ProjectController(Controller):
             self.mark_modified()
 
     def confirm_close(self) -> bool:
-        """Before the window closes: save, discard or stay. True to close."""
+        """Before the window closes, or another project opens: save, discard or
+        stay. True to go on."""
+        if not self.window.editor.maybe_discard():
+            return False
         if not self.modified:
             return True
         answer = self.ask_save_changes()

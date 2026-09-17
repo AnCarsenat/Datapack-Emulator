@@ -216,10 +216,35 @@ def line_problems(text: str, commands: CommandSet) -> dict[int, str]:
         missing = commands.missing_features(command.features())
         if missing:
             feature, since = missing[0]
-            found[number] = f"{commands.version.id} has no {feature}" + (
-                f" (added in {since.id})" if since else ""
-            )
+            found[number] = feature_message(feature, since, commands.version)
     return found
+
+
+#: how a feature key reads in a message
+FEATURE_WORDS = {
+    "command": "the command",
+    "execute": "the execute subcommand",
+    "condition": "the execute condition",
+    "store": "the execute store target",
+    "schedule": "schedule",
+    "return": "return",
+}
+
+
+def feature_message(feature: str, since, version) -> str:
+    """Why the version refuses a line, in the words a player would use."""
+    kind, _, name = feature.partition(":")
+    if feature == "function:with":
+        shown = "function … with (macro arguments)"
+    elif kind in FEATURE_WORDS and name:
+        shown = f"{FEATURE_WORDS[kind]} `{name}`"
+    else:
+        shown = feature
+    if since is not None:
+        return f"{shown} needs {since.id}; this pack is emulated as {version.id}"
+    if kind == "command":
+        return f"unknown command `{name}`"
+    return f"{version.id} has no {shown}"
 
 
 def _parse_failure(
