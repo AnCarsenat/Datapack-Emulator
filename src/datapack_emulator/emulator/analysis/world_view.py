@@ -1,5 +1,5 @@
 """The world as people read it: score holders, histories, entity summaries,
-and whole-world dumps — shared by the window's world dock and
+blocks and whole-world dumps — shared by the window's world dock and
 ``datapack-emulator-cli world``.
 """
 
@@ -164,6 +164,34 @@ def storage_text(world: World, text_filter: str = "") -> str:
     return "\n".join(lines) or "no storage"
 
 
+def blocks_text(world: World, text_filter: str = "", version=None) -> str:
+    wanted = text_filter.strip().lower()
+    lines = []
+    for (dimension, x, y, z), block in world.blocks.items():
+        where = f"{x} {y} {z}" + ("" if dimension == "minecraft:overworld" else f" in {dimension}")
+        if wanted and wanted not in where.lower() and wanted not in block.state.lower():
+            continue
+        line = f"{where}  {block.state}"
+        data = {key: value for key, value in block.data(version).items() if key != "id"}
+        if data:
+            line += f"  {to_snbt(data)}"
+        lines.append(line)
+    return "\n".join(lines) or "no blocks (everything is air)"
+
+
+def blocks_to_list(world: World, version=None) -> list[dict[str, Any]]:
+    return [
+        {
+            "dimension": dimension,
+            "pos": [x, y, z],
+            "block": block.id,
+            "properties": dict(block.properties),
+            "nbt": block.data(version, (x, y, z)),
+        }
+        for (dimension, x, y, z), block in world.blocks.items()
+    ]
+
+
 def world_to_dict(world: World, version=None) -> dict[str, Any]:
     """Everything the world dock shows, as plain JSON-ready data."""
     board = world.scoreboard
@@ -191,5 +219,6 @@ def world_to_dict(world: World, version=None) -> dict[str, Any]:
             for entity in world.entities
         ],
         "storage": {key: world.storage[key] for key in sorted(world.storage)},
+        "blocks": blocks_to_list(world, version),
         "gamerules": dict(world.gamerules),
     }

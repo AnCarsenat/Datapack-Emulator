@@ -11,18 +11,21 @@ from datapack_emulator.emulator.analysis.world_view import entity_selector
 from datapack_emulator.emulator.common import to_snbt
 from datapack_emulator.window.controllers.base import Controller
 from datapack_emulator.window.panels.world import (
+    BLOCK_ROLE,
+    DIMENSION_ROLE,
     PATH_ROLE,
     STORAGE_ROLE,
     UUID_ROLE,
     VALUE_ROLE,
     Snapshot,
     expand_entity,
+    fill_blocks,
     fill_entities,
     fill_scoreboard,
     fill_storage,
 )
 
-TAB_SCORES, TAB_ENTITIES, TAB_STORAGE = range(3)
+TAB_SCORES, TAB_ENTITIES, TAB_STORAGE, TAB_BLOCKS = range(4)
 
 
 class WorldController(Controller):
@@ -62,6 +65,11 @@ class WorldController(Controller):
         window.tree_storage.itemExpanded.connect(
             lambda _item: window.tree_storage.resizeColumnToContents(0)
         )
+        window.tree_blocks.itemDoubleClicked.connect(self._on_nbt_double_click)
+        window.tree_blocks.customContextMenuRequested.connect(self.block_menu)
+        window.tree_blocks.itemExpanded.connect(
+            lambda _item: window.tree_blocks.resizeColumnToContents(0)
+        )
         window.dock_world.visibilityChanged.connect(lambda visible: visible and self.refresh())
 
     # -- refreshing ---------------------------------------------------------
@@ -85,12 +93,14 @@ class WorldController(Controller):
             window.table_scores.setColumnCount(0)
             window.tree_entities.clear()
             window.tree_storage.clear()
+            window.tree_blocks.clear()
             self._scores = {}
             return
         world = emulator.world
         window.world_label.setText(
             f"game time {world.tick} · {len(world.entities)} entities · "
-            f"{len(world.scoreboard.objectives)} objectives · {len(world.storage)} storages"
+            f"{len(world.scoreboard.objectives)} objectives · {len(world.storage)} storages · "
+            f"{len(world.blocks)} blocks"
         )
         if window.dock_world.isHidden():
             return
@@ -107,6 +117,8 @@ class WorldController(Controller):
             )
         elif tab == TAB_ENTITIES:
             fill_entities(window.tree_entities, world, text, emulator.version)
+        elif tab == TAB_BLOCKS:
+            fill_blocks(window.tree_blocks, world, text, emulator.version)
         else:
             fill_storage(window.tree_storage, world.storage, text)
         self._fill_seconds = time.monotonic() - started
@@ -211,16 +223,74 @@ class WorldController(Controller):
     # -- NBT ------------------------------------------------------------------
 
     def _owner(self, item: QTreeWidgetItem) -> tuple[str, str] | None:
-        """``("entity", selector)`` or ``("storage", id)`` for an NBT item."""
-        top = item
-        while top.parent() is not None:
-            top = top.parent()
+        """``("entity", selector)``, ``("storage", id)`` or ``("block", "x y z")``
+        for an NBT item."""
+        top = self._top(item)
         storage = top.data(0, STORAGE_ROLE)
         if storage:
             return ("storage", str(storage))
+        block = top.data(0, BLOCK_ROLE)
+        if block:
+            return ("block", str(block))
         emulator = self.window.emulator
         entity = emulator.world.entity_by_id(str(top.data(0, UUID_ROLE))) if emulator else None
         return ("entity", entity_selector(entity)) if entity is not None else None
+
+    @staticmethod
+    def _top(item: QTreeWidgetItem) -> QTreeWidgetItem:
+        while item.parent() is not None:
+            item = item.parent()
+        return item
+
+    def _run_in(self, dimension: str, command: str) -> None:
+        """A command at a block, in its dimension."""
+        if dimension and dimension != "minecraft:overworld":
+            command = f"execute in {dimension} run {command}"
+        self._run(command)
+
+    def block_menu(self, point: QPoint) -> None:
+        window = self.window
+        tree = window.tree_blocks
+        clicked = tree.itemAt(point)
+        menu = QMenu(window)
+        if clicked is None or not self._top(clicked).data(0, BLOCK_ROLE):
+            menu.addAction(
+                "set block…", lambda: window.console.prefill("setblock ~ ~ ~ minecraft:")
+            )
+            menu.exec(tree.viewport().mapToGlobal(point))
+            return
+        top = self._top(clicked)
+        where = str(top.data(0, BLOCK_ROLE))
+        dimension = str(top.data(0, DIMENSION_ROLE))
+        path = clicked.data(0, PATH_ROLE)
+        if path:
+            menu.addAction("change value…", lambda: self.edit_value(clicked))
+            menu.addAction(
+                "remove", lambda: self._run_in(dimension, f"data remove block {where} {path}")
+            )
+            menu.addSeparator()
+        menu.addAction(top.text(1)).setEnabled(False)
+        menu.addAction(
+            "replace block…", lambda: window.console.prefill(f"setblock {where} minecraft:")
+        )
+        menu.addAction(
+            "set item in slot…",
+            lambda: window.console.prefill(
+                f"item replace block {where} container.0 with minecraft:"
+            ),
+        )
+        menu.addAction(
+            "remove block", lambda: self._run_in(dimension, f"setblock {where} minecraft:air")
+        )
+        menu.addAction(
+            "run a command here",
+            lambda: window.console.prefill(f"execute positioned {where} run "),
+        )
+        menu.addAction(
+            "copy block state",
+            lambda: window.navigation.copy_text(top.text(1).split(" · ")[0], "the block"),
+        )
+        menu.exec(tree.viewport().mapToGlobal(point))
 
     def _on_nbt_double_click(self, item: QTreeWidgetItem, _column: int) -> None:
         path = item.data(0, PATH_ROLE)
@@ -240,7 +310,11 @@ class WorldController(Controller):
             text=to_snbt(item.data(0, VALUE_ROLE)),
         )
         if accepted and text.strip():
-            self._run(f"data modify {kind} {target} {path} set value {text.strip()}")
+            command = f"data modify {kind} {target} {path} set value {text.strip()}"
+            if kind == "block":
+                self._run_in(str(self._top(item).data(0, DIMENSION_ROLE)), command)
+            else:
+                self._run(command)
 
     def storage_menu(self, point: QPoint) -> None:
         window = self.window

@@ -35,6 +35,11 @@ VALUE_ROLE = Qt.UserRole + 2
 PATH_ROLE = Qt.UserRole + 3
 #: the storage id of a storage tree's top-level item
 STORAGE_ROLE = Qt.UserRole + 4
+#: "x y z" and the dimension of a block tree's top-level item
+BLOCK_ROLE = Qt.UserRole + 5
+DIMENSION_ROLE = Qt.UserRole + 6
+#: blocks listed at most
+MAX_BLOCKS_SHOWN = 2000
 #: entities listed at most; the filter narrows a bigger world down
 MAX_ENTITIES_SHOWN = 1000
 #: the placeholder child that makes an entity expandable before its NBT is built
@@ -207,6 +212,39 @@ def fill_storage(
         item.setData(0, STORAGE_ROLE, storage_id)
         for key, value in contents.items():
             _add_nbt(item, key, value, storage_id, join_path("", key))
+    _restore_expanded(tree, keys)
+    tree.resizeColumnToContents(0)
+    tree.setUpdatesEnabled(True)
+
+
+def fill_blocks(tree: QTreeWidget, world: World, text_filter: str = "", version=None) -> None:
+    """One item per stored block, with its block entity NBT underneath."""
+    wanted = text_filter.strip().lower()
+    keys = expanded_keys(tree)
+    tree.setUpdatesEnabled(False)
+    tree.clear()
+    shown = matching = 0
+    for (dimension, x, y, z), block in world.blocks.items():
+        where = f"{x} {y} {z}"
+        label = where if dimension == "minecraft:overworld" else f"{where} ({dimension})"
+        if wanted and wanted not in label.lower() and wanted not in block.state.lower():
+            continue
+        matching += 1
+        if shown >= MAX_BLOCKS_SHOWN:
+            continue
+        shown += 1
+        items = sum(stack.count for stack in block.items.values())
+        summary = block.state + (f" · {items} item(s)" if items else "")
+        item = QTreeWidgetItem(tree, [label, summary])
+        owner = f"{dimension} {where}"
+        item.setData(0, KEY_ROLE, owner)
+        item.setData(0, BLOCK_ROLE, where)
+        item.setData(0, DIMENSION_ROLE, dimension)
+        for key, value in block.data(version, (x, y, z)).items():
+            if key not in ("x", "y", "z"):
+                _add_nbt(item, key, value, owner, join_path("", key))
+    if matching > shown:
+        QTreeWidgetItem(tree, [f"… {matching - shown} more", "narrow them down with the filter"])
     _restore_expanded(tree, keys)
     tree.resizeColumnToContents(0)
     tree.setUpdatesEnabled(True)
