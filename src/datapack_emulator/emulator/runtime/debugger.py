@@ -5,11 +5,18 @@ The emulator asks the debugger before each command of a function
 asked for, the debugger calls ``on_pause`` with a ``Pause`` — where it
 stopped, the call stack, the command source — and waits for its answer, an
 ``Action``. The callback decides how to wait: the command line reads the
-next line from the terminal, the window blocks its worker thread until a
+next line from the terminal, the window runs a nested event loop until a
 button is pressed. Nothing here knows about either.
 
 Only function lines stop: a typed command runs through, and the commands an
-``execute … run`` starts are part of their line.
+``execute … run`` starts are part of their line. Stepping follows the call
+stack's depth: *over* stops at the next function line no deeper than the
+current one, *out* at the next shallower one, so past the end of a tick
+function they stop in whatever runs next at that depth (the next function of
+the tag, a schedule). A step never carries into the next tick.
+
+Conditions and watches only read the world: ``if function`` is refused, and
+the records a condition produces are dropped.
 """
 
 from __future__ import annotations
@@ -99,6 +106,36 @@ class Pause:
         return f"{self.function_id}:{self.line} ({why}) at tick {self.tick}: {self.command.raw}"
 
 
+def condition_problem(condition: str) -> str:
+    """Why a breakpoint condition or watch cannot be used ("" when it can):
+    it must only read the world."""
+    from datapack_emulator.emulator.commands.parser import Command
+
+    command = Command.parse("execute " + condition.strip())
+    if command is None:
+        return f"not a condition: {condition!r}"
+    words = command.arguments
+    if not words or words[0] not in ("if", "unless"):
+        return f"a condition starts with if or unless: {condition!r}"
+    for index, word in enumerate(words):
+        if word == "run":
+            return "a condition cannot run a command"
+        if word in ("if", "unless") and index + 1 < len(words) and words[index + 1] == "function":
+            return "if function runs the function, so it cannot be a condition"
+    return ""
+
+
+def split_breakpoint(text: str) -> tuple[str, str]:
+    """``FUNC:LINE [if|unless …]`` -> (location, condition); ``if`` is added
+    to a condition that has neither."""
+    parts = text.strip().split(None, 1)
+    location = parts[0] if parts else ""
+    condition = parts[1].strip() if len(parts) > 1 else ""
+    if condition and condition.split(None, 1)[0] not in ("if", "unless"):
+        condition = "if " + condition
+    return location, condition
+
+
 def parse_location(text: str) -> tuple[str, int]:
     """``ns:path:LINE`` (or ``path:LINE`` in ``minecraft``) -> (function id, line)."""
     function, sep, line = text.strip().rpartition(":")
@@ -165,7 +202,7 @@ class Debugger:
         for entry in entries:
             text = entry.strip()
             enabled = not text.startswith("!")
-            location, _, condition = text.lstrip("!").partition(" ")
+            location, condition = split_breakpoint(text.lstrip("!"))
             try:
                 function_id, line = parse_location(location)
             except ValueError:
@@ -173,6 +210,25 @@ class Debugger:
                 continue
             self.add(function_id, line, condition).enabled = enabled
         return bad
+
+    def resolve(self, function_of: Callable[[str], object | None]) -> list[str]:
+        """Check the breakpoints against the functions a version loads
+        (``function_of`` returns a ``Function`` or None): each moves to the
+        first command on or after its line. Returns what is wrong."""
+        problems = []
+        for point in list(self.breakpoints.values()):
+            function = function_of(point.function_id)
+            if function is None:
+                problems.append(f"breakpoint {point}: no function {point.function_id}")
+                continue
+            line = command_line_at(function, point.line)
+            if line is None:
+                problems.append(f"breakpoint {point}: no command on or after line {point.line}")
+            elif line != point.line and (point.function_id, line) not in self.breakpoints:
+                del self.breakpoints[point.key]
+                point.line = line
+                self.breakpoints[point.key] = point
+        return problems
 
     def lines_of(self, function_id: str) -> set[int]:
         return {line for (function, line) in self.breakpoints if function == function_id}
@@ -185,6 +241,10 @@ class Debugger:
     def request_pause(self) -> None:
         """Stop at the next function line (safe from another thread)."""
         self._pause_requested.set()
+
+    def cancel_pause(self) -> None:
+        """Forget a pause request nothing reached."""
+        self._pause_requested.clear()
 
     def reset(self) -> None:
         """Forget the stack and any stepping (a new run)."""
@@ -261,22 +321,24 @@ class Debugger:
         left out) in ``context``: (passed, error)."""
         from datapack_emulator.emulator.commands.execute import cmd_execute
         from datapack_emulator.emulator.commands.parser import Command
+        from datapack_emulator.emulator.runtime.output import OutputBus
 
-        text = condition.strip()
-        if not text.startswith(("if ", "unless ")):
-            text = "if " + text
+        _, text = split_breakpoint("_ " + condition)
+        problem = condition_problem(text)
+        if problem:
+            return False, problem
         command = Command.parse(f"execute {text}")
-        if command is None:
-            return False, f"not a condition: {condition}"
         emulator = context.emulator
         counted = emulator.commands_run
+        output = emulator.output
+        emulator.output = OutputBus()  # what the check says is not part of the run
         try:
             with self.aside():
-                # at depth 1 the game's errors stay quiet (DEBUG), as in a function
                 result = cmd_execute(command, context.branch(depth=max(1, context.depth)))
         except Exception as exc:  # a broken condition must not end the run
             return False, f"{condition}: {exc}"
         finally:
+            emulator.output = output
             emulator.commands_run = counted
         return result.success, ""
 

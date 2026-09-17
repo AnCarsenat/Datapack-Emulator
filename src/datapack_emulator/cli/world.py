@@ -110,7 +110,7 @@ class Session:
         self.vanilla = vanilla_for(arguments, self.version, inputs)
         #: the last run tests' results, by position in ``tests``
         self.results: dict[int, TestResult] = {}
-        #: breakpoints and watches, kept across new worlds
+        #: breakpoints and watches, kept across new worlds (checked in the shell)
         self.debugger = Debugger()
         if project is not None:
             for entry in self.debugger.load_strings(project.breakpoints):
@@ -137,9 +137,10 @@ class Session:
 
     # -- ticking -----------------------------------------------------------
 
-    def step(self, count: int = 1) -> None:
+    def step(self, count: int = 1) -> bool:
         """``count`` more ticks in this world (tests of those ticks run after them
-        when tests run during runs). ``count`` -1 ticks until Ctrl+C."""
+        when tests run during runs). ``count`` -1 ticks until Ctrl+C. Whether
+        the debugger abandoned a tick."""
         emulator = self.emulator
         emulator.start()
         schedule = None
@@ -169,11 +170,13 @@ class Session:
             print(f"stopped after {done} tick(s)")
         except DebugStopped as stop:
             self.stopped(stop)
+            return True
+        return False
 
     def stopped(self, stop: DebugStopped) -> None:
         """A tick abandoned from the debugger: the world keeps what it did."""
         self.debugger.reset()
-        print(f"stopped at {stop}; the rest of that tick did not run")
+        print(f"stopped at {stop}; the rest of that tick did not run (it still counts)")
 
     def _report(self, schedule: TestSchedule, indexes: list[int]) -> None:
         results = schedule.by_index(include_unreached=False)
@@ -189,7 +192,10 @@ class Session:
         count = self.ticks if ticks is None else ticks
         self.emulator.start()
         if count == 0:
-            self.emulator.run(ticks=0)
+            try:
+                self.emulator.run(ticks=0)
+            except DebugStopped as stop:
+                self.stopped(stop)
         self.step(count)
         if self.tests_during_runs and count >= 0:
             for index, test in enumerate(self.tests):
@@ -204,7 +210,9 @@ class Session:
         if Command.parse(line.strip().removeprefix("/")) is None:
             return
         if self.tests_during_runs and (not self.emulator.started or self.emulator.world.tick == 0):
-            self.step()  # like a server that is up, with that tick's tests
+            # like a server that is up, with that tick's tests
+            if self.step():
+                return
             print("(started the world: ran the first tick)")
         try:
             result, started = self.emulator.run_typed(line)
@@ -566,7 +574,6 @@ class Shell(DebugCommands):
         self.failed = False
         self.quit = False
         self._lines = iter(())
-        self._interactive = False
         session.debugger.on_pause = self.on_pause
 
     @staticmethod
@@ -893,11 +900,13 @@ class Shell(DebugCommands):
         except CliError as exc:
             print(f"error: {exc}")
             self.failed = True
+        except DebugStopped as stop:  # a stop no command caught (.runtests, …)
+            self.session.stopped(stop)
 
     def next_line(self, prompt: str) -> str | None:
         """The next line from the keyboard or the script (None at the end);
         the debugger's prompt reads from the same place."""
-        if self._interactive:
+        if self.interactive:
             while True:
                 try:
                     return input(prompt)
@@ -912,9 +921,16 @@ class Shell(DebugCommands):
                 return line
         return None
 
-    def loop(self, lines, interactive: bool) -> None:
+    def set_input(self, lines, interactive: bool) -> None:
+        """Where lines (commands, and answers at a stop) come from next."""
         self._lines = iter(lines)
-        self._interactive = interactive
+        self.interactive = interactive
+        self.muted = False
+
+    def loop(self, lines=None, interactive: bool = False) -> None:
+        if lines is not None:
+            self.set_input(lines, interactive)
+        interactive = self.interactive
         if interactive:
             with contextlib.suppress(ImportError):
                 import readline  # noqa: F401  (line editing and history for input())
@@ -941,15 +957,18 @@ def command_shell(arguments: argparse.Namespace) -> int:
     session = Session(arguments, inputs)
     shell = Shell(session, arguments)
     setup_debugger(session.debugger, session.emulator, arguments)
+    sources = [(lines, False) for lines in scripts] or [(sys.stdin, sys.stdin.isatty())]
+    # a stop during --run answers from the first input, like the rest
+    shell.set_input(*sources[0])
     if arguments.run:
-        session.run()
-    if scripts:
-        for lines in scripts:
-            shell.loop(lines, interactive=False)
-    elif sys.stdin.isatty():
-        shell.loop(sys.stdin, interactive=True)
-    else:
-        shell.loop(sys.stdin, interactive=False)
+        try:
+            session.run()
+        except DebugStopped as stop:  # pragma: no cover - run() handles its own
+            session.stopped(stop)
+    for index, (lines, interactive) in enumerate(sources):
+        if shell.quit:
+            break
+        shell.loop(None if index == 0 else lines, interactive)
     return FAILED if shell.failed and arguments.strict else OK
 
 

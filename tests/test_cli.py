@@ -831,7 +831,8 @@ def test_run_prints_debugger_stops(make_pack, tmp_path, capsys):
     )
     assert "    score #ticks t = 1" in captured.out
     assert "debugger: 1 stop(s)" in captured.err
-    assert main(["run", str(_pack(make_pack)), "--break", "test:tick:1 score"]) == 2
+    assert main(["run", str(_pack(make_pack)), "--break", "test:tick:1 if function test:tick"]) == 2
+    assert "if function runs the function" in capsys.readouterr().err
 
 
 def test_project_debug_edits_breakpoints_and_watches(make_pack, tmp_path, capsys):
@@ -910,8 +911,8 @@ def test_ctrl_c_stops_a_matrix_after_the_current_tick(make_pack, capsys, monkeyp
     pack = str(_pack(make_pack))
     code = main(["matrix", pack, "--versions", "1.20.4", "1.21.4", "--ticks", "10", "--no-vanilla"])
     captured = capsys.readouterr()
-    assert code == 1
-    assert "stopped: 1.20.4 after 3 tick(s); 1 version(s) not run" in captured.err
+    assert code == 130
+    assert "stopped: 1.20.4 after 3/10 tick(s); 1 version(s) not run" in captured.err
     assert "cancelled" in captured.out and "1.21.4" not in captured.out.split("matrix report")[0]
 
 
@@ -966,3 +967,92 @@ def test_checks_from_the_command_line(make_pack, tmp_path, capsys):
     assert "error: a check needs ' = ' or ' != '" in out
     assert "storage test:mem x: expected 5, got nothing" in out
     assert "  1. [x] tick 1    say hi\n" in out
+
+
+def test_shell_debugger_edge_cases(make_pack, tmp_path, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    first = tmp_path / "a.txt"
+    second = tmp_path / "b.txt"
+    first.write_text("c\n.break\n.step\n", encoding="utf-8")
+    second.write_text(".break\n.save " + str(tmp_path / "x.dpemu") + "\n", encoding="utf-8")
+    # a stop during --run answers from the first script; its end mutes stops
+    # until the next script, and the breakpoints survive
+    code = main(
+        [
+            "shell", pack, "--run", "--ticks", "2", "--break", "test:tick:1",
+            "--script", str(first), "--script", str(second),
+        ]
+    )  # fmt: skip
+    out = capsys.readouterr().out
+    assert code == 0
+    assert out.count("stopped: test:tick:1") == 2
+    assert "Unknown or incomplete command" not in out
+    assert "(end of input: continuing)" in out
+    assert out.count("test:tick:1  (hit") == 2
+    assert Project.load(tmp_path / "x.dpemu").breakpoints == ["test:tick:1"]
+
+    # a stop in a 0-tick run, and a stopped first tick still counts
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO(".ticks 0\n.run\nq\nsay hi\nq\nsay again\n.tick\n")
+    )
+    assert main(["shell", pack, "--break", "test:load:1"]) == 0
+    out = capsys.readouterr().out
+    assert "Traceback" not in out
+    assert "stopped at test:load:1" in out
+    assert "[Server] again" in out
+
+    # project breakpoints are checked when the shell opens
+    path = str(_project(tmp_path, make_pack, []))
+    assert main(["project", "debug", path, "--break", "test:nope:3", "--break", "test:tick:9"]) == 0
+    err = capsys.readouterr().err
+    assert "breakpoint test:nope:3: no function test:nope" in err
+    assert "breakpoint test:tick:9: no command on or after line 9" in err
+    monkeypatch.setattr("sys.stdin", io.StringIO(".disable-break test:tick:9\n.break\n"))
+    assert main(["shell", path]) == 0
+    captured = capsys.readouterr()
+    assert "warning: breakpoint test:nope:3: no function test:nope" in captured.err
+    assert "test:tick:9 (disabled)" in captured.out
+    assert main(["shell", pack, "--watch", "if function test:tick"]) == 2
+
+
+def test_ctrl_c_between_versions_and_skipped_tests(make_pack, tmp_path, capsys, monkeypatch):
+    import signal
+
+    from datapack_emulator.emulator.analysis.graph import CallGraph
+    from datapack_emulator.emulator.runtime.emulator import Emulator
+
+    pack = str(_pack(make_pack))
+    original = CallGraph.from_pack.__func__
+
+    def from_pack(cls, view):
+        signal.raise_signal(signal.SIGINT)  # after the version's last tick
+        return original(cls, view)
+
+    monkeypatch.setattr(CallGraph, "from_pack", classmethod(from_pack))
+    code = main(
+        ["matrix", pack, "--versions", "1.20.4", "1.21.4", "--ticks", "2", "--no-vanilla",
+         "--junit", str(tmp_path / "m.xml")]
+    )  # fmt: skip
+    captured = capsys.readouterr()
+    assert code == 130
+    assert "stopped: 1.20.4 after 2/2 tick(s); 1 version(s) not run" in captured.err
+    assert "1.21.4" in (tmp_path / "m.xml").read_text()
+    monkeypatch.undo()
+
+    ticks = []
+    original_tick = Emulator.run_tick
+
+    def run_tick(self):
+        ticks.append(1)
+        if len(ticks) == 2:
+            signal.raise_signal(signal.SIGINT)
+        return original_tick(self)
+
+    monkeypatch.setattr(Emulator, "run_tick", run_tick)
+    code = main(["test", pack, "--only", "--test", "0:say a", "--test", "5:say b"])
+    out = capsys.readouterr().out
+    assert code == 130
+    assert "SKIP 1.21.4" in out and "skipped: the run was cancelled after 2 tick(s)" in out
+    assert "1/1 passed in 1.21.4, 1 skipped" in out

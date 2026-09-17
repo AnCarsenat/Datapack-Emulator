@@ -8,6 +8,7 @@ from pathlib import Path
 
 from datapack_emulator.cli.common import (
     FAILED,
+    INTERRUPTED,
     OK,
     USAGE,
     CliError,
@@ -83,7 +84,7 @@ def ticks_setting(arguments: argparse.Namespace, inputs: Inputs) -> int:
 def print_result(version: Version, result: TestResult, show_records: bool | str) -> None:
     """One PASS/FAIL line; ``show_records`` "failed" (or True) or "all" adds the
     test's records."""
-    mark = "PASS" if result.passed else "FAIL"
+    mark = "PASS" if result.passed else "SKIP" if result.skipped else "FAIL"
     print(
         f"{mark} {version.id:10} tick {result.test.at_tick:<4} "
         f"{result.test.command or '(checks only)'}  — {result.reason}"
@@ -308,10 +309,13 @@ def command_matrix(arguments: argparse.Namespace) -> int:
     bus = printing_bus(arguments) if arguments.verbose else None
     with interruptible() as interrupt:
         results = engine.run(chosen, progress=progress, output=bus, cancelled=interrupt)
+    if not results and interrupt():
+        err("stopped before the first version ran")
+        return INTERRUPTED
 
     print(
-        f"\n{'version':10} {'format':7} {'status':12} {'cmds':>6} {'total ms':>9} "
-        f"{'worst ms':>9} {'warn':>5} {'err':>5} {'tests':>6}  notes"
+        f"\n{'version':10} {'format':7} {'status':12} {'ticks':>9} {'cmds':>6} "
+        f"{'total ms':>9} {'worst ms':>9} {'warn':>5} {'err':>5} {'tests':>6}  notes"
     )
     for run in results:
         notes = []
@@ -321,18 +325,21 @@ def command_matrix(arguments: argparse.Namespace) -> int:
             notes.append("overlays: " + ", ".join(run.overlays))
         print(
             f"{run.version.id:10} {run.version.format_string:7} {run.status:12} "
-            f"{run.commands:6d} {run.total_us / 1000:9.2f} {run.worst_tick_us / 1000:9.2f} "
+            f"{run.ticks_summary:>9} {run.commands:6d} {run.total_us / 1000:9.2f} "
+            f"{run.worst_tick_us / 1000:9.2f} "
             f"{run.warnings:5d} {run.errors:5d} {run.tests_summary:>6}  {'; '.join(notes)}"
         )
 
+    not_run = not_run_ids(results, chosen)
     report = TestEngine.write_html(
-        results, report_path(arguments, "matrix.html"), inputs.datapack.name
+        results, report_path(arguments, "matrix.html"), inputs.datapack.name, len(not_run)
     )
     print(f"\nmatrix report: {report}")
     if arguments.junit is not None:
-        print(f"junit report: {write_junit(results, arguments.junit, inputs.datapack.name)}")
+        junit = write_junit(results, arguments.junit, inputs.datapack.name, not_run)
+        print(f"junit report: {junit}")
     if cancelled_note(results, len(chosen)):
-        return FAILED
+        return INTERRUPTED
     if arguments.strict and any(run.status in ("errors", "tests failed") for run in results):
         return FAILED
     return OK
@@ -435,20 +442,30 @@ def command_test(arguments: argparse.Namespace) -> int:
         results = engine.run(chosen, progress=progress_of, output=bus, cancelled=interrupt)
     if not results:
         err("stopped before the first version ran")
-        return FAILED
+        return INTERRUPTED
     stopped = cancelled_note(results, len(chosen))
 
-    failed = 0
+    failed = sum(run.tests_failed for run in results)
+    skipped = sum(run.tests_skipped for run in results)
     for run in results:
         for result in run.tests:
-            failed += not result.passed
             print_result(run.version, result, arguments.show_records)
-    total = sum(len(run.tests) for run in results)
+    total = sum(len(run.tests) for run in results) - skipped
     where = f"across {len(results)} versions" if len(results) > 1 else f"in {results[0].version.id}"
-    print(f"\n{total - failed}/{total} passed {where}")
+    extra = f", {skipped} skipped" if skipped else ""
+    print(f"\n{total - failed}/{total} passed {where}{extra}")
     if arguments.junit:
-        print(f"junit report: {write_junit(results, arguments.junit, inputs.datapack.name)}")
-    return FAILED if failed or stopped else OK
+        report = write_junit(
+            results, arguments.junit, inputs.datapack.name, not_run_ids(results, chosen)
+        )
+        print(f"junit report: {report}")
+    if stopped:
+        return INTERRUPTED
+    return FAILED if failed else OK
+
+
+def not_run_ids(results: list[VersionRun], chosen: list) -> list[str]:
+    return [version.id for version in chosen[len(results) :]]
 
 
 def cancelled_note(results: list[VersionRun], chosen: int) -> bool:
@@ -457,7 +474,7 @@ def cancelled_note(results: list[VersionRun], chosen: int) -> bool:
         return False
     run = results[-1]
     err(
-        f"stopped: {run.version.id} after {run.ticks} tick(s); "
+        f"stopped: {run.version.id} after {run.ticks_summary} tick(s); "
         f"{chosen - len(results)} version(s) not run"
     )
     return True

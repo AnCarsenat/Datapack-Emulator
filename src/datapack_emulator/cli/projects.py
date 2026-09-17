@@ -384,7 +384,7 @@ def command_note(arguments: argparse.Namespace) -> int:
 def command_debug(arguments: argparse.Namespace) -> int:
     """The debugger's breakpoints and watches, as the window's debugger dock
     and the shell's ``.break``/``.watch`` keep them."""
-    from datapack_emulator.cli.debug import breakpoint_argument
+    from datapack_emulator.cli.debug import breakpoint_argument, check_watch, location_argument
     from datapack_emulator.emulator.runtime.debugger import Debugger
 
     project = _load(arguments.project)
@@ -397,6 +397,7 @@ def command_debug(arguments: argparse.Namespace) -> int:
         changed = True
         value = values[0]
         if action == "watch":
+            check_watch(value)
             watches.append(value)
         elif action == "unwatch":
             if value == "all":
@@ -406,10 +407,10 @@ def command_debug(arguments: argparse.Namespace) -> int:
         elif action == "unbreak" and value == "all":
             debugger.clear()
         else:
-            function_id, line, condition = breakpoint_argument(value)
             if action == "break":
-                debugger.add(function_id, line, condition)
+                debugger.add(*breakpoint_argument(value))
                 continue
+            function_id, line = location_argument(value)
             point = debugger.breakpoints.get((function_id, line))
             if point is None:
                 raise CliError(f"no breakpoint at {function_id}:{line}")
@@ -418,6 +419,7 @@ def command_debug(arguments: argparse.Namespace) -> int:
             else:
                 point.enabled = action == "enable_break"
     if changed:
+        _check_breakpoints(project, debugger)
         project.breakpoints = debugger.to_strings()
         project.watches = watches
         _save(project, arguments.project)
@@ -430,6 +432,17 @@ def command_debug(arguments: argparse.Namespace) -> int:
     for number, text in enumerate(project.watches, start=1):
         print(f"watch {number}. {text}")
     return OK
+
+
+def _check_breakpoints(project: Project, debugger) -> None:
+    """Warn about breakpoints the project's packs do not have (in any version),
+    and move the others to their first command line."""
+    try:
+        view = DatapackSet.load(project.datapacks).view()
+    except Exception:  # an unreadable pack must not block the edit
+        return
+    for problem in debugger.resolve(view.functions.get):
+        err(f"warning: {problem}")
 
 
 def _known_ids(project: Project) -> set[str] | None:

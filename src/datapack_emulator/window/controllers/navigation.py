@@ -120,7 +120,7 @@ class NavigationController(Controller):
         self._highlighter = highlighter_for(path, window.source_edit.document())
         window.source_edit.setPlainText(text)
         if line > 0:
-            block = window.source_edit.document().findBlockByLineNumber(line - 1)
+            block = window.source_edit.document().findBlockByNumber(line - 1)
             if block.isValid():
                 cursor = window.source_edit.textCursor()
                 cursor.setPosition(block.position())

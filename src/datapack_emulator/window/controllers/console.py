@@ -59,9 +59,13 @@ class ConsoleController(Controller):
         if Command.parse(line, source="<console>") is None:
             self.status("nothing to run: the line is empty or a comment")
             return None
-        if window.debug.paused:
+        stopped = window.debug.current()
+        if window.debug.paused and stopped is None:
+            self.status("the stopped tick is being abandoned; try again")
+            return None
+        if stopped is not None:
             # stopped in the debugger: run it as the stopped line would
-            window.output.app(f"> {line}  (as {window.debug.current().function_id})")
+            window.output.app(f"> {line}  (as {stopped.function_id})")
             result = window.debug.run_here(line)
             self._remember(line)
             if text is None:

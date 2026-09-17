@@ -95,6 +95,8 @@ class TestResult:
     value: int = 0
     #: every record emitted while the command ran
     records: list[LogRecord] = field(default_factory=list)
+    #: never run because the run was cancelled first (neither passed nor failed)
+    skipped: bool = False
 
     #: not a pytest test class, despite the name
     __test__ = False
@@ -166,20 +168,31 @@ class TestSchedule:
             ran.append(index)
         return ran
 
-    def by_index(self, include_unreached: bool = True) -> dict[int, TestResult]:
+    def by_index(
+        self, include_unreached: bool = True, cancelled_after: int | None = None
+    ) -> dict[int, TestResult]:
         """Results keyed by position in ``tests``; tests the run never reached
-        fail with "not reached" (disabled tests have no entry)."""
+        fail with "not reached" (disabled tests have no entry) — or, when the
+        run was cancelled after ``cancelled_after`` ticks, are skipped."""
         results = dict(self._results)
         if include_unreached:
             for index, test in self._pending:
-                results[index] = TestResult(
-                    test, False, f"not reached: the run ended before tick {test.at_tick}"
-                )
+                if cancelled_after is not None:
+                    results[index] = TestResult(
+                        test,
+                        False,
+                        f"skipped: the run was cancelled after {cancelled_after} tick(s)",
+                        skipped=True,
+                    )
+                else:
+                    results[index] = TestResult(
+                        test, False, f"not reached: the run ended before tick {test.at_tick}"
+                    )
         return results
 
-    def results(self) -> list[TestResult]:
+    def results(self, cancelled_after: int | None = None) -> list[TestResult]:
         """One result per enabled test, in input order."""
-        results = self.by_index()
+        results = self.by_index(cancelled_after=cancelled_after)
         return [results[index] for index in sorted(results)]
 
 
@@ -197,6 +210,8 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
         result = emulator.run_command(command, emulator.root_context())
     finally:
         emulator.output.listeners.remove(records.append)
+        if emulator.debugger is not None:
+            emulator.debugger.finished()  # a step does not carry out of the test
 
     visible = [r for r in records if r.failure and r.level >= LogLevel.ERROR]
     crashed = [r for r in records if r.source is LogSource.EMULATOR and r.level >= LogLevel.ERROR]

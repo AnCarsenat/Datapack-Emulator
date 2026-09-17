@@ -313,7 +313,8 @@ class VanillaLibrary:
         self.search_dirs = [Path(directory) for directory in search_dirs]
         self._loaded: dict[str, VanillaAssets] = {}
         #: the engine window loads jars on a worker thread while the window may too
-        self._lock = threading.RLock()
+        self._lock = threading.Lock()
+        self._version_locks: dict[str, threading.Lock] = {}
 
     # -- discovery --------------------------------------------------------
 
@@ -429,7 +430,12 @@ class VanillaLibrary:
     ) -> VanillaAssets | None:
         """Assets for ``version_id``, or ``None`` if no jar is available.
         Safe to call from several threads: each jar is read once."""
-        with self._lock:
+        cached = self._loaded.get(version_id)
+        if cached is not None:
+            return cached
+        with self._lock:  # one lock per version: other versions load meanwhile
+            lock = self._version_locks.setdefault(version_id, threading.Lock())
+        with lock:
             cached = self._loaded.get(version_id)
             if cached is not None:
                 return cached
@@ -445,8 +451,7 @@ class VanillaLibrary:
     def load_jar(self, jar_path: Path | str) -> VanillaAssets:
         assets = VanillaAssets.from_jar(jar_path)
         if assets.version_id:
-            with self._lock:
-                self._loaded[assets.version_id] = assets
+            self._loaded[assets.version_id] = assets
         return assets
 
     def loaded(self) -> dict[str, VanillaAssets]:
