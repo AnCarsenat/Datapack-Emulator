@@ -106,9 +106,16 @@ class ProjectController(Controller):
             except Exception as exc:
                 window.output.app(f"cannot read {project.vanilla_jar}: {exc}", level=LogLevel.ERROR)
         # the project's own packs replace whatever was open (the sample, other packs)
-        window.datapacks.load_many(
-            [Path(path) for path in project.datapacks if Path(path).is_dir()], keep_project=True
-        )
+        wanted = [Path(path) for path in project.datapacks]
+        missing = [path for path in wanted if not path.is_dir()]
+        if missing:
+            said = ", ".join(str(path) for path in missing)
+            window.output.app(
+                f"{project.name}: {len(missing)} datapack(s) of the project are gone: {said}",
+                level=LogLevel.ERROR,
+            )
+            self.status(f"{len(missing)} datapack(s) of {project.name} are gone: {said}")
+        window.datapacks.load_many([path for path in wanted if path.is_dir()], keep_project=True)
         if window.engine_window is not None and window.datapack is not None:
             window.engine_window.set_datapack(window.datapack)
             if project.engine_versions:
@@ -162,11 +169,16 @@ class ProjectController(Controller):
         if chosen:
             self.open_path(Path(chosen))
 
-    def open_path(self, path: Path) -> bool:
+    def open_path(self, path: Path, quiet: bool = False) -> bool:
+        """``quiet``: the window is opening it by itself (on launch), so a
+        broken file goes to the log instead of a box in front of no window."""
         try:
             project = Project.load(path)
         except (OSError, ValueError) as exc:
-            QMessageBox.warning(self.window, "open project", f"cannot read {path}:\n{exc}")
+            if quiet:
+                self.window.output.app(f"cannot read {path}: {exc}", level=LogLevel.ERROR)
+            else:
+                QMessageBox.warning(self.window, "open project", f"cannot read {path}:\n{exc}")
             return False
         self.window.output.app(f"opened project {path}")
         self.apply(project)

@@ -7,9 +7,10 @@ import json
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray
+from PySide6.QtCore import QByteArray, QSignalBlocker
 from PySide6.QtWidgets import QMenu
 
+from datapack_emulator.emulator.runtime.output import LogLevel
 from datapack_emulator.project import state_file
 from datapack_emulator.window.controllers.base import Controller
 
@@ -60,10 +61,14 @@ class SessionController(Controller):
         data = self._read()
         self.recent_projects = _paths(data.get("recent_projects"))
         self.recent_datapacks = _paths(data.get("recent_datapacks"))
-        self.open_last_on_launch = data.get("open_last_on_launch", True) is not False
+        self.open_last_on_launch = bool(data.get("open_last_on_launch", True))
         action = window._action("actionopen_last_on_launch")
         if action is not None:
+            # setChecked would answer its own toggled and save the layout
+            # before it is restored, just below
+            blocker = QSignalBlocker(action)
             action.setChecked(self.open_last_on_launch)
+            del blocker
         geometry = data.get("geometry")
         docks = data.get("docks")
         if isinstance(geometry, str):
@@ -71,20 +76,27 @@ class SessionController(Controller):
         if isinstance(docks, str):
             window.restoreState(QByteArray.fromBase64(docks.encode()))
 
-    def save(self) -> None:
+    def save(self) -> bool:
+        """Write the state file; False when it could not be written."""
         window = self.window
-        data = {
-            "recent_projects": self.recent_projects,
-            "recent_datapacks": self.recent_datapacks,
-            "open_last_on_launch": self.open_last_on_launch,
-            "geometry": bytes(window.saveGeometry().toBase64()).decode(),
-            "docks": bytes(window.saveState().toBase64()).decode(),
-        }
+        # another window may have written its own keys since this one started
+        data = self._read()
+        data.update(
+            {
+                "recent_projects": self.recent_projects,
+                "recent_datapacks": self.recent_datapacks,
+                "open_last_on_launch": self.open_last_on_launch,
+                "geometry": bytes(window.saveGeometry().toBase64()).decode(),
+                "docks": bytes(window.saveState().toBase64()).decode(),
+            }
+        )
         try:
             state_file().parent.mkdir(parents=True, exist_ok=True)
             state_file().write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return True
         except OSError as exc:
             log.warning("cannot save the window state: %s", exc)
+            return False
 
     def reset_layout(self) -> None:
         window = self.window
@@ -143,32 +155,50 @@ class SessionController(Controller):
 
     def _set_open_last_on_launch(self, checked: bool) -> None:
         self.open_last_on_launch = checked
-        self.save()
-        self.status(
-            "the last project will open on launch"
-            if checked
-            else "the sample datapack will open on launch"
-        )
+        if not self.save():
+            self.status(f"cannot save the setting: {state_file()} is not writable")
+            return
+        openable = any(Path(entry).is_file() for entry in self.recent_projects)
+        if not checked:
+            self.status("the sample datapack will open on launch")
+        elif openable:
+            self.status("the last project will open on launch")
+        else:
+            self.status("the last project will open on launch (there is none yet)")
 
     def start(self, path: Path | None = None, open_last: bool | None = None) -> None:
         """What the window opens with: a path from the command line, else the
-        project opened most recently, else the sample datapack."""
+        project opened most recently that still opens, else the sample."""
         window = self.window
+        failed = ""
         if path is not None:
             if path.suffix.lower() in (".dpemu", ".json") and path.is_file():
                 if window.projects.open_path(path):
                     return
-            elif path.exists():
+                failed = f"cannot open the project {path}"
+            elif (path / "pack.mcmeta").is_file():
                 window.datapacks.load(path)
-                window.session.remember_datapack(path)
                 return
-            self.status(f"cannot open {path}")
+            else:
+                failed = f"{path} is not a project or a datapack folder (no pack.mcmeta)"
         wanted = self.open_last_on_launch if open_last is None else open_last
-        if wanted:
-            existing = [Path(entry) for entry in self.recent_projects if Path(entry).exists()]
-            if existing and window.projects.open_path(existing[0]):
-                return
+        if wanted and not failed:
+            for entry in list(self.recent_projects):
+                if not Path(entry).is_file():
+                    continue
+                if window.projects.open_path(Path(entry), quiet=True):
+                    return
+                window.output.app(
+                    f"cannot open the last project {entry}: it is off the list now",
+                    level=LogLevel.ERROR,
+                )
+                # it is in the list but cannot be read: do not ask again
+                self.recent_projects = [kept for kept in self.recent_projects if kept != entry]
+                self.save()
         window.datapacks.open_default()
+        if failed:
+            window.output.app(failed, level=LogLevel.ERROR)
+            self.status(failed)
 
     def clear_recent_projects(self) -> None:
         self.recent_projects = []

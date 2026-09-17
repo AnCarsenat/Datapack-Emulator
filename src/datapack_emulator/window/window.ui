@@ -1022,7 +1022,9 @@ QMenuBar::item:selected {
     <addaction name="actionopen_project"/>
     <addaction name="menurecent_projects"/>
     <addaction name="actionopen_last_project"/>
+    <addaction name="separator"/>
     <addaction name="actionopen_last_on_launch"/>
+    <addaction name="separator"/>
     <addaction name="actionsave_project"/>
     <addaction name="actionsave_project_as"/>
     <addaction name="actionsave_file"/>
@@ -2324,7 +2326,7 @@ QMenuBar::item:selected {
     <string>open the last project on launch</string>
    </property>
    <property name="statusTip">
-    <string>start on the project opened most recently instead of the sample datapack (the command line: --no-last-project)</string>
+    <string>start on the project opened most recently instead of the sample datapack (--no-last-project skips it for one run)</string>
    </property>
   </action>
   <action name="actionopen_last_project">

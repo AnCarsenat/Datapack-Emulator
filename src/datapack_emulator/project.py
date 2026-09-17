@@ -343,13 +343,28 @@ def _pack_files(pack: Path, exclude: set[Path] | frozenset[Path] = frozenset()) 
     return files
 
 
+#: what a project archive may unpack to, so a damaged or hostile one cannot
+#: fill the disk (a real project is a few MB)
+ARCHIVE_MAX_BYTES = 2 * 1024**3
+ARCHIVE_MAX_RATIO = 200
+
+
 def _check_names(archive: zipfile.ZipFile, target: Path) -> None:
-    """Refuse archives with names that would land outside ``target``."""
+    """Refuse archives with names that would land outside ``target``, or that
+    unpack to far more than they hold."""
     root = target.resolve()
+    unpacked = 0
     for member in archive.infolist():
         destination = (root / member.filename).resolve()
         if destination != root and root not in destination.parents:
             raise ValueError(f"unsafe path in archive: {member.filename}")
+        unpacked += member.file_size
+    packed = max(archive.fp.seek(0, 2) if archive.fp is not None else 0, 1)
+    if unpacked > ARCHIVE_MAX_BYTES or unpacked > packed * ARCHIVE_MAX_RATIO:
+        raise ValueError(
+            f"the archive unpacks to {unpacked / 1024**2:.0f} MB from "
+            f"{packed / 1024**2:.1f} MB: refusing to unpack it"
+        )
 
 
 def _safe_name(name: str) -> str:
@@ -363,11 +378,7 @@ def state_file() -> Path:
 
 
 def _recent(key: str) -> list[Path]:
-    try:
-        data = json.loads(state_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    entries = data.get(key) if isinstance(data, dict) else None
+    entries = _state().get(key)
     if not isinstance(entries, list):
         return []
     return [Path(entry) for entry in entries if isinstance(entry, str)]
@@ -382,14 +393,26 @@ def recent_datapacks() -> list[Path]:
     return _recent("recent_datapacks")
 
 
-def opens_last_project() -> bool:
-    """Whether the window starts on the project used most recently (its
-    *file › open the last project on launch*)."""
+def _state() -> dict:
     try:
         data = json.loads(state_file().read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return True
-    return not isinstance(data, dict) or data.get("open_last_on_launch", True) is not False
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def opens_last_project() -> bool:
+    """Whether the window starts on the project used most recently (its
+    *file › open the last project on launch*)."""
+    return bool(_state().get("open_last_on_launch", True))
+
+
+def set_opens_last_project(wanted: bool) -> None:
+    """Change that setting from outside the window (``project recent``)."""
+    data = _state()
+    data["open_last_on_launch"] = bool(wanted)
+    state_file().parent.mkdir(parents=True, exist_ok=True)
+    state_file().write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def default_sample() -> Path | None:
