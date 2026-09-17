@@ -1,0 +1,55 @@
+name: Refresh version data
+
+# Rebuilds src/datapack_emulator/emulator/version_data.py from misode/mcmeta
+# and opens a pull request when a release or pre-release changed it.
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: version-data
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Regenerate
+        run: python tools/generate_version_data.py --work-dir "$RUNNER_TEMP/mcmeta"
+      - name: Keep only real changes
+        # the snapshot date changes every run; alone, it is not worth a PR
+        run: |
+          file=src/datapack_emulator/emulator/version_data.py
+          if git diff --quiet -I '^Snapshot taken' -- "$file"; then
+            git checkout -- "$file"
+            echo "no new versions or commands"
+          else
+            git diff --stat
+          fi
+      - name: Check the new table
+        run: |
+          pip install -e . "pytest>=8" "ruff>=0.6"
+          ruff format src/datapack_emulator/emulator/version_data.py
+          python -m pytest -q --ignore=tests/test_window.py
+      - uses: peter-evans/create-pull-request@v8
+        with:
+          branch: automation/version-data
+          delete-branch: true
+          commit-message: "chore(versions): refresh version data from misode/mcmeta"
+          title: "Refresh version data from misode/mcmeta"
+          body: |
+            `tools/generate_version_data.py` found new or changed versions or
+            command trees. The suite passed on the new table (window tests
+            excluded).
+
+            Opened by the scheduled *Refresh version data* workflow.
+          labels: versions

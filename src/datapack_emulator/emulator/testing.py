@@ -32,7 +32,7 @@ from typing import Any
 from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.common import in_range, nbt_get, normalise_id, parse_snbt, to_snbt
-from datapack_emulator.emulator.datapack import Datapack
+from datapack_emulator.emulator.datapack import Datapack, DatapackSet
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
 from datapack_emulator.emulator.vanilla import VanillaAssets
@@ -112,7 +112,7 @@ class TestResult:
 
 
 def run_tests(
-    datapack: Datapack,
+    datapack: Datapack | DatapackSet,
     tests: list[CommandTest],
     version: str | Version | None = None,
     players: int = 1,

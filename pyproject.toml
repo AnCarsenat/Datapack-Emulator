@@ -22,7 +22,7 @@ dependencies = []
 
 [project.optional-dependencies]
 gui = ["PySide6>=6.6", "pyqtgraph>=0.13", "numpy>=1.26"]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "coverage[toml]>=7"]
 
 [project.scripts]
 datapack-emulator = "datapack_emulator.app:main"
@@ -43,6 +43,29 @@ include = ["datapack_emulator*"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra"
+
+[tool.mypy]
+python_version = "3.10"
+# the Qt-free code; the window needs PySide6's stubs and is not checked yet
+files = [
+    "src/datapack_emulator/emulator",
+    "src/datapack_emulator/cli",
+    "src/datapack_emulator/project.py",
+    "src/datapack_emulator/settings",
+]
+exclude = ["version_data\\.py$"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.coverage.run]
+source = ["datapack_emulator"]
+branch = true
+
+[tool.coverage.report]
+skip_empty = true
+precision = 1
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
 
 [tool.ruff]
 line-length = 100

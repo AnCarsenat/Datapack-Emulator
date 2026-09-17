@@ -296,7 +296,7 @@ class Effect:
         if version is not None and version < versions.parse(EFFECT_IDS_SINCE):
             path = self.id.split(":", 1)[1]
             number = LEGACY_EFFECT_IDS.index(path) + 1 if path in LEGACY_EFFECT_IDS else 0
-            data = {
+            data: dict[str, Any] = {
                 "Id": number,
                 "Amplifier": self.amplifier,
                 "Duration": self.duration,
@@ -535,6 +535,8 @@ def _modifier_from_nbt(raw: Any) -> Modifier | None:
     if identifier is None or not isinstance(amount, (int, float)):
         return None
     name = raw.get("name", raw.get("Name", ""))
+    if not isinstance(operation, (int, float, str)):
+        return None
     return Modifier(str(identifier), float(amount), int(operation), str(name))
 
 

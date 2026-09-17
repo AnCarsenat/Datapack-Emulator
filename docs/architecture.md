@@ -103,7 +103,8 @@ src/datapack_emulator/     the package (standard src layout)
       world.py, profile.py, source.py (the source view with its gutter)
 tools/generate_version_data.py
 tests/       pytest suite; conftest.py builds synthetic packs and client jars
-.github/     CI workflow, Dependabot, issue and pull request templates
+.github/     CI (lint, mypy, tests with coverage, window tests, CLI smoke run), the weekly
+             version-data refresh, Dependabot, issue and pull request templates
 docs/
 samples/     example packs: hat (formats 6–107.1, 1.16.2 → 26.2) and hat_v2
              (formats 5–121, runs cleanly from 1.16.1 to 26.3)

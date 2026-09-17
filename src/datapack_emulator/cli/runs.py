@@ -455,8 +455,8 @@ def command_test(arguments: argparse.Namespace) -> int:
             print_result(run.version, result, arguments.show_records)
     total = sum(len(run.tests) for run in results) - skipped
     where = f"across {len(results)} versions" if len(results) > 1 else f"in {results[0].version.id}"
-    extra = f", {skipped} skipped" if skipped else ""
-    print(f"\n{total - failed}/{total} passed {where}{extra}")
+    skipped_note = f", {skipped} skipped" if skipped else ""
+    print(f"\n{total - failed}/{total} passed {where}{skipped_note}")
     if arguments.junit:
         report = write_junit(
             results, arguments.junit, inputs.datapack.name, not_run_ids(results, chosen)

@@ -6,6 +6,7 @@ and goes on)."""
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 from datapack_emulator.cli.common import CliError, err
 from datapack_emulator.emulator.commands.parser import Command
@@ -166,7 +167,7 @@ def trace_debugger(arguments: argparse.Namespace, emulator) -> Trace | None:
 class DebugCommands:
     """The shell's debugger commands (mixed into ``Shell``)."""
 
-    session: object
+    session: Any  # the shell's Session (cli/world.py imports this module)
     failed: bool
     #: reading from a keyboard (else a script or a pipe)
     interactive: bool = False

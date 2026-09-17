@@ -315,7 +315,7 @@ def _dump(data: dict[str, Any]) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
-def _pack_files(pack: Path, exclude: set[Path] = frozenset()) -> list[Path]:
+def _pack_files(pack: Path, exclude: set[Path] | frozenset[Path] = frozenset()) -> list[Path]:
     """Regular files of the pack, sorted. Symlinks (files and folders alike)
     are left out with a warning: following them could archive files from
     outside the pack or loop forever."""

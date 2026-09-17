@@ -15,6 +15,7 @@ import json
 import shlex
 import sys
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
@@ -573,7 +574,8 @@ class Shell(DebugCommands):
         self.arguments = arguments
         self.failed = False
         self.quit = False
-        self._lines = iter(())
+        self.session: Session = session
+        self._lines: Iterator[str] = iter(())
         session.debugger.on_pause = self.on_pause
 
     @staticmethod
@@ -959,7 +961,9 @@ def command_shell(arguments: argparse.Namespace) -> int:
     session = Session(arguments, inputs)
     shell = Shell(session, arguments)
     setup_debugger(session.debugger, session.emulator, arguments)
-    sources = [(lines, False) for lines in scripts] or [(sys.stdin, sys.stdin.isatty())]
+    sources: list[tuple[Iterable[str], bool]] = [(lines, False) for lines in scripts] or [
+        (sys.stdin, sys.stdin.isatty())
+    ]
     # a stop during --run answers from the first input, like the rest
     shell.set_input(*sources[0])
     if arguments.run:

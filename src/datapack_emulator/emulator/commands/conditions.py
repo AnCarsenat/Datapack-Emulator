@@ -49,7 +49,7 @@ def tag_members(
             if getattr(resource, "tag_id", "") != f"#{tag_id}":
                 continue
             found = True
-            for entry in resource.entries:
+            for entry in getattr(resource, "entries", []):
                 if entry.value.startswith("#"):
                     members |= tag_members(context, registry, entry.value, seen) or set()
                 else:

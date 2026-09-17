@@ -460,9 +460,10 @@ def _set_parts(node: Any, parts: list[str], value: Any) -> bool:
                     node[index] = copy.deepcopy(value)
                     changed = True
             return changed
-        index = _list_index(node, part)
-        if index is None:
+        found = _list_index(node, part)
+        if found is None:
             return False
+        index = found
         if not rest:
             node[index] = value
             return True

@@ -20,12 +20,13 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
+from typing import Any
 
 from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.analysis.graph import CallGraph
 from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.commands.registry import command_set
-from datapack_emulator.emulator.datapack import Datapack, PackView
+from datapack_emulator.emulator.datapack import Datapack, DatapackSet, PackView
 from datapack_emulator.emulator.namespace import PLURAL_REGISTRIES
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
@@ -147,7 +148,7 @@ class TestEngine:
 
     def __init__(
         self,
-        datapack: Datapack,
+        datapack: Datapack | DatapackSet,
         ticks: int = 20,
         players: int = 1,
         seed: int = 0,
@@ -319,7 +320,7 @@ class TestEngine:
         self, view: PackView, version: Version, bus: OutputBus, run: VersionRun
     ) -> None:
         """Everything that can be decided without running a tick."""
-        fields = {"version": version.id}
+        fields: dict[str, Any] = {"version": version.id}
 
         compatibility = self.datapack.compatibility(version)
         for line in compatibility.server_log:

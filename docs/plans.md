@@ -60,11 +60,10 @@ Nothing is queued here right now; take the next item from the lists below.
 
 ## Code health
 
-* **Type checking and coverage in CI** — run pyright or mypy and publish a
-  coverage report with the tests.
-* **Refresh version data on a schedule** — a scheduled workflow that runs
-  `tools/generate_version_data.py` when a new release or pre-release appears
-  and opens a pull request.
+* **Type-check the window** — `mypy` covers the Qt-free code; the window
+  (`src/datapack_emulator/window`) needs PySide6's stubs and a pass of its own.
+* **Coverage** — CI reports it (about 64% without the window tests); the
+  command handlers with the least coverage are the next tests to write.
 
 ## Needs a repository owner
 
@@ -72,6 +71,7 @@ Nothing is queued here right now; take the next item from the lists below.
   triggered the workflow; runs were started by hand (`gh workflow run CI`).
   Check the repository's *Settings › Actions* (workflow permissions, whether
   Actions are allowed to run on pull requests).
-* **Node 20 deprecation** — GitHub warns that `actions/checkout@v4`,
-  `actions/setup-python@v5` and `actions/upload-artifact@v4` run on Node 20;
-  bump them to their current major versions.
+* **Let the version-data workflow open pull requests** — *Settings › Actions
+  › General › Workflow permissions* needs "Allow GitHub Actions to create and
+  approve pull requests" (and a `versions` label), or the weekly refresh can
+  only push its branch.

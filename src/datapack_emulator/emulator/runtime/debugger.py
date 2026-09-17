@@ -328,6 +328,7 @@ class Debugger:
         if problem:
             return False, problem
         command = Command.parse(f"execute {text}")
+        assert command is not None  # condition_problem parsed it
         emulator = context.emulator
         counted = emulator.commands_run
         output = emulator.output
