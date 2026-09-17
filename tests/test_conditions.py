@@ -32,6 +32,10 @@ PREDICATES = {
             {"condition": "minecraft:reference", "name": "test:raining"},
         ],
     },
+    "data/test/predicate/overworld.json": {
+        "condition": "minecraft:location_check",
+        "predicate": {"dimension": "minecraft:overworld"},
+    },
     "data/test/predicate/killer.json": {
         "condition": "minecraft:entity_properties",
         "entity": "attacker",
@@ -147,7 +151,8 @@ def test_tick_criteria_rewards_and_the_command(world):
     assert visible_errors(records) == [
         "The advancement [Rich] does not contain the criterion 'nope'"
     ]
-    assert emulator.typed("advancement grant @a from test:rich")[0].value == 2
+    # rich is already done (manual), so only child changes
+    assert emulator.typed("advancement grant @a from test:rich")[0].value == 1
     assert emulator.typed("advancement revoke @a until test:child")[0].value == 3
     assert emulator.typed("advancement grant @a everything")[0].value == 3
     _, records = emulator.typed("advancement grant @a only test:nope")
@@ -260,8 +265,9 @@ def test_item_functions_in_each_format():
         ItemStack("minecraft:iron_sword", 3),
     )
     assert sword.count == 1
-    assert sword.components["minecraft:custom_name"] == "Blade"
-    assert sword.components["minecraft:lore"] == ["one"]
+    # before 1.21.5 names and lore are JSON strings
+    assert sword.components["minecraft:custom_name"] == '"Blade"'
+    assert sword.components["minecraft:lore"] == ['"one"']
     assert sword.components["minecraft:damage"] == 125
     assert sword.components["minecraft:enchantments"] == {"levels": {"minecraft:sharpness": 2}}
     assert sword.components["minecraft:custom_data"] == {"a": 1}
@@ -350,7 +356,184 @@ def test_item_modifiers_use_conditions(world, make_pack):
     assert "minecraft:custom_name" not in stack.components
     emulator.run_typed("weather rain")
     emulator.run_typed("item modify entity Player1 weapon.mainhand test:rename")
-    assert stack.components.get("minecraft:custom_name") == "Rainy" or (
+    assert stack.components.get("minecraft:custom_name") == '"Rainy"' or (
         emulator.world.players[0].inventory.get("container.0").components["minecraft:custom_name"]
-        == "Rainy"
+        == '"Rainy"'
     )
+
+
+def test_composite_entries_and_expanded_tags():
+    context = Context(
+        rng=random.Random(3),
+        tags=lambda registry, tag: {f"minecraft:log_{i}" for i in range(4)},
+    )
+    never = [{"condition": "minecraft:random_chance", "chance": 0}]
+    # a group always counts as run, even when its only child fails
+    table = {
+        "pools": [
+            {
+                "rolls": 1,
+                "entries": [
+                    {
+                        "type": "sequence",
+                        "children": [
+                            {
+                                "type": "group",
+                                "children": [
+                                    {"type": "item", "name": "stick", "conditions": never}
+                                ],
+                            },
+                            {"type": "item", "name": "diamond"},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    assert [stack.id for stack in evaluate(table, lambda _id: None, context=context).items] == [
+        "minecraft:diamond"
+    ]
+    # each item of an expanded tag is a candidate with the entry's weight
+    table = {
+        "pools": [
+            {
+                "rolls": 400,
+                "entries": [
+                    {"type": "tag", "name": "minecraft:logs", "expand": True},
+                    {"type": "item", "name": "stick"},
+                ],
+            }
+        ]
+    }
+    items = evaluate(table, lambda _id: None, context=context).items
+    sticks = sum(stack.count for stack in items if stack.id == "minecraft:stick")
+    assert 50 < sticks < 110
+    # malformed numbers do not crash
+    broken = {"pools": [{"rolls": {"type": "constant", "value": "x"}, "entries": []}]}
+    assert evaluate(broken, lambda _id: None, context=context).items == []
+    assert not check({"condition": "entity_scores", "entity": "this", "scores": [1]}, Context())
+
+
+def test_item_function_details():
+    stack = ItemStack("minecraft:stone")
+    modified = _apply(
+        [
+            {"function": "set_count", "count": 100},
+            {"function": "set_count", "count": -50, "add": True},
+        ],
+        stack,
+    )
+    assert modified.count == 50  # capped only by item modify, at the end
+    assert _apply({"function": "limit_count", "limit": 5}, ItemStack("minecraft:dirt")).count == 5
+    # set_damage works in floats: 1f - 0.9f is 0.10000002
+    sword = _apply({"function": "set_damage", "damage": 0.9}, ItemStack("minecraft:iron_sword"))
+    assert sword.components["minecraft:damage"] == 25
+    merged = _apply(
+        [
+            {"function": "set_custom_data", "tag": "{a:{x:1}}"},
+            {"function": "set_custom_data", "tag": "{a:{y:2}}"},
+        ],
+        ItemStack("minecraft:stick"),
+    )
+    assert merged.components["minecraft:custom_data"] == {"a": {"x": 1, "y": 2}}
+    lore = _apply(
+        [
+            {"function": "set_lore", "lore": ["a", "b"], "mode": "append"},
+            {"function": "set_lore", "lore": ["c"], "mode": "insert", "offset": 5},
+        ],
+        ItemStack("minecraft:stick"),
+        "1.21.5",
+    )
+    assert lore.components["minecraft:lore"] == ["a", "b"]
+    removed = _apply(
+        [
+            {"function": "set_enchantments", "enchantments": {"sharpness": 2}},
+            {"function": "set_enchantments", "enchantments": {"sharpness": 0}},
+        ],
+        ItemStack("minecraft:iron_sword"),
+        "1.21.5",
+    )
+    assert removed.components["minecraft:enchantments"] == {}
+    assert _apply({"function": "set_count", "count": 2.7}, ItemStack("minecraft:dirt")).count == 3
+    assert (
+        _apply({"function": "set_count", "count": 2.7}, ItemStack("minecraft:dirt"), "1.16.5").count
+        == 2
+    )
+
+
+def test_advancement_and_predicate_edges(world):
+    emulator = world()
+    emulator.run_typed("advancement grant Player1 only test:rich manual")
+    # unknown criteria never match
+    assert not emulator.typed("execute if entity @a[advancements={test:rich={zz=false}}]")[
+        0
+    ].success
+    # an advancement without a title is named by its bare id
+    _, records = emulator.typed("advancement grant Player1 only test:child nope")
+    assert visible_errors(records) == [
+        "The advancement test:child does not contain the criterion 'nope'"
+    ]
+    # predicate= looks at the entity's dimension, not the command's
+    emulator.run_typed('summon pig 0 0 0 {Tags:["here"]}')
+    assert (
+        emulator.typed("execute in the_nether if entity @e[tag=here,predicate=test:overworld]")[
+            0
+        ].value
+        == 1
+    )
+    # an empty hand matches air
+    assert check(
+        {
+            "condition": "entity_properties",
+            "entity": "this",
+            "predicate": {"equipment": {"mainhand": {"items": "minecraft:air"}}},
+        },
+        Context(entity=emulator.world.players[0]),
+    )
+
+
+def test_inline_predicates_are_version_gated(world):
+    emulator = world(version="1.20.4")
+    _, records = emulator.typed(
+        'execute if predicate {condition:"minecraft:random_chance",chance:1.0f} run say hi'
+    )
+    assert chat(records) == []
+
+
+def test_loot_rewards_are_silent_and_tag_loops_end(make_pack):
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/function/tick.mcfunction": "\n",
+                "data/test/advancement/gift.json": {
+                    "criteria": {"now": {"trigger": "minecraft:tick", "conditions": [1]}},
+                    "rewards": {"loot": ["test:gift"]},
+                },
+                "data/test/advancement/bad.json": {
+                    "criteria": {"now": {"trigger": "minecraft:tick"}},
+                    "rewards": {"loot": "test:gift"},
+                },
+                "data/test/loot_table/gift.json": {
+                    "pools": [{"rolls": 1, "entries": [{"type": "item", "name": "diamond"}]}]
+                },
+                "data/test/tags/item/a.json": {"values": ["#test:b", "stick"]},
+                "data/test/tags/item/b.json": {"values": ["#test:a"]},
+                "data/test/predicate/tagged.json": {
+                    "condition": "minecraft:match_tool",
+                    "predicate": {"items": "#test:a"},
+                },
+            }
+        )
+    )
+    emulator = Emulator(pack, version="1.21.4")
+    emulator.start()
+    before = len(emulator.output.records)
+    emulator.run_tick()
+    inventory = emulator.world.players[0].inventory
+    assert inventory.get("container.0").id == "minecraft:diamond"
+    assert inventory.get("container.1") is None
+    assert chat(emulator.output.records[before:]) == []
+    from datapack_emulator.emulator.commands.conditions import predicate_context
+
+    context = predicate_context(emulator.root_context(), tool=ItemStack("minecraft:stick"))
+    assert check({"condition": "reference", "name": "test:tagged"}, context)

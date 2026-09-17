@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.common import (
     nbt_get,
     nbt_matches,
@@ -32,6 +33,21 @@ if TYPE_CHECKING:  # pragma: no cover
 
 #: predicates referencing each other deeper than this fail (a loop)
 MAX_DEPTH = 32
+#: ``getInt`` rounds (``Math.round``) instead of flooring
+ROUNDED_INTS_SINCE = "1.17"
+#: what an empty slot or hand holds (vanilla's ItemStack.EMPTY)
+EMPTY_ID = "minecraft:air"
+
+
+def empty_stack() -> ItemStack:
+    return ItemStack(EMPTY_ID, 0)
+
+
+def to_float(value: Any, default: float = 0.0) -> float:
+    """A JSON number as a float; anything else (a malformed file) is ``default``."""
+    if isinstance(value, (bool, int, float)):
+        return float(value)
+    return default
 
 
 @dataclass
@@ -83,7 +99,7 @@ def number(provider: Any, context: Context | random.Random) -> float:
     rng = context.rng
     kind = normalise_id(str(provider.get("type", "")) or "minecraft:uniform")
     if kind == "minecraft:constant":
-        return float(provider.get("value", 0))
+        return to_float(provider.get("value"))
     if kind == "minecraft:binomial":
         trials = int(number(provider.get("n", 0), context))
         chance = number(provider.get("p", 0), context)
@@ -107,8 +123,24 @@ def number(provider: Any, context: Context | random.Random) -> float:
     return 0.0
 
 
+def _rounds(context: Context) -> bool:
+    version = context.version
+    return version is None or version >= versions.parse(ROUNDED_INTS_SINCE)
+
+
+def java_round(value: float) -> int:
+    """Java's ``Math.round``: halves go up."""
+    if math.isnan(value):
+        return 0
+    if math.isinf(value):
+        return -(2**31) if value < 0 else 2**31 - 1
+    return math.floor(value + 0.5)
+
+
 def integer(provider: Any, context: Context | random.Random) -> int:
-    """``getInt``: uniform ranges include both (floored) ends."""
+    """``getInt``: uniform ranges include both ends (``Mth.nextInt``: the low
+    end when it is not below the high one); other providers round their value
+    (floored before 1.17)."""
     if isinstance(context, random.Random):
         context = Context(rng=context)
     if isinstance(provider, dict):
@@ -116,10 +148,15 @@ def integer(provider: Any, context: Context | random.Random) -> int:
         if kind == "minecraft:uniform" or (
             not provider.get("type") and "min" in provider and "max" in provider
         ):
-            low = math.floor(number(provider.get("min", 0), context))
-            high = math.floor(number(provider.get("max", low), context))
-            return context.rng.randint(min(low, high), max(low, high))
-    return math.floor(number(provider, context))
+            if _rounds(context):
+                low = integer(provider.get("min", 0), context)
+                high = integer(provider.get("max", 0), context)
+            else:
+                low = math.floor(number(provider.get("min", 0), context))
+                high = math.floor(number(provider.get("max", 0), context))
+            return low if low >= high else context.rng.randint(low, high)
+    value = number(provider, context)
+    return java_round(value) if _rounds(context) else math.floor(value)
 
 
 def _score_number(provider: dict[str, Any], context: Context) -> float:
@@ -139,7 +176,7 @@ def _score_number(provider: dict[str, Any], context: Context) -> float:
     if world is None or holder is None:
         return 0.0
     value = world.scoreboard.get(holder, str(provider.get("score", "")))
-    scale = float(provider.get("scale", 1.0))
+    scale = to_float(provider.get("scale"), 1.0)
     return float(value or 0) * scale
 
 
@@ -154,12 +191,21 @@ def in_bounds(value: float | None, bounds: Any, context: Context | None = None) 
         return value == bounds
     if isinstance(bounds, dict):
         context = context or Context()
-        low = bounds.get("min")
-        high = bounds.get("max")
-        if low is not None and value < number(low, context):
+        low = _bound(bounds.get("min"), context)
+        high = _bound(bounds.get("max"), context)
+        if low is not None and value < low:
             return False
-        return not (high is not None and value > number(high, context))
+        return not (high is not None and value > high)
     return False
+
+
+def _bound(bound: Any, context: Context) -> float | None:
+    """A range end: a number, or (in int ranges) a provider read with getInt."""
+    if isinstance(bound, dict):
+        return integer(bound, context)
+    if isinstance(bound, (int, float)):
+        return float(bound)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -185,12 +231,17 @@ def _inverted(condition: dict[str, Any], context: Context) -> bool:
     return not check(condition.get("term"), context)
 
 
+def _terms(condition: dict[str, Any]) -> list[Any]:
+    terms = condition.get("terms")
+    return terms if isinstance(terms, list) else []
+
+
 def _all_of(condition: dict[str, Any], context: Context) -> bool:
-    return all(check(term, context) for term in condition.get("terms", []))
+    return all(check(term, context) for term in _terms(condition))
 
 
 def _any_of(condition: dict[str, Any], context: Context) -> bool:
-    return any(check(term, context) for term in condition.get("terms", []))
+    return any(check(term, context) for term in _terms(condition))
 
 
 def _random_chance(condition: dict[str, Any], context: Context) -> bool:
@@ -214,7 +265,10 @@ def _entity_scores(condition: dict[str, Any], context: Context) -> bool:
     if entity is None or context.world is None:
         return False
     board = context.world.scoreboard
-    for objective, bounds in (condition.get("scores") or {}).items():
+    scores = condition.get("scores")
+    if not isinstance(scores, dict):
+        return False
+    for objective, bounds in scores.items():
         if not in_bounds(board.get(entity.id, objective), bounds, context):
             return False
     return True
@@ -250,9 +304,9 @@ def _location_check(condition: dict[str, Any], context: Context) -> bool:
     if position is None:
         return False
     offset = [
-        position[0] + float(condition.get("offsetX", 0)),
-        position[1] + float(condition.get("offsetY", 0)),
-        position[2] + float(condition.get("offsetZ", 0)),
+        position[0] + to_float(condition.get("offsetX")),
+        position[1] + to_float(condition.get("offsetY")),
+        position[2] + to_float(condition.get("offsetZ")),
     ]
     return location_matches(condition.get("predicate"), offset, context.dimension, context)
 
@@ -281,8 +335,10 @@ def _survives_explosion(condition: dict[str, Any], context: Context) -> bool:
 
 
 def _table_bonus(condition: dict[str, Any], context: Context) -> bool:
-    chances = condition.get("chances") or [0]
-    return context.rng.random() < float(chances[0])
+    # no enchantments in a command's context: the level-0 chance
+    chances = condition.get("chances")
+    first = chances[0] if isinstance(chances, list) and chances else 0
+    return context.rng.random() < to_float(first)
 
 
 def _reference(condition: dict[str, Any], context: Context) -> bool:
@@ -375,7 +431,7 @@ def _properties_match(wanted: Any, actual: dict[str, str]) -> bool:
                     return False
                 if high is not None and number > float(high):
                     return False
-            except ValueError:
+            except (TypeError, ValueError):
                 return False
         elif have != str(value).lower():
             return False
@@ -425,17 +481,17 @@ def entity_matches(predicate: Any, entity: Entity, context: Context) -> bool:
         return False
     equipment = predicate.get("equipment")
     if isinstance(equipment, dict):
+        if entity.living is None:
+            return False
         for slot, item_predicate in equipment.items():
-            stack = _equipment(entity, slot)
-            if stack is None or not item_matches(item_predicate, stack, context):
+            if not item_matches(item_predicate, _equipment(entity, slot), context):
                 return False
     slots = predicate.get("slots")
     if isinstance(slots, dict):
         for slot, item_predicate in slots.items():
             keys = entity.inventory.keys_for(slot) or []
             if not any(
-                (stack := entity.inventory.get(key)) is not None
-                and item_matches(item_predicate, stack, context)
+                item_matches(item_predicate, entity.inventory.get(key) or empty_stack(), context)
                 for key in keys
             ):
                 return False
@@ -472,11 +528,21 @@ def entity_matches(predicate: Any, entity: Entity, context: Context) -> bool:
     return True
 
 
+def _is_baby(entity: Entity) -> bool:
+    # zombies and piglins keep a flag, breeding animals a negative age
+    if "IsBaby" in entity.nbt:
+        return bool(entity.nbt["IsBaby"])
+    age = entity.nbt.get("Age")
+    return isinstance(age, int) and age < 0
+
+
 def _flags_match(flags: dict[str, Any], entity: Entity) -> bool:
     fire = entity.nbt.get("Fire", -1)
+    if entity.living is None:  # only living entities are asked about age
+        flags = {key: value for key, value in flags.items() if key != "is_baby"}
     known = {
         "is_on_fire": isinstance(fire, int) and fire > 0,
-        "is_baby": isinstance(entity.nbt.get("Age"), int) and entity.nbt["Age"] < 0,
+        "is_baby": _is_baby(entity),
         "is_sneaking": False,
         "is_sprinting": False,
         "is_swimming": False,
@@ -486,12 +552,13 @@ def _flags_match(flags: dict[str, Any], entity: Entity) -> bool:
     return all(known.get(key, False) == bool(value) for key, value in flags.items())
 
 
-def _equipment(entity: Entity, slot: str) -> ItemStack | None:
+def _equipment(entity: Entity, slot: str) -> ItemStack:
     name = {"mainhand": "weapon.mainhand", "offhand": "weapon.offhand", "body": "armor.body"}.get(
         slot, f"armor.{slot}"
     )
     keys = entity.inventory.keys_for(name) or []
-    return entity.inventory.get(keys[0]) if keys else None
+    stack = entity.inventory.get(keys[0]) if keys else None
+    return stack if stack is not None else empty_stack()
 
 
 def _player_matches(predicate: dict[str, Any], entity: Entity, context: Context) -> bool:

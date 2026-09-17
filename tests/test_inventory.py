@@ -360,4 +360,4 @@ def test_uniform_number_providers_include_the_maximum():
     rng = random.Random(1)
     draws = {integer({"type": "minecraft:uniform", "min": 1, "max": 3}, rng) for _ in range(300)}
     assert draws == {1, 2, 3}
-    assert integer(2.7, rng) == 2 and integer({"type": "minecraft:constant", "value": 4}, rng) == 4
+    assert integer(2.7, rng) == 3 and integer({"type": "minecraft:constant", "value": 4}, rng) == 4

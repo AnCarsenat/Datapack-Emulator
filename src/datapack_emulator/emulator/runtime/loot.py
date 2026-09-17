@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import random
+import struct
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.common import nbt_get, nbt_set, normalise_id, parse_snbt
 from datapack_emulator.emulator.runtime.inventory import (
     ItemStack,
@@ -31,6 +34,7 @@ from datapack_emulator.emulator.runtime.predicates import (
     integer,
     item_matches,
     number,
+    to_float,
 )
 
 #: nested tables deeper than this are not followed (a table can include itself)
@@ -40,6 +44,13 @@ TableLookup = Callable[[str], dict[str, Any] | None]
 
 #: the older name of the evaluation context
 LootContext = Context
+
+#: ``set_damage`` can add to the current damage (and clamps)
+DAMAGE_ADD_SINCE = "1.17"
+#: item names and lore are text components, not JSON strings
+TEXT_OBJECTS_SINCE = "1.21.5"
+#: enchantment levels the functions can set
+MAX_LEVEL = 255
 
 _TOOLS = ("sword", "pickaxe", "axe", "shovel", "hoe")
 #: durability of items that have some (their max_damage)
@@ -61,6 +72,9 @@ MAX_DAMAGE: dict[str, int] = {
     "diamond_chestplate": 528, "diamond_leggings": 495, "diamond_boots": 429,
     "netherite_helmet": 407, "netherite_chestplate": 592, "netherite_leggings": 555,
     "netherite_boots": 481,
+    **{f"copper_{tool}": 190 for tool in _TOOLS},
+    "copper_helmet": 121, "copper_chestplate": 176, "copper_leggings": 165,
+    "copper_boots": 143, "wolf_armor": 64,
 }  # fmt: skip
 
 
@@ -114,37 +128,52 @@ def evaluate(
     return result
 
 
-def _expand(entries: list[Any], context: Context) -> list[dict[str, Any]]:
-    """The candidates of a roll: entries whose conditions pass, composites
-    resolved (alternatives: the first child that passes; sequence: children
-    until one fails)."""
+def _expand(entries: Any, context: Context) -> list[dict[str, Any]]:
+    """The candidates of a roll."""
     out: list[dict[str, Any]] = []
-    for entry in entries:
-        if not isinstance(entry, dict) or not _passes(entry, context):
-            continue
-        kind = normalise_id(str(entry.get("type", "minecraft:item")))
-        children = [child for child in entry.get("children", []) or [] if isinstance(child, dict)]
-        if kind == "minecraft:alternatives":
-            for child in children:
-                expanded = _expand([child], context)
-                if expanded:
-                    out.extend(expanded)
-                    break
-        elif kind == "minecraft:group":
-            out.extend(_expand(children, context))
-        elif kind == "minecraft:sequence":
-            for child in children:
-                expanded = _expand([child], context)
-                if not expanded:
-                    break
-                out.extend(expanded)
-        else:
-            out.append(entry)
+    for entry in entries if isinstance(entries, list) else []:
+        _expand_entry(entry, context, out)
     return out
 
 
+def _expand_entry(entry: Any, context: Context, out: list[dict[str, Any]]) -> bool:
+    """Vanilla's ``expand``: add an entry's candidates, and say whether it ran
+    (its conditions passed). Alternatives stop at the first child that ran,
+    sequences at the first that did not; a group runs every child and always
+    counts as run. An expanded tag gives each of its items as a candidate."""
+    if not isinstance(entry, dict) or not _passes(entry, context):
+        return False
+    kind = normalise_id(str(entry.get("type", "minecraft:item")))
+    children = entry.get("children")
+    children = children if isinstance(children, list) else []
+    if kind == "minecraft:alternatives":
+        return any(_expand_entry(child, context, out) for child in children)
+    if kind == "minecraft:sequence":
+        return all(_expand_entry(child, context, out) for child in children)
+    if kind == "minecraft:group":
+        for child in children:
+            _expand_entry(child, context, out)
+        return True
+    if kind == "minecraft:tag" and entry.get("expand"):
+        tag = "#" + normalise_id(str(entry.get("name", "")))
+        members = context.tags("item", tag) if context.tags else None
+        if members is not None:
+            plain = {key: value for key, value in entry.items() if key != "conditions"}
+            out.extend(
+                {**plain, "type": "minecraft:item", "name": item_id} for item_id in sorted(members)
+            )
+            return True
+    out.append(entry)
+    return True
+
+
+def _weight(entry: dict[str, Any]) -> int:
+    # luck is always 0, so quality never counts
+    return max(0, math.floor(to_float(entry.get("weight"), 1.0)))
+
+
 def _pick(entries: list[dict[str, Any]], rng: random.Random) -> dict[str, Any] | None:
-    weighted = [(entry, max(0, int(entry.get("weight", 1)))) for entry in entries]
+    weighted = [(entry, _weight(entry)) for entry in entries]
     total = sum(weight for _, weight in weighted)
     if total <= 0:
         return None
@@ -169,23 +198,21 @@ def _entry_items(
         if members is None:
             result.skipped.add(f"tag entry {tag}")
         else:
-            ordered = sorted(members)
-            if entry.get("expand"):
-                ordered = [context.rng.choice(ordered)] if ordered else []
-            stacks = [ItemStack(item_id, 1) for item_id in ordered]
-    elif kind == "minecraft:loot_table":
+            stacks = [ItemStack(item_id, 1) for item_id in sorted(members)]
+    elif kind == "minecraft:loot_table" and depth < MAX_DEPTH:
         value = entry.get("value", entry.get("name"))
+        nested = None
         if isinstance(value, dict):
-            stacks = evaluate(value, lookup, depth=depth + 1, context=context).items
-        elif isinstance(value, str) and depth < MAX_DEPTH:
+            nested = value
+        elif isinstance(value, str):
             nested = lookup(normalise_id(value))
             if nested is None:
                 result.missing.add(normalise_id(value))
-            else:
-                inner = evaluate(nested, lookup, depth=depth + 1, context=context)
-                result.skipped |= inner.skipped
-                result.missing |= inner.missing
-                stacks = inner.items
+        if nested is not None:
+            inner = evaluate(nested, lookup, depth=depth + 1, context=context)
+            result.skipped |= inner.skipped
+            result.missing |= inner.missing
+            stacks = inner.items
     elif kind == "minecraft:dynamic":
         name = normalise_id(str(entry.get("name", "")))
         block = context.block
@@ -199,9 +226,10 @@ def _entry_items(
             stacks = [items[slot].copy() for slot in sorted(items)]
         else:
             result.skipped.add(f"dynamic {name}")
-    elif kind != "minecraft:empty":
+    elif kind not in ("minecraft:empty", "minecraft:loot_table"):
         result.skipped.add(kind)
-    for function in entry.get("functions", []) or []:
+    functions = entry.get("functions")
+    for function in functions if isinstance(functions, list) else []:
         stacks = [apply(function, stack, context, result) for stack in stacks]
     return [stack for stack in stacks if stack.id != "minecraft:air"]
 
@@ -221,38 +249,69 @@ def _component(key: str) -> str:
     return ("!" if key.startswith("!") else "") + qualified
 
 
+def _text_objects(context: Context) -> bool:
+    version = context.version
+    return version is None or version >= versions.parse(TEXT_OBJECTS_SINCE)
+
+
+def _text(value: Any, context: Context) -> Any:
+    """A text component as the item stores it: an object, or before 1.21.5 a
+    JSON string."""
+    return value if _text_objects(context) else json.dumps(value)
+
+
+def _read_text(value: Any, context: Context) -> Any:
+    """The component of a stored text (a JSON string before 1.21.5)."""
+    if isinstance(value, str) and not _text_objects(context):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
 def _set_name(function: dict[str, Any], stack: ItemStack, context: Context) -> None:
     name = function.get("name")
     if name is None:
         return
     if _modern(context):
-        stack.components[normalise_id(str(function.get("target", "custom_name")))] = name
+        target = normalise_id(str(function.get("target", "custom_name")))
+        stack.components[target] = _text(name, context)
     else:
-        stack.tag.setdefault("display", {})["Name"] = json.dumps(name)
+        stack.tag.setdefault("display", {})["Name"] = _text(name, context)
+
+
+def _offset(function: dict[str, Any], key: str, default: int) -> int:
+    return max(0, math.floor(to_float(function.get(key), default)))
 
 
 def _set_lore(function: dict[str, Any], stack: ItemStack, context: Context) -> None:
-    lore = list(function.get("lore", []) or [])
+    lore = function.get("lore")
+    lore = list(lore) if isinstance(lore, list) else []
     if _modern(context):
-        current = list(stack.components.get("minecraft:lore", []) or [])
+        stored = stack.components.get("minecraft:lore")
     else:
-        current = [json.loads(line) for line in stack.tag.get("display", {}).get("Lore", [])]
+        display = stack.tag.get("display")
+        stored = display.get("Lore") if isinstance(display, dict) else None
+    current = [_read_text(line, context) for line in stored] if isinstance(stored, list) else []
     mode = str(function.get("mode", "replace_all" if function.get("replace") else "append"))
+    offset = _offset(function, "offset", 0)
     if mode == "replace_all":
         current = lore
+    elif mode in ("insert", "replace_section") and offset > len(current):
+        return  # vanilla logs the bad offset and leaves the lore alone
     elif mode == "insert":
-        offset = int(function.get("offset", 0))
         current[offset:offset] = lore
     elif mode == "replace_section":
-        offset = int(function.get("offset", 0))
-        size = int(function.get("size", len(lore)))
+        size = _offset(function, "size", len(lore))
         current[offset : offset + size] = lore
     else:
         current = current + lore
+    lines = [_text(line, context) for line in current]
     if _modern(context):
-        stack.components["minecraft:lore"] = current
+        stack.components["minecraft:lore"] = lines
     else:
-        stack.tag.setdefault("display", {})["Lore"] = [json.dumps(line) for line in current]
+        stack.tag.setdefault("display", {})["Lore"] = lines
 
 
 def enchant(stack: ItemStack, levels: dict[str, int], context: Context, add: bool) -> None:
@@ -268,7 +327,12 @@ def enchant(stack: ItemStack, levels: dict[str, int], context: Context, add: boo
         flat = uses_equipment(context.version)  # 1.21.5: the levels map is the component
         table = current if flat else dict(current.get("levels", {}) or {})
         for enchantment, level in levels.items():
-            table[enchantment] = (int(table.get(enchantment, 0)) + level) if add else level
+            old = table.get(enchantment, 0)
+            new = _level((old if isinstance(old, int) else 0) + level if add else level)
+            if new:
+                table[enchantment] = new
+            else:
+                table.pop(enchantment, None)
         stack.components[key] = table if flat else {**current, "levels": table}
         return
     key = "StoredEnchantments" if book else "Enchantments"
@@ -276,18 +340,29 @@ def enchant(stack: ItemStack, levels: dict[str, int], context: Context, add: boo
     existing = {normalise_id(str(e.get("id", ""))): e for e in entries}
     for enchantment, level in levels.items():
         if enchantment in existing:
-            old = int(existing[enchantment].get("lvl", 0))
-            existing[enchantment]["lvl"] = old + level if add else level
+            old = existing[enchantment].get("lvl", 0)
+            new = _level((old if isinstance(old, int) else 0) + level if add else level)
         else:
-            entries.append({"id": enchantment, "lvl": level})
+            new = _level(level)
+        if not new:
+            entries = [e for e in entries if e is not existing.get(enchantment)]
+        elif enchantment in existing:
+            existing[enchantment]["lvl"] = new
+        else:
+            entries.append({"id": enchantment, "lvl": new})
     stack.tag[key] = entries
+
+
+def _level(level: int) -> int:
+    """Levels are kept between 0 and 255; 0 removes the enchantment."""
+    return max(0, min(MAX_LEVEL, level))
 
 
 def _max_damage(stack: ItemStack) -> int | None:
     value = stack.components.get("minecraft:max_damage")
     if isinstance(value, int):
         return value
-    return MAX_DAMAGE.get(stack.id.split(":", 1)[1])
+    return MAX_DAMAGE.get(stack.id.split(":", 1)[-1])
 
 
 def apply(
@@ -297,9 +372,9 @@ def apply(
     result: LootResult,
     cap: bool = False,
 ) -> ItemStack:
-    """One item function (a list is a sequence). ``cap`` limits counts to the
-    stack size (item modifiers); loot keeps the count and is split into stacks
-    afterwards."""
+    """One item function (a list is a sequence). Counts are not capped here:
+    loot is split into stacks afterwards, and an item modifier caps the
+    result once (``modify``)."""
     context = _context(context)
     if isinstance(function, list):
         for part in function:
@@ -317,14 +392,13 @@ def apply(
 
 def _set_count(function, stack, context, result, cap):
     amount = integer(function.get("count", 1), context)
-    stack.count = stack.count + amount if function.get("add") else amount
-    stack.count = max(0, min(stack.count, stack.max_count) if cap else stack.count)
+    stack.count = max(0, stack.count + amount if function.get("add") else amount)
 
 
 def _limit_count(function, stack, context, result, cap):
     limit = function.get("limit", {})
-    if isinstance(limit, (int, float)):
-        stack.count = min(stack.count, int(limit))
+    if isinstance(limit, (int, float)) and not isinstance(limit, bool):
+        stack.count = int(limit)  # an exact range clamps both ways
         return
     if not isinstance(limit, dict):
         return
@@ -346,10 +420,22 @@ def _set_components(function, stack, context, result, cap):
             stack.components[qualified] = copy.deepcopy(value)
 
 
+def merge_compound(target: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
+    """Vanilla's ``CompoundTag.merge``: compounds merge key by key, anything
+    else is replaced."""
+    for key, value in source.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            merge_compound(target[key], value)
+        else:
+            target[key] = copy.deepcopy(value)
+    return target
+
+
 def _set_nbt(function, stack, context, result, cap):
     tag = function.get("tag")
-    if isinstance(tag, str):
-        stack.tag.update(parse_snbt(tag))
+    data = parse_snbt(tag) if isinstance(tag, str) else None
+    if isinstance(data, dict):
+        merge_compound(stack.tag, data)
 
 
 def _set_custom_data(function, stack, context, result, cap):
@@ -357,9 +443,8 @@ def _set_custom_data(function, stack, context, result, cap):
     data = parse_snbt(tag) if isinstance(tag, str) else tag
     if isinstance(data, dict):
         current = stack.components.get("minecraft:custom_data")
-        merged = dict(current) if isinstance(current, dict) else {}
-        merged.update(copy.deepcopy(data))
-        stack.components["minecraft:custom_data"] = merged
+        merged = copy.deepcopy(current) if isinstance(current, dict) else {}
+        stack.components["minecraft:custom_data"] = merge_compound(merged, data)
 
 
 def _set_damage(function, stack, context, result, cap):
@@ -367,22 +452,39 @@ def _set_damage(function, stack, context, result, cap):
     if not maximum:
         result.skipped.add("set_damage (no durability known)")
         return
-    wanted = number(function.get("damage", 1.0), context)
-    if function.get("add"):
-        current = stack.components.get("minecraft:damage", stack.tag.get("Damage", 0))
-        wanted += 1.0 - float(current) / maximum
-    wanted = max(0.0, min(1.0, wanted))
-    damage = int((1.0 - wanted) * maximum)
+    wanted = _f32(number(function.get("damage", 1.0), context))
+    version = context.version
+    if version is not None and version < versions.parse(DAMAGE_ADD_SINCE):
+        damage = max(0, math.floor(_f32(_f32(1.0 - wanted) * maximum)))
+    else:
+        base = 0.0
+        if function.get("add"):
+            current = stack.components.get("minecraft:damage", stack.tag.get("Damage", 0))
+            if not isinstance(current, int) or isinstance(current, bool):
+                current = 0
+            base = _f32(1.0 - _f32(_f32(current) / _f32(maximum)))
+        kept = _f32(1.0 - max(0.0, min(1.0, _f32(wanted + base))))
+        damage = max(0, min(maximum, math.floor(_f32(kept * maximum))))
     if _modern(context):
         stack.components["minecraft:damage"] = damage
     else:
         stack.tag["Damage"] = damage
 
 
+def _f32(value: float) -> float:
+    """``value`` as a Java float (the functions do their maths in floats)."""
+    try:
+        return struct.unpack("f", struct.pack("f", value))[0]
+    except OverflowError:
+        return math.copysign(math.inf, value)
+
+
 def _set_enchantments(function, stack, context, result, cap):
+    enchantments = function.get("enchantments")
+    if not isinstance(enchantments, dict):
+        enchantments = {}
     levels = {
-        normalise_id(key): integer(value, context)
-        for key, value in (function.get("enchantments") or {}).items()
+        normalise_id(str(key)): integer(value, context) for key, value in enchantments.items()
     }
     enchant(stack, levels, context, add=bool(function.get("add")))
 
@@ -406,46 +508,101 @@ def _set_item(function, stack, context, result, cap):
 
 
 def _copy_name(function, stack, context, result, cap):
-    name = None
-    if context.block is not None:
-        name = getattr(context.block, "nbt", {}).get("CustomName")
-    elif context.entity is not None:
-        name = context.entity.nbt.get("CustomName")
+    source = normalise_id(str(function.get("source", "")))
+    holder = None
+    if source == "minecraft:block_entity":
+        holder = context.block
+    elif source == "minecraft:this":
+        holder = context.entity
+    else:
+        result.skipped.add(f"copy_name from {source}")
+        return
+    name = getattr(holder, "nbt", {}).get("CustomName") if holder is not None else None
     if name is not None:
-        _set_name({"name": name}, stack, context)
+        # names are stored like item names: JSON strings before 1.21.5
+        _set_name({"name": _read_text(name, context)}, stack, context)
 
 
 def _set_contents(function, stack, context, result, cap):
+    """Every candidate of the entries (their conditions checked, composites
+    resolved), into ``container`` or the ``component`` asked for."""
+    from datapack_emulator.emulator.commands.items import split_stacks
+
     items: list[ItemStack] = []
-    for entry in function.get("entries", []) or []:
-        if isinstance(entry, dict):
-            items.extend(_entry_items(entry, lambda _id: None, MAX_DEPTH, result, context))
+    for entry in _expand(function.get("entries"), context):
+        items.extend(_entry_items(entry, lambda _id: None, MAX_DEPTH, result, context))
+    items = split_stacks(items)
     if _modern(context):
-        stack.components["minecraft:container"] = [
-            {"slot": slot, "item": item.to_nbt(context.version)} for slot, item in enumerate(items)
-        ]
+        component = normalise_id(str(function.get("component", "minecraft:container")))
+        if component == "minecraft:container":
+            stack.components[component] = [
+                {"slot": slot, "item": item.to_nbt(context.version)}
+                for slot, item in enumerate(items)
+            ]
+        else:  # bundle_contents, charged_projectiles: a plain list
+            stack.components[component] = [item.to_nbt(context.version) for item in items]
     else:
         stack.tag.setdefault("BlockEntityTag", {})["Items"] = [
             {"Slot": slot, **item.to_nbt(context.version)} for slot, item in enumerate(items)
         ]
 
 
-def _copy_nbt(function, stack, context, result, cap):
-    """``copy_nbt`` from the mined block entity, or the entity (before 1.20.5)."""
-    source = str(function.get("source", "block_entity"))
-    if isinstance(function.get("source"), dict):
-        source = str(function["source"].get("type", ""))
-    if "block_entity" in source and context.block is not None:
-        data = context.block.data(context.version)
-    elif context.entity is not None and "this" in source:
-        data = context.entity.data(context.version)
+def _copy_source(function: dict[str, Any], context: Context, result: LootResult) -> Any:
+    """The compound ``copy_nbt``/``copy_custom_data`` read: the mined block
+    entity, ``this`` entity, or a storage."""
+    source = function.get("source", "block_entity")
+    if isinstance(source, dict):
+        kind = normalise_id(str(source.get("type", "")))
+        if kind == "minecraft:storage":
+            storage = normalise_id(str(source.get("source", "")))
+            store = context.world.storage.get(storage) if context.world else None
+            return store if isinstance(store, dict) else {}
+        target = normalise_id(str(source.get("target", "")))
     else:
-        result.skipped.add(f"copy_nbt from {source}")
-        return
-    for op in function.get("ops", []) or []:
+        target = normalise_id(str(source))
+    if target == "minecraft:block_entity" and context.block is not None:
+        return context.block.data(context.version, context.block_position)
+    if target == "minecraft:this" and context.entity is not None:
+        return context.entity.data(context.version)
+    result.skipped.add(f"{function.get('function')} from {target}")
+    return None
+
+
+def _copy_ops(function: dict[str, Any], data: Any, target: dict[str, Any]) -> None:
+    ops = function.get("ops")
+    for op in ops if isinstance(ops, list) else []:
+        if not isinstance(op, dict):
+            continue
         value = nbt_get(data, str(op.get("source", "")))
-        if value is not None:
-            nbt_set(stack.tag, str(op.get("target", "")), copy.deepcopy(value))
+        if value is None:
+            continue
+        path = str(op.get("target", ""))
+        mode = str(op.get("op", "replace"))
+        current = nbt_get(target, path)
+        if mode == "append" and isinstance(current, list):
+            current.extend(copy.deepcopy(value) if isinstance(value, list) else [value])
+        elif mode == "merge" and isinstance(current, dict) and isinstance(value, dict):
+            merge_compound(current, value)
+        else:
+            nbt_set(target, path, copy.deepcopy(value))
+
+
+def _copy_nbt(function, stack, context, result, cap):
+    """``copy_nbt`` (before 1.20.5) into the item's tag."""
+    data = _copy_source(function, context, result)
+    if data is not None:
+        _copy_ops(function, data, stack.tag)
+
+
+def _copy_custom_data(function, stack, context, result, cap):
+    """``copy_custom_data`` (1.20.5+) into the ``custom_data`` component."""
+    data = _copy_source(function, context, result)
+    if data is None:
+        return
+    current = stack.components.get("minecraft:custom_data")
+    target = copy.deepcopy(current) if isinstance(current, dict) else {}
+    _copy_ops(function, data, target)
+    stack.components["minecraft:custom_data"] = target
 
 
 def _filtered(function, stack, context, result, cap):
@@ -457,7 +614,8 @@ def _filtered(function, stack, context, result, cap):
 
 
 def _sequence(function, stack, context, result, cap):
-    for part in function.get("functions", []) or []:
+    parts = function.get("functions")
+    for part in parts if isinstance(parts, list) else []:
         stack = apply(part, stack, context, result, cap)
     return stack
 
@@ -475,6 +633,24 @@ def _set_potion(function, stack, context, result, cap):
         stack.components["minecraft:potion_contents"] = current
     else:
         stack.tag["Potion"] = potion
+
+
+def _apply_bonus(function, stack, context, result, cap):
+    """With no enchantments in a command's tool, the level is 0: only the
+    binomial formula still adds its ``extra`` trials."""
+    if context.tool is None:
+        return
+    if context.tool.components.get("minecraft:enchantments") or context.tool.tag.get(
+        "Enchantments"
+    ):
+        result.skipped.add("apply_bonus (enchantment levels)")
+    formula = normalise_id(str(function.get("formula", "")))
+    parameters = function.get("parameters")
+    if formula != "minecraft:binomial_with_bonus_count" or not isinstance(parameters, dict):
+        return
+    trials = math.floor(to_float(parameters.get("extra")))
+    chance = to_float(parameters.get("probability"))
+    stack.count += sum(1 for _ in range(max(0, trials)) if context.rng.random() < chance)
 
 
 def _unchanged(function, stack, context, result, cap):
@@ -504,12 +680,13 @@ FUNCTIONS: dict[str, Callable[..., ItemStack | None]] = {
     "minecraft:copy_name": _copy_name,
     "minecraft:set_contents": _set_contents,
     "minecraft:copy_nbt": _copy_nbt,
+    "minecraft:copy_custom_data": _copy_custom_data,
     "minecraft:filtered": _filtered,
     "minecraft:sequence": _sequence,
     "minecraft:discard": _discard,
     "minecraft:set_potion": _set_potion,
     "minecraft:explosion_decay": _unchanged,
-    "minecraft:apply_bonus": _unchanged,
+    "minecraft:apply_bonus": _apply_bonus,
     "minecraft:looting_enchant": _unchanged,
     "minecraft:enchanted_count_increase": _unchanged,
     "minecraft:enchant_with_levels": _skipped("minecraft:enchant_with_levels"),
@@ -523,8 +700,10 @@ FUNCTIONS: dict[str, Callable[..., ItemStack | None]] = {
 
 
 def modify(modifier: Any, stack: ItemStack, context: Context) -> tuple[ItemStack, LootResult]:
-    """An item modifier (one function or a list), counts capped to the stack size."""
+    """An item modifier (one function or a list); the result is capped to the
+    stack size once, like ``item modify``."""
     result = LootResult()
     stack = apply(modifier, stack, context, result, cap=True)
+    stack.count = max(0, min(stack.count, stack.max_count))
     result.skipped |= context.unchecked
     return stack, result

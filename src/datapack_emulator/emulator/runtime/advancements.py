@@ -21,6 +21,8 @@ from datapack_emulator.emulator.common import flatten_text_component, normalise_
 TICK_TRIGGER = "minecraft:tick"
 LOCATION_TRIGGER = "minecraft:location"
 LOCATION_INTERVAL = 20
+#: before this, location criteria had their own ``location`` predicate
+PLAYER_LOCATION_SINCE = "1.19"
 
 
 @dataclass
@@ -58,7 +60,8 @@ class Advancement:
 
     @property
     def shown(self) -> str:
-        return f"[{self.title or self.id}]"
+        """How feedback names it: the title in brackets, or the bare id."""
+        return f"[{self.title}]" if self.title else self.id
 
     def done(self, criteria: set[str]) -> bool:
         return bool(self.requirements) and all(
@@ -114,24 +117,31 @@ class AdvancementTree:
         return [adv for adv in self._load().values() if adv.parent == advancement_id]
 
     def descendants(self, advancement_id: str) -> list[Advancement]:
+        """Children depth first, each before its own children (vanilla's order)."""
         out: list[Advancement] = []
-        stack = [advancement_id]
-        while stack:
-            for child in self.children(stack.pop()):
-                out.append(child)
-                stack.append(child.id)
+        seen = {advancement_id}
+
+        def visit(parent: str) -> None:
+            for child in self.children(parent):
+                if child.id not in seen:
+                    seen.add(child.id)
+                    out.append(child)
+                    visit(child.id)
+
+        visit(advancement_id)
         return out
 
     def ancestors(self, advancement_id: str) -> list[Advancement]:
+        """The parent first, then its parent, up to the root."""
         out: list[Advancement] = []
         current = self.get(advancement_id)
-        seen = set()
+        seen = {advancement_id}
         while current is not None and current.parent and current.parent not in seen:
             seen.add(current.parent)
             current = self.get(current.parent)
             if current is not None:
                 out.append(current)
-        return list(reversed(out))
+        return out
 
 
 class Progress:
@@ -151,8 +161,11 @@ class Progress:
         return advancement.done(self.granted.get(holder, {}).get(advancement.id, set()))
 
     def grant(self, holder: str, advancement: Advancement, criterion: str | None = None) -> bool:
-        """Grant one criterion (or all); whether anything changed."""
+        """Grant one criterion (or all); whether anything changed. Granting a
+        whole advancement that is already done changes nothing, like vanilla."""
         was_done = self.done(holder, advancement)
+        if criterion is None and was_done:
+            return False
         have = self.criteria(holder, advancement.id)
         names = [criterion] if criterion is not None else list(advancement.criteria)
         added = [name for name in names if name not in have]
@@ -176,7 +189,10 @@ class Progress:
             return False
         if isinstance(wanted, dict):
             have = self.granted.get(holder, {}).get(advancement_id, set())
-            return all((name in have) == bool(value) for name, value in wanted.items())
+            return all(
+                name in advancement.criteria and (name in have) == bool(value)
+                for name, value in wanted.items()
+            )
         return self.done(holder, advancement) == bool(wanted)
 
     def completed(self, holder: str) -> list[str]:

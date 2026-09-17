@@ -33,6 +33,7 @@ from datapack_emulator.emulator.runtime.inventory import (
     uses_equipment,
 )
 from datapack_emulator.emulator.runtime.loot import LootContext, evaluate
+from datapack_emulator.emulator.runtime.predicates import empty_stack
 from datapack_emulator.emulator.runtime.world import Entity
 
 #: how many of an item give accepts at once, in stacks
@@ -522,7 +523,7 @@ def _add_enchantment(stack: ItemStack, enchantment: str, level: int, version) ->
 # ---------------------------------------------------------------------------
 
 
-def _loot_table(context: ExecutionContext, table_id: str) -> dict[str, Any] | None:
+def loot_table(context: ExecutionContext, table_id: str) -> dict[str, Any] | None:
     table_id = normalise_id(table_id)
     resource = context.emulator.pack.registries.get("loot_table", {}).get(table_id)
     content = getattr(resource, "content", None)
@@ -563,17 +564,20 @@ def _loot_source(
         loot.block = block
         loot.block_position = position
         loot.position = [value + 0.5 for value in position]
+        # no tool (or an empty hand) is an empty stack, which match_tool still sees
+        loot.tool = empty_stack()
         if len(source) > 4 and source[4] not in ("mainhand", "offhand"):
-            loot.tool = parse_item(source[4])
+            loot.tool = parse_item(source[4]) or empty_stack()
         elif len(source) > 4 and context.executor is not None:
             keys = context.executor.inventory.keys_for(f"weapon.{source[4]}") or []
-            loot.tool = context.executor.inventory.get(keys[0]) if keys else None
+            held = context.executor.inventory.get(keys[0]) if keys else None
+            loot.tool = held if held is not None else empty_stack()
         namespace, _, path = block.id.partition(":")
         table_id = f"{namespace}:blocks/{path}"
     else:
         _usage(context)
         return None
-    table = _loot_table(context, table_id)
+    table = loot_table(context, table_id)
     if table is None:
         if kind in ("kill", "mine"):  # nothing to drop is not an error
             return (table_id, {})
@@ -609,7 +613,7 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
         return CommandResult.failure()
     _, table = found
     result = evaluate(
-        table, lambda tid: _loot_table(context, tid), context.world.random, context=loot
+        table, lambda tid: loot_table(context, tid), context.world.random, context=loot
     )
     if result.skipped:
         context.note_once(

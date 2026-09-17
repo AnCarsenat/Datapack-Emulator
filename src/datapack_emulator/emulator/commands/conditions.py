@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.commands.helpers import require_targets
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
@@ -22,12 +23,21 @@ TAG_FOLDERS = {
     "block": ("tags/block", "tags/blocks"),
     "entity_type": ("tags/entity_type", "tags/entity_types"),
 }
+#: ``execute if predicate`` takes an inline predicate (and names a missing
+#: one with the resource-or-id error)
+INLINE_PREDICATES_SINCE = "1.20.5"
 
 
-def tag_members(context: ExecutionContext, registry: str, tag: str) -> set[str] | None:
+def tag_members(
+    context: ExecutionContext, registry: str, tag: str, seen: set[str] | None = None
+) -> set[str] | None:
     """The ids of ``#tag`` in a registry, from the client jar and the pack;
     None when neither knows it."""
     tag_id = normalise_id(tag.lstrip("#"))
+    seen = set() if seen is None else seen
+    if tag_id in seen:
+        return set()
+    seen.add(tag_id)
     members: set[str] = set()
     found = False
     assets = context.emulator.vanilla
@@ -41,7 +51,7 @@ def tag_members(context: ExecutionContext, registry: str, tag: str) -> set[str] 
             found = True
             for entry in resource.entries:
                 if entry.value.startswith("#"):
-                    members |= tag_members(context, registry, entry.value) or set()
+                    members |= tag_members(context, registry, entry.value, seen) or set()
                 else:
                     members.add(normalise_id(entry.value))
     return members if found else None
@@ -60,6 +70,7 @@ def predicate_context(
     block=None,
     block_position=None,
     tool=None,
+    dimension: str | None = None,
 ) -> Context:
     """What a predicate or loot table sees from a command."""
     return Context(
@@ -67,7 +78,7 @@ def predicate_context(
         rng=context.world.random,
         entity=entity if entity is not None else context.executor,
         position=list(position if position is not None else context.position),
-        dimension=context.dimension,
+        dimension=dimension or context.dimension,
         block=block,
         block_position=block_position,
         tool=tool,
@@ -92,7 +103,8 @@ def report_unchecked(context: ExecutionContext, what: str, unchecked: set[str]) 
 def predicate_condition(argument: str, context: ExecutionContext) -> bool:
     """``if predicate <id>`` or, from 1.20.5, an inline predicate."""
     text = argument.strip()
-    if text.startswith(("{", "[")):
+    inline = context.emulator.version >= versions.parse(INLINE_PREDICATES_SINCE)
+    if inline and text.startswith(("{", "[")):
         try:
             predicate = json.loads(text)
         except json.JSONDecodeError:
@@ -103,7 +115,10 @@ def predicate_condition(argument: str, context: ExecutionContext) -> bool:
     else:
         predicate = pack_json(context, "predicate", text)
         if predicate is None:
-            context.game_error("argument.resource_or_id.no_such_element", text, "predicate")
+            if inline:
+                context.game_error("argument.resource_or_id.no_such_element", text, "predicate")
+            else:
+                context.game_error("predicate.unknown", normalise_id(text))
             return False
     evaluation = predicate_context(context)
     passed = check(predicate, evaluation)
@@ -120,7 +135,9 @@ def selector_predicates(entity, values: list[str], context: ExecutionContext) ->
         if predicate is None:
             context.note_once(f"selector predicate={name}: no such predicate, it fails")
             return False
-        evaluation = predicate_context(context, entity=entity, position=entity.position)
+        evaluation = predicate_context(
+            context, entity=entity, position=entity.position, dimension=entity.dimension
+        )
         if check(predicate, evaluation) == negated:
             report_unchecked(context, f"predicate {name}", evaluation.unchecked)
             return False

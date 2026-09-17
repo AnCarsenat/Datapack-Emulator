@@ -24,6 +24,7 @@ from datapack_emulator.emulator.datapack import Datapack, PackView
 from datapack_emulator.emulator.runtime.advancements import (
     LOCATION_INTERVAL,
     LOCATION_TRIGGER,
+    PLAYER_LOCATION_SINCE,
     TICK_TRIGGER,
     Advancement,
     AdvancementTree,
@@ -121,38 +122,73 @@ class Emulator:
             from datapack_emulator.emulator.commands.players import give_points
 
             give_points(context, player, experience)
-        for table_id in rewards.get("loot", []) or []:
-            self.run_command(
-                Command.parse(f"loot give {holder} loot {table_id}", "<advancement>"),
-                context,
-            )
+        tables = rewards.get("loot")
+        for table_id in tables if isinstance(tables, list) else []:
+            if isinstance(table_id, str):
+                self._reward_loot(player, table_id, context)
         function = rewards.get("function")
         if isinstance(function, str):
             self.run_function(function, context)
 
+    def _reward_loot(self, player, table_id: str, context) -> None:
+        """A reward table's items go straight into the inventory, silently."""
+        from datapack_emulator.emulator.commands.conditions import predicate_context
+        from datapack_emulator.emulator.commands.items import loot_table, split_stacks
+        from datapack_emulator.emulator.runtime.loot import evaluate
+
+        table = loot_table(context, table_id)
+        if table is None:
+            context.note_once(f"advancement reward: no loot table {normalise_id(table_id)}")
+            return
+        result = evaluate(
+            table,
+            lambda name: loot_table(context, name),
+            context=predicate_context(context, entity=player, position=player.position),
+        )
+        for stack in split_stacks(result.items):
+            player.inventory.add(stack)
+
     def _advancement_triggers(self) -> None:
         """``minecraft:tick`` every tick, ``minecraft:location`` every 20."""
         from datapack_emulator.emulator.commands.conditions import predicate_context
-        from datapack_emulator.emulator.runtime.predicates import check, entity_matches
+        from datapack_emulator.emulator.runtime.predicates import (
+            check,
+            entity_matches,
+            location_matches,
+        )
 
         progress = self.world.advancements
         location_tick = self.world.tick % LOCATION_INTERVAL == 0
+        old_location = self.version < versions.parse(PLAYER_LOCATION_SINCE)
         for advancement in progress.tree.pack_advancements():
             for name, criterion in advancement.criteria.items():
                 trigger = normalise_id(str(criterion.get("trigger", "")))
                 if trigger != TICK_TRIGGER and not (location_tick and trigger == LOCATION_TRIGGER):
                     continue
+                conditions = criterion.get("conditions")
+                if not isinstance(conditions, dict):
+                    conditions = {}
                 for player in self.world.players:
+                    # vanilla stops listening once an advancement is done
+                    if progress.done(player.id, advancement):
+                        continue
                     if name in progress.criteria(player.id, advancement.id):
                         continue
-                    conditions = (criterion.get("conditions") or {}).get("player")
                     context = predicate_context(
-                        self.root_context(), entity=player, position=player.position
+                        self.root_context(),
+                        entity=player,
+                        position=player.position,
+                        dimension=player.dimension,
                     )
-                    if isinstance(conditions, list):
-                        passed = check(conditions, context)
+                    wanted = conditions.get("player")
+                    if isinstance(wanted, list):
+                        passed = check(wanted, context)
                     else:
-                        passed = entity_matches(conditions, player, context)
+                        passed = entity_matches(wanted, player, context)
+                    if passed and old_location and trigger == LOCATION_TRIGGER:
+                        passed = location_matches(
+                            conditions.get("location"), player.position, player.dimension, context
+                        )
                     if passed:
                         progress.grant(player.id, advancement, name)
 
