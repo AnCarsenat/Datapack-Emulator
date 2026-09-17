@@ -42,7 +42,7 @@ DEEPER_WORLD_SINCE = "1.18"
 Position = tuple[int, int, int]
 Key = tuple[str, int, int, int]
 
-#: container blocks and their slot count
+#: container blocks and their slot count (what ``item … block`` can reach)
 _CONTAINER_SIZES: dict[str, int] = {
     "chest": 27,
     "trapped_chest": 27,
@@ -57,46 +57,96 @@ _CONTAINER_SIZES: dict[str, int] = {
     "blast_furnace": 3,
     "smoker": 3,
     "chiseled_bookshelf": 6,
-    "campfire": 4,
-    "soul_campfire": 4,
     "decorated_pot": 1,
     "jukebox": 1,
-    "lectern": 1,
     "shelf": 3,
 }
-#: block entities that hold no items
-_OTHER_BLOCK_ENTITIES = (
-    "sign", "hanging_sign", "banner", "head", "skull", "command_block", "spawner",
-    "beacon", "bed", "bell", "beehive", "bee_nest", "conduit", "comparator",
-    "daylight_detector", "enchanting_table", "end_gateway", "end_portal", "ender_chest",
-    "jigsaw", "structure_block", "piston_head", "moving_piston", "sculk_sensor",
-    "sculk_catalyst", "sculk_shrieker", "trial_spawner", "vault", "suspicious_sand",
-    "suspicious_gravel", "creaking_heart", "test_block", "test_instance_block",
-    "copper_golem_statue",
-)  # fmt: skip
+#: containers that keep one item under their own key instead of ``Items``
+_SINGLE_ITEM_KEYS = {"jukebox": "RecordItem", "decorated_pot": "item"}
+#: block id suffix -> block entity type, where they differ
+_ENTITY_TYPES: tuple[tuple[str, str], ...] = (
+    ("_wall_hanging_sign", "hanging_sign"),
+    ("_hanging_sign", "hanging_sign"),
+    ("_wall_sign", "sign"),
+    ("_sign", "sign"),
+    ("_wall_banner", "banner"),
+    ("_banner", "banner"),
+    ("_wall_head", "skull"),
+    ("_wall_skull", "skull"),
+    ("_head", "skull"),
+    ("_skull", "skull"),
+    ("_bed", "bed"),
+    ("shulker_box", "shulker_box"),
+    ("soul_campfire", "campfire"),
+    ("suspicious_sand", "brushable_block"),
+    ("suspicious_gravel", "brushable_block"),
+    ("command_block", "command_block"),
+    ("_shelf", "shelf"),
+    ("moving_piston", "piston"),
+    ("copper_golem_statue", "copper_golem_statue"),
+)
+#: block entities that are not containers (and those whose id is the block id)
+_OTHER_BLOCK_ENTITIES = frozenset({
+    "sign", "hanging_sign", "banner", "skull", "command_block", "spawner", "beacon", "bed",
+    "bell", "beehive", "bee_nest", "conduit", "comparator", "daylight_detector",
+    "enchanting_table", "end_gateway", "end_portal", "ender_chest", "jigsaw",
+    "structure_block", "piston", "sculk_sensor", "calibrated_sculk_sensor",
+    "sculk_catalyst", "sculk_shrieker", "trial_spawner", "vault", "brushable_block",
+    "creaking_heart", "test_block", "test_instance_block", "copper_golem_statue",
+    "campfire", "lectern",
+})  # fmt: skip
+
+
+def entity_type(block_id: str) -> str | None:
+    """The block entity type of a block (``oak_sign`` -> ``minecraft:sign``); None
+    for blocks without one."""
+    namespace, _, path = block_id.rpartition(":")
+    if path == "piston_head":
+        return None
+    kind = path
+    for suffix, name in _ENTITY_TYPES:
+        if path.endswith(suffix):
+            kind = name
+            break
+    if kind in _CONTAINER_SIZES or kind in _OTHER_BLOCK_ENTITIES:
+        return f"{namespace or 'minecraft'}:{kind}"
+    return None
 
 
 def container_size(block_id: str) -> int:
     """Slots of a container block; 0 for any other block."""
-    path = block_id.split(":", 1)[-1]
-    if path.endswith("shulker_box"):
-        return 27
-    if path.endswith("_shelf") or path == "shelf":
-        return 3
-    return _CONTAINER_SIZES.get(path, 0)
+    kind = entity_type(block_id)
+    return _CONTAINER_SIZES.get(kind.split(":", 1)[1], 0) if kind else 0
 
 
 def has_block_entity(block_id: str) -> bool:
-    path = block_id.split(":", 1)[-1]
-    return container_size(block_id) > 0 or path.endswith(_OTHER_BLOCK_ENTITIES)
+    return entity_type(block_id) is not None
+
+
+def is_shulker_box(block_id: str) -> bool:
+    return block_id.endswith("shulker_box")
+
+
+#: dimensions whose default type is 256 blocks high
+_SHORT_DIMENSIONS = ("minecraft:the_nether", "minecraft:the_end")
+#: blocks further out than this are outside the world
+HORIZONTAL_LIMIT = 30_000_000
 
 
 def world_height(dimension: str, version: Version | None) -> tuple[int, int]:
-    """The lowest and highest block y a command may touch (default dimension types)."""
+    """The lowest and highest block y a command may touch (default dimension
+    types; a pack's own dimensions are taken as overworld-like)."""
     deeper = version is None or version >= versions.parse(DEEPER_WORLD_SINCE)
-    if dimension == "minecraft:overworld" and deeper:
+    if dimension not in _SHORT_DIMENSIONS and deeper:
         return (-64, 319)
     return (0, 255)
+
+
+def in_world(position: Position, dimension: str, version: Version | None) -> bool:
+    low, high = world_height(dimension, version)
+    return low <= position[1] <= high and all(
+        -HORIZONTAL_LIMIT <= position[axis] < HORIZONTAL_LIMIT for axis in (0, 2)
+    )
 
 
 def block_position(values: list[float]) -> Position:
@@ -146,12 +196,16 @@ class Block:
             {slot: stack.copy() for slot, stack in self.items.items()},
         )
 
+    def same_state(self, other: Block) -> bool:
+        """The same block state (vanilla's setBlock compares only that)."""
+        return self.id == other.id and self.properties == other.properties
+
     def same(self, other: Block) -> bool:
-        return (
-            self.id == other.id
-            and self.properties == other.properties
-            and self.data(None) == other.data(None)
-        )
+        return self.same_state(other) and self.data(None) == other.data(None)
+
+    def clear(self) -> None:
+        """Empty a container, as vanilla does before replacing a block."""
+        self.items = {}
 
     # -- NBT --------------------------------------------------------------
 
@@ -162,14 +216,19 @@ class Block:
         data: dict[str, Any] = {}
         if position is not None:
             data.update({"x": position[0], "y": position[1], "z": position[2]})
-        data["id"] = self.id
+        data["id"] = entity_type(self.id)
         data.update(copy.deepcopy(self.nbt))
         if self.is_container:
-            items = [
-                {"Slot": slot, **stack.to_nbt(version)}
-                for slot, stack in sorted(self.items.items())
-            ]
-            data["Items"] = items  # vanilla writes the list even when empty
+            single = _SINGLE_ITEM_KEYS.get(data["id"].split(":", 1)[1])
+            if single is not None:
+                if 0 in self.items:
+                    data[single] = self.items[0].to_nbt(version)
+            elif self.items or not is_shulker_box(self.id):
+                # vanilla writes the list even when empty, but for shulker boxes
+                data["Items"] = [
+                    {"Slot": slot, **stack.to_nbt(version)}
+                    for slot, stack in sorted(self.items.items())
+                ]
         return data
 
     def apply_data(self, data: dict[str, Any]) -> None:
@@ -178,6 +237,12 @@ class Block:
         if self.is_container:
             items: dict[int, ItemStack] = {}
             size = container_size(self.id)
+            single = _SINGLE_ITEM_KEYS.get(str(entity_type(self.id)).split(":", 1)[-1])
+            if single is not None:
+                stack = ItemStack.from_nbt(rest.pop(single, None))
+                self.items = {0: stack} if stack is not None else {}
+                self.nbt = copy.deepcopy(rest)
+                return
             for entry in rest.pop("Items", None) or []:
                 stack = ItemStack.from_nbt(entry)
                 # like NBT's getByte, a missing Slot reads as 0
@@ -212,31 +277,26 @@ class Block:
         else:
             self.items[slot] = stack
 
-    def insert(self, stack: ItemStack) -> int:
-        """Like a hopper inserting: onto matching stacks, then empty slots, in
-        slot order. Returns how many did not fit."""
-        remaining = stack.count
-        size = container_size(self.id)
-        for index in range(size):
+    def insert(self, stack: ItemStack) -> bool:
+        """``loot insert``: one pass in slot order, merging into matching stacks
+        and stopping at the first empty slot (vanilla's distributeToContainer).
+        Whether anything went in; what does not fit is lost."""
+        stack = stack.copy()
+        changed = False
+        for index in range(container_size(self.id)):
+            if stack.count <= 0:
+                break
             current = self.items.get(index)
-            if (
-                current is not None
-                and current.same_kind(stack)
-                and current.count < current.max_count
-            ):
-                moved = min(remaining, current.max_count - current.count)
-                current.count += moved
-                remaining -= moved
-                if not remaining:
-                    return 0
-        for index in range(size):
-            if index not in self.items:
-                moved = min(remaining, stack.max_count)
-                self.items[index] = stack.copy(moved)
-                remaining -= moved
-                if not remaining:
-                    return 0
-        return remaining
+            if current is None:
+                self.items[index] = stack
+                return True
+            if current.same_kind(stack):
+                moved = min(stack.count, stack.max_count - current.count)
+                if moved > 0:
+                    current.count += moved
+                    stack.count -= moved
+                    changed = True
+        return changed
 
 
 def _split_properties(body: str) -> dict[str, str] | None:

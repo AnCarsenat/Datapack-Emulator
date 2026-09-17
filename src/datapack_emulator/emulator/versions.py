@@ -231,6 +231,20 @@ def supports_min_max_format(version: Version) -> bool:
     return version >= parse(MIN_MAX_FORMAT_SINCE)
 
 
+#: ``strict`` placement for setblock, fill and clone (25w03a)
+STRICT_PLACEMENT_SINCE = "1.21.5"
+#: the commandModificationBlockLimit gamerule (23w03a); a fixed 32 768 before
+MODIFICATION_LIMIT_RULE_SINCE = "1.19.4"
+
+
+def supports_strict_placement(version: Version) -> bool:
+    return version >= parse(STRICT_PLACEMENT_SINCE)
+
+
+def has_modification_limit_rule(version: Version) -> bool:
+    return version >= parse(MODIFICATION_LIMIT_RULE_SINCE)
+
+
 def supports_macros(version: Version) -> bool:
     return version >= parse(MACROS_SINCE)
 

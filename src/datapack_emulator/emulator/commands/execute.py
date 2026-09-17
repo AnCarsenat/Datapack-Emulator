@@ -45,6 +45,12 @@ def cmd_execute(command: Command, context: ExecutionContext) -> CommandResult:
     for subcommand in chain:
         next_branches: list[tuple[ExecutionContext, tuple[PendingStore, ...]]] = []
         for current, stores in branches:
+            if (
+                subcommand.name == "store"
+                and subcommand.arguments[1:2] == ["block"]
+                and _store_block(current, subcommand.arguments)[1] is None
+            ):
+                continue  # vanilla fails before running anything
             for successor in _execute_step(subcommand.name, subcommand.arguments, current, context):
                 pending = (
                     stores + ((subcommand, current),) if subcommand.name == "store" else stores
@@ -165,9 +171,8 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
         store = context.world.storage.setdefault(normalise_id(arguments[2]), {})
         nbt_set(store, arguments[3], _stored_number(value, arguments[4:6]))
     elif target == "block" and len(arguments) >= 6:
-        position = position_at(context, arguments[2:5])
-        block = context.world.blocks.stored(context.dimension, position) if position else None
-        if block is not None and block.has_entity:
+        position, block = _store_block(context, arguments)
+        if block is not None:
             data = block.data(context.emulator.version, position)
             nbt_set(data, arguments[5], _stored_number(value, arguments[6:8]))
             block.apply_data(data)
@@ -178,6 +183,18 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
             data = entity.data(context.emulator.version)
             nbt_set(data, arguments[3], _stored_number(value, arguments[4:6]))
             entity.apply_data(data)
+
+
+def _store_block(context: ExecutionContext, arguments: list[str]):
+    """``store … block <pos>``: the block entity, or ``(None, None)`` after an error."""
+    position = position_at(context, arguments[2:5])
+    if position is None:
+        return (None, None)
+    block = context.world.blocks.stored(context.dimension, position)
+    if block is None or not block.has_entity:
+        context.game_error("commands.data.block.invalid")
+        return (None, None)
+    return (position, block)
 
 
 def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
@@ -252,9 +269,12 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
             position = position_at(context, arguments[2:5])
             if position is None:
                 return False
-            block = context.world.blocks.get(context.dimension, position)
+            block = context.world.blocks.stored(context.dimension, position)
+            if block is None or not block.has_entity:
+                context.game_error("commands.data.block.invalid")
+                return False
             data = block.data(context.emulator.version, position)
-            return bool(data) and nbt_get(data, arguments[5]) is not None
+            return nbt_get(data, arguments[5]) is not None
         if arguments[1] == "storage":
             store = context.world.storage.get(normalise_id(arguments[2]), {})
             return nbt_get(store, arguments[3]) is not None

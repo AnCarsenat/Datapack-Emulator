@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from datapack_emulator.emulator.commands.helpers import find_holders, find_targets, require_targets
-from datapack_emulator.emulator.commands.parser import Command, resolve_position
+from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import (
     flatten_text_component,
@@ -14,7 +14,6 @@ from datapack_emulator.emulator.common import (
     normalise_id,
     to_snbt,
 )
-from datapack_emulator.emulator.runtime.blocks import block_position
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.world import Entity
 
@@ -98,10 +97,11 @@ def _nbt_text(context: ExecutionContext, component: dict[str, Any]) -> str:
         entities = find_targets(context, str(component["entity"]))
         store = entities[0].data(context.emulator.version) if entities else None
     elif "block" in component:
-        tokens = str(component["block"]).split()
+        from datapack_emulator.emulator.commands.blocks import parse_block_position
+
+        position, _ = parse_block_position(context, str(component["block"]).split())
         store = None
-        if len(tokens) == 3:
-            position = block_position(resolve_position(tokens, context.position))
+        if position is not None:
             block = context.world.blocks.stored(context.dimension, position)
             if block is not None:
                 store = block.data(context.emulator.version, position) or None

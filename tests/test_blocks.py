@@ -190,7 +190,7 @@ def test_items_in_containers(world):
     ].success
     assert emulator.world.players[0].inventory.get("container.0").id == "minecraft:diamond"
     result, records = emulator.typed("item replace block 0 0 0 container.30 with stone")
-    assert visible_errors(records) == ["The target does not have slot container.30"]
+    assert visible_errors(records) == ["The target does not have slot 30"]
     result, records = emulator.typed("item replace block 5 5 5 container.0 with stone")
     assert visible_errors(records) == ["Target position 5, 5, 5 is not a container"]
     assert emulator.typed("replaceitem block 0 0 0 container.1 stone 2")[0].success is False  # 1.21
@@ -253,7 +253,7 @@ def test_macros_and_text_read_blocks(make_pack):
     ]
 
 
-def test_block_ids_and_properties_are_checked_against_the_jar(world, fake_jar):
+def test_block_ids_are_checked_and_unlisted_properties_noted(world, fake_jar):
     from datapack_emulator.emulator.vanilla import VanillaAssets
 
     assets = VanillaAssets.from_jar(fake_jar)
@@ -261,12 +261,10 @@ def test_block_ids_and_properties_are_checked_against_the_jar(world, fake_jar):
     emulator = world(vanilla=assets)
     _, records = emulator.typed("setblock 0 0 0 dirt")
     assert visible_errors(records) == ["Unknown block type 'minecraft:dirt'"]
-    _, records = emulator.typed("setblock 0 0 0 stone[color=red]")
-    assert visible_errors(records) == ["Block minecraft:stone does not have property 'color'"]
-    _, records = emulator.typed("setblock 0 0 0 stone[variant=rough]")
-    assert visible_errors(records) == [
-        "Block minecraft:stone does not accept 'rough' for variant property"
-    ]
+    # blockstates files leave out properties like waterlogged: only a note
+    result, records = emulator.typed("setblock 0 0 0 stone[waterlogged=true]")
+    assert result.success
+    assert any("not in the client jar's blockstates" in r.message for r in records)
     assert emulator.typed("setblock 0 0 0 stone[variant=smooth]")[0].success
 
 
@@ -324,7 +322,7 @@ def test_air_empties_slots_and_mining_drops_container_contents(make_pack):
         make_pack(
             {
                 "data/test/function/tick.mcfunction": "\n",
-                "data/minecraft/loot_table/blocks/barrel.json": {
+                "data/minecraft/loot_table/blocks/shulker_box.json": {
                     "pools": [
                         {
                             "rolls": 1,
@@ -340,8 +338,118 @@ def test_air_empties_slots_and_mining_drops_container_contents(make_pack):
     emulator.run_typed("item replace entity Player1 armor.head with air")
     assert emulator.world.players[0].inventory.get("head") is None
     # an item without a Slot goes to slot 0, like NBT's getByte
-    emulator.run_typed("setblock 0 0 0 barrel")
+    emulator.run_typed("setblock 0 0 0 shulker_box")
     emulator.run_typed('data modify block 0 0 0 Items append value {id:"minecraft:apple",count:3}')
     result, _ = emulator.run_typed("loot give Player1 mine 0 0 0 minecraft:stick")
     assert result.value == 1
     assert emulator.world.players[0].inventory.get("container.0").count == 3
+
+
+def test_coordinates_are_checked_like_vanilla(world):
+    emulator = world()
+    for line in ("setblock nan 0 0 stone", "setblock inf 0 0 stone", "setblock 1.5 0 0 stone"):
+        _, records = emulator.typed(line)
+        assert visible_errors(records) == ["Incorrect argument for command"]
+    _, records = emulator.typed("setblock ~ ~ ^ stone")
+    assert visible_errors(records) == [
+        "Cannot mix world & local coordinates (everything must either use ^ or not)"
+    ]
+    _, records = emulator.typed("setblock 30000000 0 0 stone")
+    assert visible_errors(records) == ["That position is out of this world!"]
+    assert emulator.typed("setblock ~1.5 ~ ~-.5 stone")[0].success
+    _, records = emulator.typed('tellraw @a {"nbt":"x","block":"nan 0 0"}')
+    assert chat(records) == ["to Player1: "]
+    # a pack's own dimension is overworld-like
+    assert emulator.typed("execute in test:dim run setblock 0 -60 0 stone")[0].success
+    assert not emulator.typed("execute in minecraft:the_nether run setblock 0 -60 0 stone")[
+        0
+    ].success
+
+
+def test_setblock_compares_states_and_empties_containers(world):
+    emulator = world()
+    emulator.typed('setblock 0 0 0 chest{Items:[{Slot:0b,id:"stone",count:1}]}')
+    _, records = emulator.typed('setblock 0 0 0 chest{Items:[{Slot:1b,id:"dirt",count:1}]}')
+    assert visible_errors(records) == ["Could not set the block"]
+    # the old items are gone even though the command failed, as in vanilla
+    assert emulator.world.blocks.get("minecraft:overworld", (0, 0, 0)).items == {}
+
+
+def test_clone_counts_every_block_placed(world):
+    emulator = world()
+    emulator.typed("fill 0 0 0 1 0 0 stone")
+    assert emulator.typed("clone 0 0 0 1 0 0 10 0 0")[0].value == 2
+    assert emulator.typed("clone 0 0 0 1 0 0 10 0 0")[0].value == 2
+    assert emulator.typed("clone 0 0 0 1 0 0 1 0 0 replace force")[0].value == 2
+    _, records = emulator.typed("clone 0 0 0 1 0 0 20 0 0 filtered")
+    assert visible_errors(records) == ["Unknown or incomplete command. See below for error"]
+
+
+def test_loot_insert_fills_like_vanilla(make_pack):
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/function/tick.mcfunction": "\n",
+                "data/test/loot_table/one.json": {
+                    "pools": [{"rolls": 1, "entries": [{"type": "item", "name": "stone"}]}]
+                },
+            }
+        )
+    )
+    emulator = Emulator(pack, version="1.21.4")
+    emulator.run_typed('setblock 0 0 0 hopper{Items:[{Slot:1b,id:"stone",count:1}]}')
+    assert emulator.run_typed("loot insert 0 0 0 loot test:one")[0].value == 1
+    hopper = emulator.world.blocks.get("minecraft:overworld", (0, 0, 0))
+    assert hopper.items[0].count == 1 and hopper.items[1].count == 1
+    for slot in range(5):
+        emulator.run_typed(f"item replace block 0 0 0 container.{slot} with dirt 64")
+    assert emulator.run_typed("loot insert 0 0 0 loot test:one")[0].value == 0
+
+
+def test_block_entity_types_and_shapes(world):
+    emulator = world()
+    emulator.typed("setblock 0 0 0 oak_sign")
+    _, records = emulator.typed("data get block 0 0 0 id")
+    assert chat(records) == ['0, 0, 0 has the following block data: "minecraft:sign"']
+    emulator.typed("setblock 1 0 0 red_shulker_box")
+    data = emulator.world.blocks.get("minecraft:overworld", (1, 0, 0)).data(None)
+    assert data == {"id": "minecraft:shulker_box"}  # no empty Items for shulker boxes
+    emulator.typed("setblock 2 0 0 jukebox")
+    assert emulator.typed("item replace block 2 0 0 container.0 with music_disc_cat")[0].success
+    assert "RecordItem" in emulator.world.blocks.get("minecraft:overworld", (2, 0, 0)).data(None)
+    for block in ("lectern", "campfire"):
+        emulator.typed(f"setblock 3 0 0 {block}")
+        _, records = emulator.typed("item replace block 3 0 0 container.0 with stone")
+        assert visible_errors(records) == ["Target position 3, 0, 0 is not a container"]
+        assert emulator.typed("data get block 3 0 0")[0].success
+    emulator.typed("setblock 4 0 0 piston_head")
+    assert not emulator.typed("data get block 4 0 0")[0].success
+    assert emulator.typed('execute if block 0 0 0 oak_sign{id:"minecraft:sign"}')[0].success
+
+
+def test_strict_mode_and_the_limit_rule_follow_the_version(world):
+    old = world("1.21.4")
+    assert not old.typed("setblock 0 0 0 stone strict")[0].success
+    assert not old.typed("fill 0 0 0 1 1 1 stone replace air hollow")[0].success
+    new = world("1.21.5")
+    assert new.typed("setblock 0 0 0 stone strict")[0].success
+    assert new.typed("fill 0 0 0 2 2 2 dirt replace air hollow")[0].value == 25
+    assert new.typed("clone 0 0 0 2 2 2 10 0 0 strict masked")[0].value == 27 - 1
+    legacy = world("1.16.5")
+    legacy.typed("gamerule commandModificationBlockLimit 10")
+    assert legacy.typed("fill 0 0 0 9 9 9 stone")[0].value == 1000
+
+
+def test_block_conditions_and_stores_report_errors(world):
+    emulator = world()
+    _, records = emulator.typed("execute store result block 9 9 9 Foo int 1 run say hi")
+    assert visible_errors(records) == ["The target block is not a block entity"]
+    assert "[Server] hi" not in chat(records)
+    _, records = emulator.typed("execute if data block 9 9 9 Items")
+    assert "The target block is not a block entity" in visible_errors(records)
+    _, records = emulator.typed("execute if items block 9 9 9 container.* stone")
+    assert "Source position 9, 9, 9 is not a container" in visible_errors(records)
+    _, records = emulator.typed("execute if block 1 2 3")
+    assert "Unknown or incomplete command. See below for error" in visible_errors(records)
+    emulator.typed("setblock 0 0 0 chest")
+    assert emulator.typed("item modify block 0 0 0 container.0 test:missing")[0].success is False

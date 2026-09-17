@@ -242,7 +242,7 @@ def _source_stack(context: ExecutionContext, arguments: list[str]) -> tuple[bool
         _, block = found
         slots = block.slot_keys(arguments[4])
         if slots is None or len(slots) != 1:
-            context.game_error("commands.item.source.no_such_slot", arguments[4])
+            context.game_error("commands.item.source.no_such_slot", slot_number(arguments[4]))
             return (False, None)
         stack = block.get_item(slots[0])
         return (True, stack.copy() if stack is not None else None)
@@ -345,16 +345,14 @@ def _item_block(context: ExecutionContext, arguments: list[str]) -> CommandResul
         return CommandResult.failure()
     slots = block.slot_keys(slot)
     if not slots or len(slots) != 1:
-        context.game_error("commands.item.target.no_such_slot", slot)
+        context.game_error("commands.item.target.no_such_slot", slot_number(slot))
         return CommandResult.failure()
     if action == "modify":
         current = block.get_item(slots[0])
         if _modifier(context, rest[0]) is None:
             return CommandResult.failure()
-        if current is None:
-            context.game_error("commands.item.target.no_changes", slot)
-            return CommandResult.failure()
-        stack = _modify(context, current, rest[0])
+        # vanilla applies the modifier to whatever is there, even nothing
+        stack = _modify(context, current, rest[0]) if current is not None else None
     elif action == "replace" and rest[0] == "with" and len(rest) > 1:
         stack = _stack(context, rest[1], allow_air=True)
         count = integer(context, rest[2]) if stack is not None and len(rest) > 2 else 1
@@ -630,8 +628,8 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
         container = _container(context, arguments[1:4])
         if container is None:
             return CommandResult.failure()
-        for stack in items:
-            container[1].insert(stack.copy())  # what does not fit is lost
+        # what does not fit is lost; only stacks that went in are counted
+        items = [stack for stack in items if container[1].insert(stack)]
     elif arguments[1] == "block":
         container = _container(context, arguments[2:5])
         if container is None:
@@ -639,7 +637,10 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
         block = container[1]
         first = block.slot_keys(arguments[5])
         if first is None or len(first) != 1:
-            context.game_error("slot.unknown", arguments[5])
+            if slot_number(arguments[5]) is None:
+                context.game_error("slot.unknown", arguments[5])
+            else:
+                context.game_error("commands.item.target.no_such_slot", slot_number(arguments[5]))
             return CommandResult.failure()
         count = int(arguments[6]) if width == 6 else len(items)
         for offset in range(count):
@@ -701,7 +702,10 @@ def items_condition_count(arguments: list[str], context: ExecutionContext) -> in
         if position is None:
             return None
         block = context.world.blocks.stored(context.dimension, position)
-        slots = block.slot_keys(arguments[5]) if block is not None else None
+        if block is None or not block.is_container:
+            context.game_error("commands.item.source.not_a_container", *position)
+            return None
+        slots = block.slot_keys(arguments[5])
         if not slots:
             return 0
         predicate = _predicate(context, arguments[6])

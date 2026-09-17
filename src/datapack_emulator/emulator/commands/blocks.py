@@ -6,6 +6,9 @@ See :mod:`datapack_emulator.emulator.runtime.blocks` for the model.
 
 from __future__ import annotations
 
+import re
+
+from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.commands.helpers import require_id
 from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
@@ -18,11 +21,11 @@ from datapack_emulator.emulator.runtime.blocks import (
     Position,
     block_position,
     box,
+    in_world,
     parse_block,
     parse_block_predicate,
     positions,
     volume,
-    world_height,
 )
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 
@@ -31,29 +34,37 @@ from datapack_emulator.emulator.runtime.context import ExecutionContext
 # ---------------------------------------------------------------------------
 
 
-def position_at(context: ExecutionContext, tokens: list[str]) -> Position | None:
-    """Three coordinate tokens -> a block position; None (error reported) when
-    they are missing or outside the world."""
-    if len(tokens) < 3 or not all(_coordinate(token) for token in tokens[:3]):
-        context.game_error("command.unknown.argument")
-        return None
+_ABSOLUTE = re.compile(r"-?\d+")
+_RELATIVE = re.compile(r"[~^](-?(\d+\.?\d*|\.\d+))?")
+
+
+def parse_block_position(
+    context: ExecutionContext, tokens: list[str], dimension: str | None = None
+) -> tuple[Position | None, str]:
+    """``(position, error key)`` for three block coordinates: whole numbers or
+    ``~``/``^`` offsets, never mixing ``^`` with the others."""
+    if len(tokens) < 3 or not all(
+        _ABSOLUTE.fullmatch(token) or _RELATIVE.fullmatch(token) for token in tokens[:3]
+    ):
+        return (None, "command.unknown.argument")
+    local = [token.startswith("^") for token in tokens[:3]]
+    if any(local) and not all(local):
+        return (None, "argument.pos.mixed")
     position = block_position(resolve_position(tokens[:3], context.position))
-    low, high = world_height(context.dimension, context.emulator.version)
-    if not low <= position[1] <= high:
-        context.game_error("argument.pos.outofworld")
-        return None
+    if not in_world(position, dimension or context.dimension, context.emulator.version):
+        return (None, "argument.pos.outofworld")
+    return (position, "")
+
+
+def position_at(
+    context: ExecutionContext, tokens: list[str], dimension: str | None = None
+) -> Position | None:
+    """Three coordinate tokens -> a block position; None (error reported) when
+    they are malformed or outside the world."""
+    position, error = parse_block_position(context, tokens, dimension)
+    if position is None:
+        context.game_error(error)
     return position
-
-
-def _coordinate(token: str) -> bool:
-    body = token[1:] if token[:1] in ("~", "^") else token
-    if not body:
-        return token[:1] in ("~", "^")
-    try:
-        float(body)
-    except ValueError:
-        return False
-    return True
 
 
 def block_argument(context: ExecutionContext, token: str) -> Block | None:
@@ -67,13 +78,14 @@ def block_argument(context: ExecutionContext, token: str) -> Block | None:
     assets = context.emulator.vanilla
     known = assets.block_properties(block.id) if assets is not None else None
     if known:
+        # the jar's blockstates list what changes the model, not every property
+        # (waterlogged, power, …): what they do not list is only noted
         for key, value in block.properties.items():
-            if key not in known:
-                context.game_error("argument.block.property.unknown", block.id, key)
-                return None
-            if value not in known[key]:
-                context.game_error("argument.block.property.invalid", block.id, value, key)
-                return None
+            if key not in known or value not in known[key]:
+                context.note_once(
+                    f"{block.id}[{key}={value}] is not in the client jar's blockstates file "
+                    "(which leaves out properties that do not change the model)"
+                )
     if block.properties and not known:
         context.note_once(
             "block states are kept as given: default properties are not known to the emulator"
@@ -132,6 +144,8 @@ def block_tag_members(context: ExecutionContext, tag: str) -> set[str] | None:
 
 
 def modification_limit(context: ExecutionContext) -> int:
+    if not versions.has_modification_limit_rule(context.emulator.version):
+        return MODIFICATION_LIMIT
     rules = context.world.gamerules
     for name in LIMIT_RULES:
         try:
@@ -157,15 +171,29 @@ def container_at(
 
 
 def place(context: ExecutionContext, position: Position, block: Block, mode: str) -> bool:
-    """Put ``block`` at ``position``; whether anything changed. ``destroy``
-    drops nothing (block drops are not modelled)."""
+    """Put ``block`` at ``position`` like vanilla: a container there is emptied
+    first, and nothing is placed when the state is already the same (the NBT
+    is then not applied either). ``destroy`` drops nothing (drops are not
+    modelled)."""
     blocks = context.world.blocks
     current = blocks.get(context.dimension, position)
     if mode == "keep" and not current.is_air:
         return False
-    if current.same(block):
+    stored = blocks.stored(context.dimension, position)
+    if stored is not None:
+        stored.clear()
+    if current.same_state(block):
         return False
     blocks.set(context.dimension, position, block.copy())
+    return True
+
+
+def _mode(context: ExecutionContext, mode: str, allowed: tuple[str, ...]) -> bool:
+    if mode == "strict" and not versions.supports_strict_placement(context.emulator.version):
+        allowed = tuple(name for name in allowed if name != "strict")
+    if mode not in allowed:
+        context.game_error("command.unknown.argument")
+        return False
     return True
 
 
@@ -179,8 +207,7 @@ def cmd_setblock(command: Command, context: ExecutionContext) -> CommandResult:
     if position is None or block is None:
         return CommandResult.failure()
     mode = arguments[4] if len(arguments) > 4 else "replace"
-    if mode not in ("replace", "keep", "destroy", "strict"):
-        context.game_error("command.unknown.argument")
+    if not _mode(context, mode, ("replace", "keep", "destroy", "strict")):
         return CommandResult.failure()
     if mode == "destroy":
         context.note_once("setblock … destroy: block drops are not modelled")
@@ -197,10 +224,10 @@ def cmd_setblock(command: Command, context: ExecutionContext) -> CommandResult:
 
 
 def region(
-    context: ExecutionContext, tokens: list[str], limit_key: str
+    context: ExecutionContext, tokens: list[str], limit_key: str, dimension: str | None = None
 ) -> tuple[Position, Position] | None:
-    start = position_at(context, tokens[:3])
-    end = position_at(context, tokens[3:6]) if start is not None else None
+    start = position_at(context, tokens[:3], dimension)
+    end = position_at(context, tokens[3:6], dimension) if start is not None else None
     if start is None or end is None:
         return None
     low, high = box(start, end)
@@ -223,14 +250,22 @@ def cmd_fill(command: Command, context: ExecutionContext) -> CommandResult:
         return CommandResult.failure()
     mode = arguments[7] if len(arguments) > 7 else "replace"
     rest = arguments[8:]
-    if mode not in ("replace", "keep", "destroy", "hollow", "outline", "strict"):
-        context.game_error("command.unknown.argument")
+    if not _mode(context, mode, ("replace", "keep", "destroy", "hollow", "outline", "strict")):
         return CommandResult.failure()
     filter_predicate = None
-    if mode == "replace" and rest and rest[0] != "strict":
+    if mode == "replace" and rest:
         filter_predicate = block_predicate(context, rest[0])
         if filter_predicate is None:
             return CommandResult.failure()
+        if len(rest) > 1:
+            # 1.21.5: replace <filter> destroy|hollow|outline|strict
+            mode = rest[1]
+            if not versions.supports_strict_placement(context.emulator.version) or not _mode(
+                context, mode, ("destroy", "hollow", "outline", "strict")
+            ):
+                if not versions.supports_strict_placement(context.emulator.version):
+                    context.game_error("command.unknown.argument")
+                return CommandResult.failure()
     low, high = corners
     blocks = context.world.blocks
     changed = 0
@@ -272,19 +307,27 @@ def cmd_clone(command: Command, context: ExecutionContext) -> CommandResult:
     if len(arguments) < 9:
         context.game_error("command.unknown.command")
         return CommandResult.failure()
-    corners = region(context, arguments[:6], "commands.clone.toobig")
+    corners = region(context, arguments[:6], "commands.clone.toobig", source_dimension)
     rest = arguments[6:]
     if rest[:1] == ["to"] and len(rest) > 1:
         target_dimension = normalise_id(rest[1])
         rest = rest[2:]
-    destination = position_at(context, rest[:3]) if corners is not None else None
+    destination = position_at(context, rest[:3], target_dimension) if corners is not None else None
     if corners is None or destination is None:
         return CommandResult.failure()
     rest = rest[3:]
+    if rest[:1] == ["strict"]:
+        if not versions.supports_strict_placement(context.emulator.version):
+            context.game_error("command.unknown.argument")
+            return CommandResult.failure()
+        rest = rest[1:]
     mask = rest[0] if rest else "replace"
     filter_predicate = None
     if mask == "filtered":
-        filter_predicate = block_predicate(context, rest[1]) if len(rest) > 1 else None
+        if len(rest) < 2:
+            context.game_error("command.unknown.command")
+            return CommandResult.failure()
+        filter_predicate = block_predicate(context, rest[1])
         if filter_predicate is None:
             return CommandResult.failure()
         rest = rest[2:]
@@ -305,8 +348,7 @@ def cmd_clone(command: Command, context: ExecutionContext) -> CommandResult:
     if overlaps and mode != "force":
         context.game_error("commands.clone.overlap")
         return CommandResult.failure()
-    world_low, world_high = world_height(target_dimension, context.emulator.version)
-    if target_low[1] < world_low or target_high[1] > world_high:
+    if not in_world(target_high, target_dimension, context.emulator.version):
         context.game_error("argument.pos.outofworld")
         return CommandResult.failure()
 
@@ -327,12 +369,10 @@ def cmd_clone(command: Command, context: ExecutionContext) -> CommandResult:
     if mode == "move":
         for position, _, _ in copied:
             blocks.set(source_dimension, position, Block())
-    changed = 0
+    # vanilla counts every block it places, changed or not
     for _, target, block in copied:
-        current = blocks.get(target_dimension, target)
-        if not current.same(block) or mode == "move":
-            changed += 1
         blocks.set(target_dimension, target, block)
+    changed = len(copied)
     if not changed:
         context.game_error("commands.clone.failed")
         return CommandResult.failure()
@@ -348,6 +388,7 @@ def cmd_clone(command: Command, context: ExecutionContext) -> CommandResult:
 def block_condition(arguments: list[str], context: ExecutionContext) -> bool:
     """``block <pos> <predicate>``"""
     if len(arguments) < 5:
+        context.game_error("command.unknown.command")
         return False
     position = position_at(context, arguments[1:4])
     predicate = block_predicate(context, arguments[4]) if position is not None else None
@@ -363,6 +404,7 @@ def blocks_condition_count(arguments: list[str], context: ExecutionContext) -> i
     """``blocks <start> <end> <destination> all|masked``: the number of blocks
     compared when the regions match, 0 when they differ, None on an error."""
     if len(arguments) < 11:
+        context.game_error("command.unknown.command")
         return None
     start = position_at(context, arguments[1:4])
     end = position_at(context, arguments[4:7]) if start is not None else None

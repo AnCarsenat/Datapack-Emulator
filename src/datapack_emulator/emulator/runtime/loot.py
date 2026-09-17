@@ -161,7 +161,12 @@ def _entry_items(
     elif kind == "minecraft:dynamic":
         name = normalise_id(str(entry.get("name", "")))
         items = getattr(context.block, "items", None)
-        if name == "minecraft:contents" and items is not None:
+        # only shulker boxes give their contents to the loot table
+        if (
+            name == "minecraft:contents"
+            and items is not None
+            and str(getattr(context.block, "id", "")).endswith("shulker_box")
+        ):
             stacks = [items[slot].copy() for slot in sorted(items)]
         else:
             result.skipped.add(f"dynamic {name}")

@@ -167,6 +167,7 @@ VANILLA: dict[str, str] = {
     # blocks
     "argument.pos.outofworld": "That position is out of this world!",
     "argument.pos.unloaded": "That position is not loaded",
+    "argument.pos.mixed": "Cannot mix world & local coordinates (everything must either use ^ or not)",
     "argument.block.property.unknown": "Block %s does not have property '%s'",
     "argument.block.property.invalid": "Block %s does not accept '%s' for %s property",
     "argument.block.tag.disallowed": "Tags aren't allowed here, only actual blocks",
