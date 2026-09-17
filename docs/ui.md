@@ -151,8 +151,10 @@ All six are open by default and can be toggled from *view*.
   unknown selector options, SNBT and (with a client jar) ids the version
   does not have, calls to missing functions, broken JSON resources and
   unknown conditions or item functions in them, and — as notes — unused
-  functions and recursion. It is checked again when a pack loads, the
-  version or the client jar changes, or with *check again* (Ctrl+Shift+K).
+  functions and recursion. It is checked again once after a pack loads or
+  the version or client jar changes (while the dock is hidden, when it is
+  next shown), or with *check again* (Ctrl+Shift+K); if a check fails, the
+  label says why and the pack still loads.
   Filter by severity or text; double-click a problem to open its file at
   the line, right-click to analyze the line or copy the problem.
 * **explorer** — every analyzed pack as it sits on disk, one root per pack in

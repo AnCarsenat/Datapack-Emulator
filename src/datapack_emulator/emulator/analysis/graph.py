@@ -25,6 +25,10 @@ class CallGraph:
     def __init__(self) -> None:
         self.nodes: dict[str, dict[str, Any]] = {}
         self.edges: list[CallEdge] = []
+        self._edge_set: set[CallEdge] = set()
+        #: node -> targets and node -> sources, in edge order
+        self._out: dict[str, list[str]] = {}
+        self._in: dict[str, list[str]] = {}
 
     # -- construction -----------------------------------------------------
 
@@ -76,16 +80,19 @@ class CallGraph:
 
     def add_edge(self, source: str, target: str, kind: str = "call") -> None:
         edge = CallEdge(source, target, kind)
-        if edge not in self.edges:
+        if edge not in self._edge_set:
+            self._edge_set.add(edge)
             self.edges.append(edge)
+            self._out.setdefault(source, []).append(target)
+            self._in.setdefault(target, []).append(source)
 
     # -- queries ----------------------------------------------------------
 
     def successors(self, node_id: str) -> list[str]:
-        return [edge.target for edge in self.edges if edge.source == node_id]
+        return list(self._out.get(node_id, []))
 
     def predecessors(self, node_id: str) -> list[str]:
-        return [edge.source for edge in self.edges if edge.target == node_id]
+        return list(self._in.get(node_id, []))
 
     def relations(self, node_id: str) -> list[tuple[str, str]]:
         """What calls ``node_id`` and what it calls, as ``(label, text)`` rows."""
@@ -134,22 +141,29 @@ class CallGraph:
         """Every back-edge cycle; a non-empty result means it is not a DAG."""
         found: list[list[str]] = []
         state: dict[str, int] = {}  # 0 = visiting, 1 = done
-        path: list[str] = []
-
-        def visit(node: str) -> None:
-            state[node] = 0
-            path.append(node)
-            for successor in self.successors(node):
+        # iterative depth-first search: packs chain thousands of functions deep
+        for root in self.nodes:
+            if root in state:
+                continue
+            path: list[str] = [root]
+            on_path: dict[str, int] = {root: 0}
+            state[root] = 0
+            stack = [iter(self._out.get(root, []))]
+            while stack:
+                successor = next(stack[-1], None)
+                if successor is None:
+                    stack.pop()
+                    done = path.pop()
+                    del on_path[done]
+                    state[done] = 1
+                    continue
                 if state.get(successor) == 0:
-                    found.append(path[path.index(successor) :] + [successor])
+                    found.append(path[on_path[successor] :] + [successor])
                 elif successor not in state:
-                    visit(successor)
-            path.pop()
-            state[node] = 1
-
-        for node in self.nodes:
-            if node not in state:
-                visit(node)
+                    state[successor] = 0
+                    on_path[successor] = len(path)
+                    path.append(successor)
+                    stack.append(iter(self._out.get(successor, [])))
         return found
 
     @property
