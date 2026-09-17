@@ -1,3 +1,4 @@
+import pytest
 from conftest import chat, game_errors
 
 from datapack_emulator.emulator import Datapack, Emulator
@@ -369,8 +370,12 @@ def test_profiler_charges_lines_and_compares_two_runs(make_pack):
     before = one("say a\n")
     after = one("say a\nsay b\nsay c\n")
 
-    hot = after.hot_commands(2)
-    assert [(function_id, line) for function_id, line, _ in hot[:1]] == [("test:tick", 1)] or hot
+    hot = after.hot_commands()
+    assert {(function_id, line) for function_id, line, _ in hot} == {
+        ("test:tick", 1),
+        ("test:tick", 2),
+        ("test:tick", 3),
+    }
     lines = {line: stats for _, line, stats in after.hot_commands()}
     assert lines[2]["raw"] == "say b" and lines[2]["runs"] == 2
 
@@ -388,3 +393,74 @@ def test_profiler_charges_lines_and_compares_two_runs(make_pack):
     assert "Compared with the kept run" in html and "Dearest lines" in html
     assert "Flame graph, per tick" in html and 'class="frame' in html
     assert "say b" in html
+
+
+def test_profiler_counts_a_line_once_per_run_of_it(make_pack):
+    emulator = run(
+        make_pack,
+        "say plain\nexecute as @a run say each\n",
+        ticks=2,
+        players=3,
+        extra={"data/minecraft/tags/function/tick.json": {"values": ["test:tick"]}},
+    )
+    lines = {line: stats for _, line, stats in emulator.profiler.hot_commands()}
+    # the line ran twice, whatever the selector matched
+    assert lines[2]["runs"] == 2 and lines[1]["runs"] == 2
+    assert lines[2]["raw"] == "execute as @a run say each"
+    # but it is charged for the execute and for each of the three branches
+    assert lines[2]["self_us"] > lines[1]["self_us"] * 3
+    # the per-line numbers still add up to what the function costs
+    per_line = sum(stats["self_us"] for stats in lines.values())
+    assert abs(per_line - emulator.profiler.entries["test:tick"]["self_us"]) < 1e-6
+
+
+def test_a_profile_is_read_back_or_refused(make_pack):
+    profiler = run(
+        make_pack,
+        "say a\n",
+        ticks=2,
+        extra={"data/minecraft/tags/function/tick.json": {"values": ["test:tick"]}},
+    ).profiler
+    profiler.pack, profiler.version = "demo", "1.21.4"
+    data = profiler.to_dict()
+    read = Profiler.from_dict(data)
+    assert read.pack == "demo" and read.version == "1.21.4" and read.ticks == profiler.ticks
+    assert read.commands == profiler.commands  # runs stay whole numbers
+    for wrong in ([], "text", 3, {}, {"kind": "something else"}):
+        with pytest.raises(ValueError):
+            Profiler.from_dict(wrong)
+    with pytest.raises(ValueError):
+        Profiler.from_dict({**data, "entries": {"test:tick": {"self_us": "soon"}}})
+
+
+def test_profiler_reset_forgets_the_lines(make_pack):
+    emulator = run(
+        make_pack,
+        "say a\n",
+        extra={"data/minecraft/tags/function/tick.json": {"values": ["test:tick"]}},
+    )
+    assert emulator.profiler.commands
+    emulator.profiler.reset()
+    assert emulator.profiler.commands == {} and emulator.profiler.hot_commands() == []
+
+
+def test_the_flame_graph_shares_a_tick_and_the_report_compares_lines(make_pack):
+    def one(body: str):
+        return run(
+            make_pack,
+            body,
+            ticks=2,
+            extra={"data/minecraft/tags/function/tick.json": {"values": ["test:tick"]}},
+        ).profiler
+
+    before = one("say a\n")
+    after = one("say a\nfunction test:more\n")
+    after.pack, after.version = "demo", "1.21.4"
+    rows = {(row["function"], row["line"]): row for row in after.compare_commands(before)}
+    assert rows[("test:tick", 2)]["delta_us"] > 0  # the new line costs what it costs
+    assert rows[("test:tick", 1)]["delta_us"] == pytest.approx(0)
+
+    html = after.to_html("t", baseline=before)
+    assert "The lines that changed" in html
+    widths = [float(part.split("%")[0]) for part in html.split('style="width:')[1:]]
+    assert widths and max(widths) <= 100.0

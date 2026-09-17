@@ -43,9 +43,11 @@ from datapack_emulator.cli.inspect import print_rows
 from datapack_emulator.cli.runs import (
     TICK_SECONDS,
     add_world_arguments,
+    load_profile,
     parse_test,
     print_comparison,
     print_result,
+    save_profile,
     ticks_setting,
 )
 from datapack_emulator.emulator.analysis.explain import explain_line
@@ -512,7 +514,9 @@ Lines starting with a dot control the session:
   analyze  .explain COMMAND      analyze a command line
            .profile              the per-tick call tree
            .hot [N]              the lines that cost the most
-           .baseline / .compare  keep this run, then compare a later one
+           .baseline [save FILE|load FILE]
+                                 keep this run (or write it, or read one back)
+           .compare              what changed since the kept run
            .report [FILE]        write the HTML profiler report
            .dot [FILE]           write the call graph for Graphviz
   settings .version [V]          show or switch the version (a fresh world)
@@ -741,7 +745,26 @@ class Shell(DebugCommands):
             )
 
     def do_baseline(self, session: Session, rest: str) -> None:
+        words = _words(rest)
+        if words:
+            if len(words) != 2 or words[0] not in ("save", "load"):
+                raise CliError("usage: .baseline [save FILE | load FILE]")
+            if words[0] == "load":
+                session.baseline = load_profile(Path(words[1]))
+                print(f"baseline read from {words[1]}: {session.baseline.ticks} tick(s)")
+                return
+            save_profile(
+                session.emulator.profiler.snapshot(),
+                Path(words[1]),
+                session.datapack.name,
+                session.version.id,
+            )
+            return
+        if session.emulator.profiler.ticks == 0:
+            raise CliError("no ticks run yet: .step or .run first, then .baseline")
         session.baseline = session.emulator.profiler.snapshot()
+        session.baseline.pack = session.datapack.name
+        session.baseline.version = session.version.id
         print(
             f"kept this run as the baseline: {session.baseline.ticks} tick(s), "
             f"{session.baseline.total_us / 1000:.2f} ms"
@@ -758,8 +781,9 @@ class Shell(DebugCommands):
         if not rows:
             print("no commands run yet")
         for function_id, line, stats in rows:
+            where = f"{function_id}:{line}"
             print(
-                f"{function_id}:{line:<4} {stats['self_us'] / 1000:8.3f} ms  "
+                f"{where:40} {stats['self_us'] / 1000:8.3f} ms  "
                 f"{int(stats['runs']):5d} run(s)  {str(stats['raw'])[:60]}"
             )
 

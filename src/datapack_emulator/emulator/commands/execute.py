@@ -81,7 +81,7 @@ def cmd_execute(command: Command, context: ExecutionContext) -> CommandResult:
     successes = 0
     total = 0
     for current, stores in branches:
-        result = context.emulator.run_command(command.child, current)
+        result = context.emulator.run_command(command.child, current, nested=True)
         if result.success:
             successes += 1
         total += result.value

@@ -97,8 +97,8 @@ datapack-emulator-cli run projects/hat.dpemu --level debug
 | `--level`, `--sources`, `--seen-by`, `--grep`, `--details` | info, all | see [records](#records) |
 | `--vanilla`, `--no-vanilla`, `--download` | installed jar | see [client jars](#client-jars) |
 | `--html` | `generated/index.html` | profiler report |
-| `--save-profile FILE` | off | write this run's numbers as JSON, to compare a later run against |
-| `--baseline FILE` | off | a profile saved earlier: print and report what changed since |
+| `--save-profile FILE` | off | write this run's numbers as JSON (pack, version, date), to compare a later run against |
+| `--baseline FILE` | off | a profile saved earlier: print and report what changed since (read before the run) |
 | `--dot` | off | also write the call graph as Graphviz, next to the report |
 | `--break FUNC:LINE[ if COND]`, `--watch EXPR` | none | print each [debugger](#the-debugger) stop with the watches and go on; the number of stops goes to standard error |
 
@@ -106,14 +106,21 @@ Prints every record as `[tick] source/level function:line: message`, then a
 per-function table (calls, commands, self and total ms for the run, and ms per
 tick), the dearest lines (`function:line`, self ms and runs), the report path
 and call-graph findings (recursion, missing functions, functions nothing
-calls). With `--baseline`, a table of what each function costs per tick before
-and after comes first, biggest change first.
+calls). A line's `runs` is how often the line itself ran: an
+`execute … run` line counts once however many targets it branched to, and its
+ms are what the whole line cost. With `--baseline`, what each function and
+each line costs per tick before and after comes first, biggest change first,
+with a note when the kept run is another pack or version.
 
 ```sh
-datapack-emulator run --pack ./mypack --save-profile before.json
+datapack-emulator-cli run ./mypack --ticks 100 --save-profile before.json
 # change the pack, then:
-datapack-emulator run --pack ./mypack --baseline before.json
+datapack-emulator-cli run ./mypack --ticks 100 --baseline before.json
 ```
+
+A saved profile says which pack and version it came from and when it was
+written; a file that is not one, or a run of no ticks (nothing to divide by),
+is refused before the run starts.
 
 ## `matrix` — many versions
 
@@ -303,7 +310,8 @@ first tick first. Lines starting with a dot control the session:
 | `.profile` | the profiler tab's per-tick call tree |
 | `.hot [N]` | the lines that cost the most (default 10) |
 | `.baseline` | keep this run's numbers (*keep as baseline*) |
-| `.compare` | what changed since the kept run |
+| `.baseline save FILE` / `.baseline load FILE` | write the kept run, or read one back (`run --save-profile` writes the same file) |
+| `.compare` | what changed since the kept run, per function and per line |
 | `.report [FILE]` | write the HTML profiler report (*run profiler*; default `generated/index.html`) |
 | `.dot [FILE]` | write the call graph (*export call graph*; default `generated/<pack>-<version>.dot`) |
 | `.version [V]`, `.players [N]`, `.seed [N]` | show or change them (a fresh world) |

@@ -1680,9 +1680,9 @@ def test_profiler_keeps_a_baseline_and_reports_what_changed(window, make_pack):
     window.spin_ticks.setValue(2)
     window.runs.run_all()
     window.runs.wait()
-    window.runs.keep_baseline()
+    window.profile_baseline_button.click()  # the button, not only the method
     assert window.runs.baseline is not None
-    assert "baseline: 2 tick(s)" in window.profile_baseline_label.text()
+    assert "2 tick(s)" in window.profile_baseline_label.text()
     assert window.profile_clear_baseline_button.isEnabled()
 
     window.runs.run_all()
@@ -1691,7 +1691,7 @@ def test_profiler_keeps_a_baseline_and_reports_what_changed(window, make_pack):
     assert "Compared with the kept run" in html
     assert "Flame graph, per tick" in html and "Dearest lines" in html
 
-    window.runs.keep_baseline(None)
+    window.profile_clear_baseline_button.click()
     assert window.runs.baseline is None
     assert window.profile_baseline_label.text() == "no baseline kept"
     assert not window.profile_clear_baseline_button.isEnabled()

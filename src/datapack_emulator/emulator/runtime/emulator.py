@@ -409,14 +409,20 @@ class Emulator:
                 self.debugger.finished()
         return (result, started)
 
-    def run_command(self, command: Command, context: ExecutionContext) -> CommandResult:
-        """Dispatch one command, after checking it exists in this version."""
+    def run_command(
+        self, command: Command, context: ExecutionContext, nested: bool = False
+    ) -> CommandResult:
+        """Dispatch one command, after checking it exists in this version.
+        ``nested`` is the command an ``execute … run`` or ``return run`` wraps:
+        it is dispatched once per branch, but its line ran once."""
         inner = context.branch(line=command.line)
         self.profiler.charge(
             inner.function_id,
-            command.estimate_cost(len(self.world.entities)),
+            # the wrapped command is dispatched, and charged, on its own
+            command.estimate_cost(len(self.world.entities), include_child=False),
             line=command.line,
-            raw=command.raw,
+            raw=command.source_raw or command.raw,
+            count_run=not nested,
         )
         self.commands_run += 1
 

@@ -151,6 +151,8 @@ class Command:
         self.source = source  # id of the function this line came from
         self.line = line
         self.is_macro = raw.lstrip().startswith("$")
+        #: the line as written, when this command is a macro expansion of it
+        self.source_raw = ""
         #: for ``execute``: the chain before ``run``
         self.subcommands: list[Subcommand] = []
         #: for ``execute … run <command>`` and ``return run <command>``: the wrapped command
@@ -293,9 +295,12 @@ class Command:
                     needed.add(f"store:{subcommand.arguments[1]}")
         return needed
 
-    def estimate_cost(self, entity_count: int = 30) -> float:
+    def estimate_cost(self, entity_count: int = 30, include_child: bool = True) -> float:
         """Estimated wall-clock cost of this line, in microseconds.
 
+        With ``include_child``, the command an ``execute … run`` wraps is part
+        of it (what the whole line costs); without it, only this command's own
+        work, which is what the emulator charges as it dispatches each of them.
         Excludes the body of any function it calls: the emulator charges those
         to the callee.  See :mod:`datapack_emulator.emulator.costs` for the model.
         """
@@ -317,7 +322,7 @@ class Command:
         if self.name in ("fill", "clone", "fillbiome"):
             total += volume_of(self.arguments) * costs.VOLUME_COST_US_PER_BLOCK
 
-        if self.child is not None:
+        if self.child is not None and include_child:
             total += self.child.estimate_cost(entity_count)
         return total
 
@@ -344,6 +349,7 @@ class Command:
         expanded = Command.parse(text, source=self.source, line=self.line)
         if expanded is not None:
             expanded.is_macro = True  # keep the macro overhead in the cost model
+            expanded.source_raw = self.raw  # the profiler shows the line as written
         return (expanded, [])
 
     def __str__(self) -> str:

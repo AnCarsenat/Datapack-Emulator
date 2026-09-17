@@ -50,8 +50,9 @@ class RunController(Controller):
         window.stop_button.clicked.connect(lambda: self.stop())
         window.engine_button.clicked.connect(self.open_engine)
         window.combo_speed.currentIndexChanged.connect(self.on_speed_changed)
-        window.profile_baseline_button.clicked.connect(self.keep_baseline)
-        window.profile_clear_baseline_button.clicked.connect(lambda: self.keep_baseline(None))
+        # clicked(bool) would pass checked=False as the profiler to keep
+        window.profile_baseline_button.clicked.connect(lambda: self.keep_baseline())
+        window.profile_clear_baseline_button.clicked.connect(lambda: self.clear_baseline())
 
     # -- settings -----------------------------------------------------------
 
@@ -301,23 +302,32 @@ class RunController(Controller):
         if switch_tab:
             window.tabs.setCurrentWidget(window.tab_page(TAB_PROFILER))
 
-    def keep_baseline(self, profiler: Profiler | None = ...) -> None:
-        """Keep this run's numbers (or forget them) for the report's comparison."""
+    def keep_baseline(self) -> None:
+        """Keep this run's numbers, for the report to compare later ones with."""
         window = self.window
-        if profiler is ...:
-            if window.emulator is None:
-                self.status("run or step first")
-                return
-            profiler = window.emulator.profiler.snapshot()
-        self.baseline = profiler
-        if profiler is None:
+        if window.emulator is None or window.emulator.profiler.ticks == 0:
+            self.status("run or step first: a run of no ticks has nothing to compare")
+            return
+        baseline = window.emulator.profiler.snapshot()
+        baseline.pack = window.datapack.name if window.datapack is not None else ""
+        baseline.version = window.version.id
+        self._show_baseline(baseline)
+
+    def clear_baseline(self) -> None:
+        """Forget it: the report stops comparing."""
+        self._show_baseline(None)
+
+    def _show_baseline(self, baseline: Profiler | None) -> None:
+        window = self.window
+        self.baseline = baseline
+        if baseline is None:
             window.profile_baseline_label.setText("no baseline kept")
         else:
             window.profile_baseline_label.setText(
-                f"baseline: {profiler.ticks} tick(s), "
-                f"{profiler.total_us / max(profiler.ticks, 1) / 1000:.4f} ms/tick"
+                f"baseline: {baseline.pack} {baseline.version}, {baseline.ticks} tick(s), "
+                f"{baseline.total_us / max(baseline.ticks, 1) / 1000:.4f} ms/tick"
             )
-        window.profile_clear_baseline_button.setEnabled(profiler is not None)
+        window.profile_clear_baseline_button.setEnabled(baseline is not None)
         self.run_profiler(switch_tab=False)
 
     def run_graphview(self) -> None:

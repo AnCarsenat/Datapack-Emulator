@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 from datapack_emulator.cli.common import (
@@ -141,6 +142,10 @@ def build_emulator(arguments: argparse.Namespace, inputs: Inputs, bus) -> Emulat
 
 def command_run(arguments: argparse.Namespace) -> int:
     inputs = load_inputs(arguments.source)
+    # both are checked before the run: a wrong path should not cost a long one
+    baseline = load_profile(arguments.baseline) if arguments.baseline else None
+    if arguments.save_profile:
+        arguments.save_profile.parent.mkdir(parents=True, exist_ok=True)
     bus = printing_bus(arguments)
     emulator = build_emulator(arguments, inputs, bus)
     ticks = ticks_setting(arguments, inputs)
@@ -196,7 +201,6 @@ def command_run(arguments: argparse.Namespace) -> int:
         f"worst tick {profiler.worst_tick_us / 1000:.2f} ms"
     )
 
-    baseline = load_profile(arguments.baseline) if arguments.baseline else None
     if baseline is not None:
         print_comparison(profiler, baseline)
     hottest = profiler.hot_commands(5)
@@ -214,9 +218,7 @@ def command_run(arguments: argparse.Namespace) -> int:
     )
     print(f"report: {report}")
     if arguments.save_profile:
-        arguments.save_profile.parent.mkdir(parents=True, exist_ok=True)
-        arguments.save_profile.write_text(json.dumps(profiler.to_dict()), encoding="utf-8")
-        print(f"profile: {arguments.save_profile}")
+        save_profile(profiler, arguments.save_profile, datapack.name, emulator.version.id)
 
     graph = emulator.call_graph()
     print(f"call graph: {graph}")
@@ -242,28 +244,68 @@ def command_run(arguments: argparse.Namespace) -> int:
 
 
 def load_profile(path: Path) -> Profiler:
+    """A profile saved earlier. A file that is not one is a usage error, not a
+    crash; a run of no ticks cannot be compared against (its numbers are
+    totals, not per-tick costs)."""
     try:
-        return Profiler.from_dict(json.loads(path.read_text(encoding="utf-8")))
-    except (OSError, ValueError) as exc:
+        profiler = Profiler.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError) as exc:
         raise CliError(f"cannot read the profile {path}: {exc}") from exc
+    if profiler.ticks == 0:
+        raise CliError(f"the profile {path} has no ticks: run some before saving it")
+    return profiler
+
+
+def save_profile(profiler: Profiler, path: Path, pack: str, version: str) -> None:
+    profiler.pack = pack
+    profiler.version = version
+    profiler.saved = datetime.now().replace(microsecond=0).isoformat(" ")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(profiler.to_dict()), encoding="utf-8")
+    except OSError as exc:
+        raise CliError(f"cannot write the profile {path}: {exc}") from exc
+    print(f"profile: {path}")
 
 
 def print_comparison(profiler: Profiler, baseline: Profiler) -> None:
-    """The per-tick cost of each function, before and after."""
+    """The per-tick cost of each function, and of each line, before and after."""
     mine = profiler.total_us / max(profiler.ticks, 1) / 1000
     theirs = baseline.total_us / max(baseline.ticks, 1) / 1000
+    whose = ""
+    if baseline.pack or baseline.version:
+        whose = f" (kept run: {baseline.pack or 'a pack'} {baseline.version}".rstrip()
+        whose += f", saved {baseline.saved})" if baseline.saved else ")"
     print(
         f"\nCompared with the saved run: {theirs:.4f} then {mine:.4f} ms/tick "
-        f"({mine - theirs:+.4f}), {baseline.ticks} then {profiler.ticks} tick(s)"
+        f"({mine - theirs:+.4f}), {baseline.ticks} then {profiler.ticks} tick(s){whose}"
     )
+    if baseline.pack and profiler.pack and baseline.pack != profiler.pack:
+        print(f"note: the kept run is another pack ({baseline.pack})")
+    if baseline.version and profiler.version and baseline.version != profiler.version:
+        print(f"note: the kept run is another version ({baseline.version})")
+    changed = False
     print(f"{'function':40} {'before':>10} {'after':>10} {'change':>10}")
     for row in profiler.compare(baseline)[:15]:
         if abs(row["delta_us"]) < 1e-6:
             continue
+        changed = True
         print(
             f"{row['function']:40} {row['before_us'] / 1000:10.4f} "
             f"{row['after_us'] / 1000:10.4f} {row['delta_us'] / 1000:+10.4f}"
         )
+    lines = [row for row in profiler.compare_commands(baseline)[:10] if abs(row["delta_us"]) > 1e-6]
+    if lines:
+        changed = True
+        print(f"\n{'line that changed':46} {'before':>10} {'after':>10} {'change':>10}")
+        for row in lines:
+            where = f"{row['function']}:{row['line']}"
+            print(
+                f"{where:46} {row['before_us'] / 1000:10.4f} "
+                f"{row['after_us'] / 1000:10.4f} {row['delta_us'] / 1000:+10.4f}"
+            )
+    if not changed:
+        print("nothing changed")
 
 
 def register_run(subparsers) -> None:
