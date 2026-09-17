@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QComboBox, QDialog, QLabel, QLineEdit, QListWidget, QListWidgetItem
 
+from datapack_emulator.emulator.analysis.search import Hit, open_candidates, text_hits
 from datapack_emulator.emulator.datapack import PackView
 from datapack_emulator.window.panels import load_ui_into
 
@@ -16,34 +16,6 @@ MODE_OPEN, MODE_TEXT = range(2)
 #: results listed at most
 MAX_RESULTS = 500
 HIT_ROLE = Qt.UserRole
-
-
-@dataclass(frozen=True)
-class Hit:
-    label: str
-    path: Path
-    line: int = 0
-
-
-def open_candidates(view: PackView) -> list[Hit]:
-    """Every function and tag by id, and every other file by its path."""
-    hits = [Hit(f"{fid}  (function)", f.path) for fid, f in sorted(view.functions.items())]
-    hits += [Hit(f"{tid}  (function tag)", t.path) for tid, t in sorted(view.function_tags.items())]
-    return hits
-
-
-def text_hits(view: PackView, text: str) -> list[Hit]:
-    wanted = text.lower()
-    hits: list[Hit] = []
-    for function_id, function in sorted(view.functions.items()):
-        try:
-            lines = function.path.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError):
-            continue
-        for number, line in enumerate(lines, start=1):
-            if wanted in line.lower():
-                hits.append(Hit(f"{function_id}:{number}  {line.strip()}", function.path, number))
-    return hits
 
 
 class SearchDialog(QDialog):

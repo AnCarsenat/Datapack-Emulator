@@ -12,8 +12,15 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem
 
+from datapack_emulator.emulator.analysis.world_view import (
+    entity_summary,
+    history_text,
+    holder_label,
+    join_path,
+    sorted_holders,
+)
 from datapack_emulator.emulator.common import to_snbt
-from datapack_emulator.emulator.runtime.world import Entity, Scoreboard, World
+from datapack_emulator.emulator.runtime.world import Entity, World
 
 #: a score that changed since the grid was last filled
 CHANGED_COLOUR = QColor("#fff2a8")
@@ -28,40 +35,12 @@ VALUE_ROLE = Qt.UserRole + 2
 PATH_ROLE = Qt.UserRole + 3
 #: the storage id of a storage tree's top-level item
 STORAGE_ROLE = Qt.UserRole + 4
-#: changes listed in a score's tooltip
-HISTORY_SHOWN = 20
 #: entities listed at most; the filter narrows a bigger world down
 MAX_ENTITIES_SHOWN = 1000
 #: the placeholder child that makes an entity expandable before its NBT is built
 PLACEHOLDER = "…"
 
 Snapshot = dict[tuple[str, str], int]
-
-
-def holder_label(entities: dict[str, Entity], holder: str) -> str:
-    """A score holder as a row header: players and fake names as they are, other
-    entities by name and a short UUID. ``entities`` maps holder ids to entities."""
-    entity = entities.get(holder)
-    if entity is None or entity.is_player:
-        return holder
-    return f"{entity.display} ({holder[:8]}…)"
-
-
-def history_text(board: Scoreboard, holder: str, objective: str) -> str:
-    changes = list(board.history.get((holder, objective), ()))
-    if not changes:
-        return f"{holder} · {objective}: no changes recorded"
-    taken = sorted({value for _, value in changes if value is not None})
-    lines = [
-        f"{holder} · {objective}",
-        "values taken: " + (", ".join(str(value) for value in taken) or "-"),
-        "",
-    ]
-    for tick, value in changes[-HISTORY_SHOWN:]:
-        lines.append(f"tick {tick}: {'reset' if value is None else value}")
-    if len(changes) > HISTORY_SHOWN:
-        lines.append(f"(last {HISTORY_SHOWN} of {len(changes)} changes)")
-    return "\n".join(lines)
 
 
 def fill_scoreboard(
@@ -78,8 +57,7 @@ def fill_scoreboard(
     wanted_objective = objective_filter.strip().lower()
     objectives = [name for name in board.objectives if wanted_objective in name.lower()]
     by_id = {entity.id: entity for entity in world.entities}
-    players = {entity.id for entity in world.players}
-    holders = sorted(board.tracked(), key=lambda holder: (holder not in players, holder.lower()))
+    holders = sorted_holders(world)
     labels = {holder: holder_label(by_id, holder) for holder in holders}
     wanted = holder_filter.strip().lower()
     if wanted:
@@ -139,7 +117,7 @@ def _add_nbt(parent: QTreeWidgetItem, key: str, value: Any, owner: str, nbt_path
     if isinstance(value, dict):
         item.setText(1, f"{{{len(value)} entries}}")
         for child_key, child in value.items():
-            _add_nbt(item, child_key, child, owner, _join(nbt_path, child_key))
+            _add_nbt(item, child_key, child, owner, join_path(nbt_path, child_key))
     elif isinstance(value, list) and any(isinstance(entry, (dict, list)) for entry in value):
         item.setText(1, f"[{len(value)} entries]")
         for index, child in enumerate(value):
@@ -147,13 +125,6 @@ def _add_nbt(parent: QTreeWidgetItem, key: str, value: Any, owner: str, nbt_path
     else:
         item.setText(1, _scalar(value))
         item.setToolTip(1, "double-click to change this value")
-
-
-def _join(path: str, key: str) -> str:
-    """An NBT path segment; keys with unusual characters are quoted."""
-    bare = key.replace("_", "").replace("-", "").isalnum()
-    segment = key if bare else '"' + key.replace('"', '\\"') + '"'
-    return f"{path}.{segment}" if path else segment
 
 
 def expanded_keys(tree: QTreeWidget) -> set[str]:
@@ -174,17 +145,6 @@ def _restore_expanded(tree: QTreeWidget, keys: set[str]) -> None:
         if str(item.data(0, KEY_ROLE)) in keys:
             item.setExpanded(True)
         stack.extend(item.child(index) for index in range(item.childCount()))
-
-
-def entity_summary(entity: Entity) -> str:
-    x, y, z = entity.position
-    parts = [entity.type, f"{x:g} {y:g} {z:g}"]
-    if entity.tags:
-        parts.append("tags " + ", ".join(sorted(entity.tags)))
-    stacks = list(entity.inventory.items())
-    if stacks:
-        parts.append(f"{sum(stack.count for _, stack in stacks)} item(s)")
-    return " · ".join(parts)
 
 
 def fill_entities(tree: QTreeWidget, world: World, text_filter: str = "", version=None) -> None:
@@ -229,7 +189,7 @@ def expand_entity(item: QTreeWidgetItem, entity: Entity | None, version=None) ->
         QTreeWidgetItem(item, ["(gone)", "the entity no longer exists"])
         return
     for key, value in entity.data(version).items():
-        _add_nbt(item, key, value, entity.uuid, _join("", key))
+        _add_nbt(item, key, value, entity.uuid, join_path("", key))
 
 
 def fill_storage(
@@ -246,7 +206,7 @@ def fill_storage(
         item.setData(0, KEY_ROLE, storage_id)
         item.setData(0, STORAGE_ROLE, storage_id)
         for key, value in contents.items():
-            _add_nbt(item, key, value, storage_id, _join("", key))
+            _add_nbt(item, key, value, storage_id, join_path("", key))
     _restore_expanded(tree, keys)
     tree.resizeColumnToContents(0)
     tree.setUpdatesEnabled(True)

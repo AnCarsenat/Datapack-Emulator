@@ -87,6 +87,22 @@ class CallGraph:
     def predecessors(self, node_id: str) -> list[str]:
         return [edge.source for edge in self.edges if edge.target == node_id]
 
+    def relations(self, node_id: str) -> list[tuple[str, str]]:
+        """What calls ``node_id`` and what it calls, as ``(label, text)`` rows."""
+        callers = self.predecessors(node_id)
+        calls = self.successors(node_id)
+        rows = [
+            ("function", node_id),
+            ("called by", ", ".join(callers) or "nothing (only #minecraft:load/tick or commands)"),
+            ("calls", ", ".join(calls) or "nothing"),
+        ]
+        rows += [
+            (f"edge {edge.source} → {edge.target}", edge.kind)
+            for edge in self.edges
+            if node_id in (edge.source, edge.target)
+        ]
+        return rows
+
     def roots(self) -> list[str]:
         """Entry points: the vanilla tags, plus anything nothing else calls."""
         entries = [node for node in ("#minecraft:load", "#minecraft:tick") if node in self.nodes]

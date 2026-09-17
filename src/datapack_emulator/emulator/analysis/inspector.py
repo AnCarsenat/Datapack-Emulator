@@ -1,4 +1,6 @@
-"""Rows for the inspector dock: what is known about the selected thing."""
+"""What is known about a pack, a resource, a version or a run, as rows of
+``(label, text)`` — the window's inspector dock and ``datapack-emulator-cli info``
+show them."""
 
 from __future__ import annotations
 
@@ -197,3 +199,28 @@ def describe_version(version: Version) -> Rows:
         ("overlays", "yes" if versions.supports_overlays(version) else "no"),
         ("macros", "yes" if versions.supports_macros(version) else "no"),
     ]
+
+
+def version_note(datapack, version: Version) -> str:
+    """What the selected version makes of the pack, in a sentence or two."""
+    compatibility = datapack.compatibility(version)
+    notes = []
+    if not version.stable:
+        notes.append("pre-release")
+    if compatibility.status == "compatible":
+        notes.append("lists the pack as compatible")
+    elif compatibility.status in ("too_old", "too_new"):
+        age = "an older" if compatibility.status == "too_old" else "a newer"
+        notes.append(f"lists the pack as made for {age} version (it still loads)")
+    else:
+        detail = compatibility.server_log[0] if compatibility.server_log else compatibility.reason
+        notes.append(f"cannot read pack.mcmeta: {detail} (the pack still loads)")
+    notes.append(
+        "reads function/ folders"
+        if versions.uses_singular_registries(version)
+        else "reads functions/ folders"
+    )
+    overlays = datapack.view_for(version).active_overlays
+    if overlays:
+        notes.append("overlays " + ", ".join(overlays))
+    return f"{version.id}: " + " · ".join(notes)
