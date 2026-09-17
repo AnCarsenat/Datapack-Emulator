@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from datapack_emulator.emulator.runtime.debugger import DebugStopped
 from datapack_emulator.emulator.testing import CommandTest, TestResult, run_tests
 from datapack_emulator.window.controllers.base import TAB_ENVIRONMENT, Controller
 
@@ -175,7 +176,14 @@ class EnvironmentController(Controller):
         window.log_view.clear()
         # the tests run in the window's world, so it can be inspected afterwards
         window.datapacks.rebuild_emulator()
-        results = run_tests(window.datapack, tests, emulator=window.emulator)
+        try:
+            results = run_tests(window.datapack, tests, emulator=window.emulator)
+        except DebugStopped as stop:
+            window.debug.stopped(stop)
+            window.log_view.flush()
+            window.runs.show_tick()
+            window.world_view.refresh()
+            return []
         window.log_view.flush()
         window.runs.show_tick()
         window.world_view.refresh()

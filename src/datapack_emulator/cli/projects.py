@@ -117,6 +117,15 @@ def describe(project: Project) -> list[tuple[str, str]]:
         rows.append(("notes", project.notes.strip()))
     for function_id, note in sorted(project.function_notes.items()):
         rows.append((f"note on {function_id}", note))
+    for entry in project.breakpoints:
+        rows.append(
+            (
+                "breakpoint",
+                entry.removeprefix("!") + (" (disabled)" if entry.startswith("!") else ""),
+            )
+        )
+    for entry in project.watches:
+        rows.append(("watch", entry))
     return rows
 
 
@@ -361,6 +370,57 @@ def command_note(arguments: argparse.Namespace) -> int:
     return OK
 
 
+def command_debug(arguments: argparse.Namespace) -> int:
+    """The debugger's breakpoints and watches, as the window's debugger dock
+    and the shell's ``.break``/``.watch`` keep them."""
+    from datapack_emulator.cli.debug import breakpoint_argument
+    from datapack_emulator.emulator.runtime.debugger import Debugger
+
+    project = _load(arguments.project)
+    debugger = Debugger()
+    for entry in debugger.load_strings(project.breakpoints):
+        err(f"note: dropped an unreadable breakpoint {entry!r}")
+    watches = list(project.watches)
+    changed = False
+    for action, values in getattr(arguments, "operations", None) or []:
+        changed = True
+        value = values[0]
+        if action == "watch":
+            watches.append(value)
+        elif action == "unwatch":
+            if value == "all":
+                watches.clear()
+            else:
+                del watches[_position(watches, value, "watch")]
+        elif action == "unbreak" and value == "all":
+            debugger.clear()
+        else:
+            function_id, line, condition = breakpoint_argument(value)
+            if action == "break":
+                debugger.add(function_id, line, condition)
+                continue
+            point = debugger.breakpoints.get((function_id, line))
+            if point is None:
+                raise CliError(f"no breakpoint at {function_id}:{line}")
+            if action == "unbreak":
+                debugger.remove(function_id, line)
+            else:
+                point.enabled = action == "enable_break"
+    if changed:
+        project.breakpoints = debugger.to_strings()
+        project.watches = watches
+        _save(project, arguments.project)
+    if not project.breakpoints:
+        print("no breakpoints")
+    for entry in project.breakpoints:
+        print(
+            f"break {entry.removeprefix('!')}" + ("  (disabled)" if entry.startswith("!") else "")
+        )
+    for number, text in enumerate(project.watches, start=1):
+        print(f"watch {number}. {text}")
+    return OK
+
+
 def _known_ids(project: Project) -> set[str] | None:
     """Function and function tag ids of the project's packs (any version)."""
     try:
@@ -439,3 +499,19 @@ def register(subparsers) -> None:
     note.add_argument("function", help="a function id, or a #tag")
     note.add_argument("text", nargs="?", default=None, help="the note ('' removes it)")
     note.set_defaults(handler=command_note)
+
+    debug = actions.add_parser("debug", help="list and edit the debugger's breakpoints and watches")
+    debug.add_argument("project", type=Path)
+    debug.add_argument(
+        "--break",
+        dest="break",
+        action=_Ordered,
+        metavar="FUNC:LINE[ if COND]",
+        help="add a breakpoint (a condition starts with if or unless)",
+    )
+    debug.add_argument("--unbreak", action=_Ordered, metavar="FUNC:LINE|all")
+    debug.add_argument("--enable", dest="enable_break", action=_Ordered, metavar="FUNC:LINE")
+    debug.add_argument("--disable", dest="disable_break", action=_Ordered, metavar="FUNC:LINE")
+    debug.add_argument("--watch", action=_Ordered, metavar="EXPR", help="add a watch")
+    debug.add_argument("--unwatch", action=_Ordered, metavar="N|all")
+    debug.set_defaults(handler=command_debug)

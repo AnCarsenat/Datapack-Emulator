@@ -32,7 +32,8 @@ layout changes are made in Qt Designer, never in code.
 | file | new / open / save / save as project ([projects](projects.md)) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · version engine… · export call graph (.dot) |
-| view | explorer · inspector · logs · world (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
+| debug | toggle breakpoint · remove all breakpoints · continue · step into · step over · step out · pause (see the [debugger](#debugger-dock)) |
+| view | explorer · inspector · logs · world · debugger (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
 
 Hovering a menu entry explains it in the status bar; buttons, filters,
 column headers and inspector rows explain themselves in tooltips.
@@ -135,7 +136,7 @@ current version.
 
 ### Docks
 
-All four are open by default and can be toggled from *view*.
+All five are open by default and can be toggled from *view*.
 
 * **explorer** — every analyzed pack as it sits on disk, one root per pack in
   load order: `pack.mcmeta`, `pack.png`, `data/`, and one subtree per overlay
@@ -192,6 +193,45 @@ All four are open by default and can be toggled from *view*.
     its block entity data as a tree; double-click a value to change it
     (`data modify block`).
 
+* **debugger** <a id="debugger-dock"></a> — breakpoints, stepping and
+  watches ([command line](cli.md#the-debugger): the shell's `.break`,
+  `.watch` and stop prompt, `project debug`). Click the source view's gutter
+  (or press F9 on a line) to set or remove a breakpoint: a red dot, stopping
+  **before** that line (a comment or blank line moves it to the next
+  command). When a run, a step, a test or a typed command reaches one, the
+  window stops there — the line is yellow in the source view, and the
+  world dock, the logs and the watches show the world as it is at that
+  point. The buttons answer:
+  * *continue* (Ctrl+F5) runs to the next breakpoint;
+  * *into* (F11) runs the line and stops at the next function line, inside
+    calls too;
+  * *over* (F10) stops at the next line of this function (or of its caller
+    once it ends);
+  * *out* (Shift+F11) stops at the next line of the caller;
+  * *pause* (Ctrl+F6) stops a running emulation at its next function line;
+  * *stop* (and the toolbar's stop, Shift+F5) abandons the rest of the tick;
+    the world keeps what already ran.
+
+  A step ends with its tick. While stopped, the command line runs commands
+  as the stopped line would (same executor and position), and run, step,
+  run tests and the version choice wait; reloading or replacing the world
+  abandons the tick first. The tabs:
+  * *call stack*: the running functions, innermost first, with each one's
+    line and executor; double-click to open one;
+  * *context*: the stopped line's function, command, tick, executor,
+    position, rotation, dimension and depth;
+  * *watches*: expressions evaluated at every stop and after every run —
+    `score HOLDER OBJECTIVE` (`@s` works), `storage ID [PATH]`,
+    `entity SELECTOR [PATH]`, `block X Y Z [PATH]`, `if …`/`unless …`,
+    `executor`, `position`, `rotation`, `dimension`; double-click to change
+    one;
+  * *breakpoints*: every breakpoint with its hit count; untick to disable
+    one, double-click the condition column to give it an `execute`
+    condition (`if score @s x matches 5`), double-click the location to open
+    it.
+
+  Breakpoints and watches are saved with the project.
+
 ### Right-click
 
 | where | menu |
@@ -200,7 +240,8 @@ All four are open by default and can be toggled from *view*.
 | call-graph node | same, plus *show in inspector*; tags open their `.json` |
 | profiler row | same as a graph node |
 | explorer file, call-graph node, profiler row of a function | also *edit note…* |
-| source view | the editor's own menu · analyze this line · run this line · add this line as a test · run this function · show callers and calls · edit note on this function |
+| source view | the editor's own menu · analyze this line · run this line · add this line as a test · toggle breakpoint · run this function · show callers and calls · edit note on this function |
+| source view gutter | click: set or remove a breakpoint |
 | log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from (double-click too) · analyze the command · add the command as a test |
 | test | run this test · show its records in the logs · analyze the command · duplicate · move up / down · remove · add test |
 | world › score | set… · add 1 · remove 1 · reset · enable trigger · graph over time… · copy value · new objective… |
@@ -234,8 +275,12 @@ file type or folders.
 | Ctrl+I | analyze the source view's line |
 | Ctrl+L | command line |
 | Ctrl+T | add the command line's command as a test |
+| F9 | toggle a breakpoint on the source view's line |
+| Ctrl+F5 | continue (debugger) |
+| F10 / F11 / Shift+F11 | step over / into / out (debugger) |
+| Ctrl+F6 | pause a running emulation (debugger) |
 | Ctrl+1 … Ctrl+4 | environment / profiler / call graph / source tab |
-| Alt+1 … Alt+4 | show or hide explorer / inspector / logs / world |
+| Alt+1 … Alt+5 | show or hide explorer / inspector / logs / world / debugger |
 | Ctrl+Q | quit |
 
 ## Client-jar download popup

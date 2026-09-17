@@ -107,6 +107,13 @@ def parse_location(text: str) -> tuple[str, int]:
     return normalise_id(function), int(line)
 
 
+def command_line_at(function, line: int) -> int | None:
+    """The first line at or after ``line`` of a function (a ``Function``
+    resource) that holds a command: where a breakpoint set there stops."""
+    lines = [command.line for command in function.content if command.line >= line]
+    return lines[0] if lines else None
+
+
 class Debugger:
     def __init__(self, on_pause: Callable[[Pause], Action] | None = None):
         self.on_pause = on_pause
@@ -140,6 +147,32 @@ class Debugger:
             return False
         self.add(function_id, line)
         return True
+
+    def to_strings(self) -> list[str]:
+        """The breakpoints as a project stores them (see ``load_strings``)."""
+        return [
+            ("" if point.enabled else "!")
+            + f"{point.function_id}:{point.line}"
+            + (f" {point.condition}" if point.condition else "")
+            for point in sorted(self.breakpoints.values(), key=lambda p: p.key)
+        ]
+
+    def load_strings(self, entries: list[str]) -> list[str]:
+        """Replace the breakpoints with ``[!]ns:function:LINE [if|unless …]``
+        entries; the ones that cannot be read are returned."""
+        self.clear()
+        bad = []
+        for entry in entries:
+            text = entry.strip()
+            enabled = not text.startswith("!")
+            location, _, condition = text.lstrip("!").partition(" ")
+            try:
+                function_id, line = parse_location(location)
+            except ValueError:
+                bad.append(entry)
+                continue
+            self.add(function_id, line, condition).enabled = enabled
+        return bad
 
     def lines_of(self, function_id: str) -> set[int]:
         return {line for (function, line) in self.breakpoints if function == function_id}

@@ -832,3 +832,52 @@ def test_run_prints_debugger_stops(make_pack, tmp_path, capsys):
     assert "    score #ticks t = 1" in captured.out
     assert "debugger: 1 stop(s)" in captured.err
     assert main(["run", str(_pack(make_pack)), "--break", "test:tick:1 score"]) == 2
+
+
+def test_project_debug_edits_breakpoints_and_watches(make_pack, tmp_path, capsys):
+    path = str(_project(tmp_path, make_pack, []))
+    code = main(
+        [
+            "project",
+            "debug",
+            path,
+            "--break",
+            "test:tick:1 if score #ticks t matches 1",
+            "--break",
+            "test:load:1",
+            "--disable",
+            "test:load:1",
+            "--watch",
+            "score #ticks t",
+            "--watch",
+            "executor",
+            "--unwatch",
+            "2",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "break test:load:1  (disabled)" in out
+    assert "break test:tick:1 if score #ticks t matches 1" in out
+    assert "watch 1. score #ticks t" in out and "executor" not in out
+    saved = Project.load(Path(path))
+    assert saved.breakpoints == ["!test:load:1", "test:tick:1 if score #ticks t matches 1"]
+    assert main(["project", "show", path]) == 0
+    assert "test:load:1 (disabled)" in capsys.readouterr().out
+    assert main(["project", "debug", path, "--unbreak", "test:nope:1"]) == 2
+    # the shell stops where the project says, and saves what changed
+    import io
+    import sys
+
+    sys.stdin = io.StringIO(".step\n.step\nc\n.unbreak all\n.save\n")
+    try:
+        assert main(["shell", path]) == 0
+    finally:
+        sys.stdin = sys.__stdin__
+    out = capsys.readouterr().out
+    assert (
+        "stopped: test:tick:1 (breakpoint test:tick:1 if score #ticks t matches 1) at tick 1" in out
+    )
+    assert "    score #ticks t = 1" not in out and "  score #ticks t = 1" in out
+    assert Project.load(Path(path)).breakpoints == []
+    assert Project.load(Path(path)).watches == ["score #ticks t"]

@@ -14,6 +14,7 @@ from datapack_emulator.emulator.runtime.debugger import (
     Debugger,
     Pause,
     Trace,
+    command_line_at,
     parse_location,
     watch_value,
 )
@@ -107,11 +108,11 @@ def add_breakpoint(debugger: Debugger, emulator, text: str) -> str:
         failed = function_id in emulator.library.function_failures
         why = "failed to load" if failed else "does not exist"
         raise CliError(f"function {function_id} {why} in {emulator.version.id}")
-    lines = [command.line for command in function.content if command.line >= line]
-    if not lines:
+    stop_line = command_line_at(function, line)
+    if stop_line is None:
         raise CliError(f"{function_id} has no command on or after line {line}")
-    point = debugger.add(function_id, lines[0], condition)
-    moved = f" (line {line} has no command)" if lines[0] != line else ""
+    point = debugger.add(function_id, stop_line, condition)
+    moved = f" (line {line} has no command)" if stop_line != line else ""
     return f"breakpoint {point}{moved}"
 
 

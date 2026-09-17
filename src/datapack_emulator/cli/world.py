@@ -111,6 +111,10 @@ class Session:
         self.results: dict[int, TestResult] = {}
         #: breakpoints and watches, kept across new worlds
         self.debugger = Debugger()
+        if project is not None:
+            for entry in self.debugger.load_strings(project.breakpoints):
+                print(f"error: cannot read the project's breakpoint {entry!r}")
+            self.debugger.watches = list(project.watches)
         self.emulator = self.new_world()
 
     @property
@@ -292,6 +296,8 @@ class Session:
         if "vanilla" in changed:
             project.vanilla_jar = str(self.vanilla.jar_path) if self.vanilla else ""
         project.tests = [test.to_dict() for test in self.tests]
+        project.breakpoints = self.debugger.to_strings()
+        project.watches = list(self.debugger.watches)
         project.tests_during_runs = self.tests_during_runs
         project.step_on_command = self.step_on_command
         try:

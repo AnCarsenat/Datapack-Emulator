@@ -813,7 +813,7 @@ QMenuBar::item:selected {
          </widget>
         </item>
         <item>
-         <widget class="QPlainTextEdit" name="sourceEdit">
+         <widget class="SourceEdit" name="sourceEdit">
           <property name="contextMenuPolicy">
            <enum>Qt::CustomContextMenu</enum>
           </property>
@@ -1020,6 +1020,19 @@ QMenuBar::item:selected {
     <addaction name="actionopen_engine"/>
     <addaction name="actionexport_dot"/>
    </widget>
+   <widget class="QMenu" name="menudebug">
+    <property name="title">
+     <string>debug</string>
+    </property>
+    <addaction name="actiontoggle_breakpoint"/>
+    <addaction name="actionclear_breakpoints"/>
+    <addaction name="separator"/>
+    <addaction name="actiondebug_continue"/>
+    <addaction name="actiondebug_step_into"/>
+    <addaction name="actiondebug_step_over"/>
+    <addaction name="actiondebug_step_out"/>
+    <addaction name="actiondebug_pause"/>
+   </widget>
    <widget class="QMenu" name="menuview">
     <property name="title">
      <string>view</string>
@@ -1028,6 +1041,7 @@ QMenuBar::item:selected {
     <addaction name="actioninspector"/>
     <addaction name="actionlog"/>
     <addaction name="actionworld"/>
+    <addaction name="actiondebugger"/>
     <addaction name="actionreset_layout"/>
     <addaction name="separator"/>
     <addaction name="actionenvironment"/>
@@ -1041,6 +1055,7 @@ QMenuBar::item:selected {
    <addaction name="menufile"/>
    <addaction name="menuedit"/>
    <addaction name="menurun"/>
+   <addaction name="menudebug"/>
    <addaction name="menuview"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
@@ -1572,6 +1587,374 @@ QMenuBar::item:selected {
     </layout>
    </widget>
   </widget>
+  <widget class="QDockWidget" name="dockWidgetDebug">
+   <property name="minimumSize">
+    <size>
+     <width>260</width>
+     <height>200</height>
+    </size>
+   </property>
+   <property name="windowTitle">
+    <string>debugger</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>2</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContentsDebug">
+    <layout class="QVBoxLayout" name="debugDockLayout">
+     <property name="leftMargin">
+      <number>2</number>
+     </property>
+     <property name="topMargin">
+      <number>2</number>
+     </property>
+     <property name="rightMargin">
+      <number>2</number>
+     </property>
+     <property name="bottomMargin">
+      <number>2</number>
+     </property>
+     <item>
+      <layout class="QHBoxLayout" name="debugButtonsLayout">
+       <item>
+        <widget class="QPushButton" name="buttonDebugContinue">
+         <property name="text">
+          <string>continue</string>
+         </property>
+         <property name="toolTip">
+          <string>run until the next breakpoint (Ctrl+F5)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonDebugStepInto">
+         <property name="text">
+          <string>into</string>
+         </property>
+         <property name="toolTip">
+          <string>run this line and stop at the next function line, inside calls too (F11)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonDebugStepOver">
+         <property name="text">
+          <string>over</string>
+         </property>
+         <property name="toolTip">
+          <string>run this line and stop at the next line of this function (F10)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonDebugStepOut">
+         <property name="text">
+          <string>out</string>
+         </property>
+         <property name="toolTip">
+          <string>stop at the next line of the calling function (Shift+F11)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonDebugPause">
+         <property name="text">
+          <string>pause</string>
+         </property>
+         <property name="toolTip">
+          <string>stop at the next function line of the running emulation (Ctrl+F6)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonDebugStop">
+         <property name="text">
+          <string>stop</string>
+         </property>
+         <property name="toolTip">
+          <string>abandon the stopped tick (Shift+F5); the world keeps what already ran</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelDebugStatus">
+       <property name="text">
+        <string>not stopped — F9 in the source view sets a breakpoint</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #555;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTabWidget" name="tabsDebug">
+       <widget class="QWidget" name="tabDebugStack">
+        <attribute name="title">
+         <string>call stack</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="tabDebugStackLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTreeWidget" name="treeDebugStack">
+           <property name="toolTip">
+            <string>the functions running, innermost first; double-click to open one at its line</string>
+           </property>
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>function</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>line</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>executor</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabDebugContext">
+        <attribute name="title">
+         <string>context</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="tabDebugContextLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTreeWidget" name="treeDebugContext">
+           <property name="toolTip">
+            <string>the command source of the stopped line</string>
+           </property>
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string></string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>value</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabDebugWatches">
+        <attribute name="title">
+         <string>watches</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="tabDebugWatchesLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTreeWidget" name="treeDebugWatches">
+           <property name="toolTip">
+            <string>evaluated at every stop, in the stopped line's context; double-click an expression to change it</string>
+           </property>
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>expression</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>value</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="debugWatchLayout">
+           <item>
+            <widget class="QLineEdit" name="editDebugWatch">
+             <property name="placeholderText">
+              <string>score @s obj · storage ns:id path · entity @s Pos · if …</string>
+             </property>
+             <property name="toolTip">
+              <string>score HOLDER OBJ, storage ID [PATH], entity SELECTOR [PATH], block X Y Z [PATH], if/unless CONDITION, executor, position, rotation, dimension</string>
+             </property>
+             <property name="clearButtonEnabled">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="buttonDebugAddWatch">
+             <property name="text">
+              <string>add</string>
+             </property>
+             <property name="toolTip">
+              <string>add the expression to the watches</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="buttonDebugRemoveWatch">
+             <property name="text">
+              <string>remove</string>
+             </property>
+             <property name="toolTip">
+              <string>remove the selected watches</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabDebugBreakpoints">
+        <attribute name="title">
+         <string>breakpoints</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="tabDebugBreakpointsLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTreeWidget" name="treeDebugBreakpoints">
+           <property name="toolTip">
+            <string>tick a breakpoint to enable it; double-click a condition (if … / unless …) to change it; double-click a location to open it</string>
+           </property>
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>breakpoint</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>condition</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>hits</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="debugBreakpointsLayout">
+           <item>
+            <widget class="QPushButton" name="buttonDebugRemoveBreakpoint">
+             <property name="text">
+              <string>remove</string>
+             </property>
+             <property name="toolTip">
+              <string>remove the selected breakpoints</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="buttonDebugClearBreakpoints">
+             <property name="text">
+              <string>remove all</string>
+             </property>
+             <property name="toolTip">
+              <string>remove every breakpoint</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
   <action name="actionnew_project">
    <property name="text">
     <string>new project</string>
@@ -1988,8 +2371,104 @@ QMenuBar::item:selected {
     <string>the file opened last, with syntax highlighting</string>
    </property>
   </action>
+  <action name="actiontoggle_breakpoint">
+   <property name="text">
+    <string>toggle breakpoint</string>
+   </property>
+   <property name="statusTip">
+    <string>set or remove a breakpoint on the source view's current line</string>
+   </property>
+   <property name="shortcut">
+    <string>F9</string>
+   </property>
+  </action>
+  <action name="actiondebug_continue">
+   <property name="text">
+    <string>continue</string>
+   </property>
+   <property name="statusTip">
+    <string>run until the next breakpoint</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F5</string>
+   </property>
+  </action>
+  <action name="actiondebug_step_into">
+   <property name="text">
+    <string>step into</string>
+   </property>
+   <property name="statusTip">
+    <string>run the stopped line and stop at the next function line, inside calls too</string>
+   </property>
+   <property name="shortcut">
+    <string>F11</string>
+   </property>
+  </action>
+  <action name="actiondebug_step_over">
+   <property name="text">
+    <string>step over</string>
+   </property>
+   <property name="statusTip">
+    <string>run the stopped line and stop at the next line of the same function</string>
+   </property>
+   <property name="shortcut">
+    <string>F10</string>
+   </property>
+  </action>
+  <action name="actiondebug_step_out">
+   <property name="text">
+    <string>step out</string>
+   </property>
+   <property name="statusTip">
+    <string>stop at the next line of the calling function</string>
+   </property>
+   <property name="shortcut">
+    <string>Shift+F11</string>
+   </property>
+  </action>
+  <action name="actiondebug_pause">
+   <property name="text">
+    <string>pause</string>
+   </property>
+   <property name="statusTip">
+    <string>stop the running emulation at its next function line</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F6</string>
+   </property>
+  </action>
+  <action name="actionclear_breakpoints">
+   <property name="text">
+    <string>remove all breakpoints</string>
+   </property>
+   <property name="statusTip">
+    <string>remove every breakpoint of the project</string>
+   </property>
+  </action>
+  <action name="actiondebugger">
+   <property name="text">
+    <string>debugger</string>
+   </property>
+   <property name="statusTip">
+    <string>show or hide the debugger dock: call stack, context, watches, breakpoints</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+5</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </action>
  </widget>
  <customwidgets>
+  <customwidget>
+   <class>SourceEdit</class>
+   <extends>QPlainTextEdit</extends>
+   <header>datapack_emulator/window/panels/source.h</header>
+  </customwidget>
   <customwidget>
    <class>QWebEngineView</class>
    <extends>QWidget</extends>

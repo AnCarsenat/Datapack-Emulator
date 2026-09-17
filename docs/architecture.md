@@ -51,6 +51,7 @@ src/datapack_emulator/     the package (standard src layout)
       loot.py              loot tables and item modifiers (entries, item functions)
       context.py           ExecutionContext (the command source; silent in functions)
       library.py           FunctionLibrary: functions and tags a version's server loads
+      debugger.py          Debugger: breakpoints, stepping, watches (asked before each function line)
       emulator.py          Emulator: start, load/tick order, dispatch, schedules
     analysis/
       profiler.py          Profiler: per function and per call path, HTML report
@@ -67,8 +68,9 @@ src/datapack_emulator/     the package (standard src layout)
     common.py              reading packs/projects, client jars, version selection
     runs.py                run, matrix, test
     world.py               world, shell (Session: one open world)
+    debug.py               the shell's debugger commands and stop prompt, run --break
     inspect.py             info, explain, search, graph
-    projects.py            project new/show/set/packs/tests/note/list
+    projects.py            project new/show/set/packs/tests/note/debug/list
     junit.py               JUnit XML reports
     jars.py                versions, vanilla
   window/                  Qt only
@@ -87,6 +89,7 @@ src/datapack_emulator/     the package (standard src layout)
       notes.py             project and function notes
       session.py           recent projects/datapacks, remembered window layout
       navigation.py        source view, external editor / file manager, right-click menus
+      debug.py             debugger dock, breakpoint gutter, stops (a nested event loop)
       logs.py              logs dock: buffered model, filters, record menu
     engine_window.py       EngineWindow
     download_dialog.py     DownloadDialog + DownloadWorker (QThread)
@@ -94,7 +97,7 @@ src/datapack_emulator/     the package (standard src layout)
     score_graph.py         ScoreGraphDialog: a score over time
     panels/                models and widgets the controllers fill
       uiloader.py, explorer.py, logs.py, results.py, graph.py, highlight.py,
-      world.py, profile.py
+      world.py, profile.py, source.py (the source view with its gutter)
 tools/generate_version_data.py
 tests/       pytest suite; conftest.py builds synthetic packs and client jars
 .github/     CI workflow, Dependabot, issue and pull request templates
@@ -126,7 +129,7 @@ Datapack.load(path) ──► base Layer + overlay Layers
 Emulator(pack, version, vanilla, output)  CallGraph.from_pack
         │ FunctionLibrary.build  ── drops unparsable functions, broken tags
         │ start → first tick: load/tick in the version's order
-        │ run_function → run_command
+        │ run_function → (Debugger.before) → run_command
         │     CommandSet.spec(name)   ── version_data
         │     handler(command, context)
         │         World / ExecutionContext
@@ -151,7 +154,8 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
   never in a controller.
 * **All layout is in `.ui` files.** Python looks widgets up by object name.
   The only widget created in code is the pyqtgraph canvas, which Designer
-  cannot describe; it goes into the `graphContainer` placeholder.
+  cannot describe; it goes into the `graphContainer` placeholder. The source
+  view is a custom widget class (`panels/source.py`) declared in the `.ui`.
 * **Game output and our diagnostics stay separate.** A handler reports what
   Minecraft would say with `context.game_error(key, …)` using a real
   translation key; what *we* notice goes through `context.note(…)`.
