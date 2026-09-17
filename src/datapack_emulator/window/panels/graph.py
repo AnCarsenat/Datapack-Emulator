@@ -21,6 +21,9 @@ NODE_COLOURS = {
 }
 
 FOCUS_COLOUR = (231, 76, 60)
+#: how far ``focus`` zooms out around a node, in layout units
+MAX_FOCUS_HALF_WIDTH = 12.0
+MAX_FOCUS_HALF_HEIGHT = 5.0
 
 EDGE_COLOURS = {
     "call": (120, 120, 120),
@@ -59,6 +62,7 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
         self._decorations.clear()
         self.graph_item.setData()
         self._positions = {}
+        self.graph = None
 
     def _clear_focus(self) -> None:
         for item in self._focus_items:
@@ -95,10 +99,14 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
         for item in (near, ring):
             self.plot.addItem(item)
             self._focus_items.append(item)
-        xs = [x, *(self._positions[name][0] for name in neighbours)]
-        ys = [y, *(self._positions[name][1] for name in neighbours)]
-        self.plot.setXRange(min(xs) - 3, max(xs) + 3, padding=0.05)
-        self.plot.setYRange(min(ys) - 2, max(ys) + 2, padding=0.05)
+        # centred on the node; wide enough for its neighbours, but never so
+        # wide that labels run together (the rest is a pan away)
+        dx = max((abs(self._positions[name][0] - x) for name in neighbours), default=0.0)
+        dy = max((abs(self._positions[name][1] - y) for name in neighbours), default=0.0)
+        half_width = min(dx + 3.0, MAX_FOCUS_HALF_WIDTH)
+        half_height = min(dy + 2.0, MAX_FOCUS_HALF_HEIGHT)
+        self.plot.setXRange(x - half_width, x + half_width, padding=0)
+        self.plot.setYRange(y - half_height, y + half_height, padding=0)
         self.focused = node_id
         return True
 

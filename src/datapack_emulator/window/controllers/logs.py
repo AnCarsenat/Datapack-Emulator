@@ -133,7 +133,7 @@ class LogController(Controller):
             return
         source = self.source_of(record)
         where = f"{source[0]}:{source[1]}" if source else "the log"
-        self.window.navigation.analyze(command, where)
+        self.window.navigation.analyze(command, where, function_id=source[0] if source else None)
 
     def reveal(self, record: LogRecord) -> None:
         """Show, select and scroll to a record, loosening the filters if needed."""

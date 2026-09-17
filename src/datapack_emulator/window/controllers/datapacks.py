@@ -112,6 +112,7 @@ class DatapackController(Controller):
         window = self.window
         window.log_view.clear()
         window.call_graph = None
+        window.graph_widget.clear_graph()
         if not packs and window.project.path is None and not keep_project:
             # no project open: fall back to the default pack rather than nothing
             sample = default_sample()
@@ -246,7 +247,7 @@ class DatapackController(Controller):
             return
         path = Path(path_value)
         if path.is_file():
-            window.navigation.show_source(path)
+            window.navigation.show_source(path, reveal=False)  # the row is right there
 
     def find_resource(self, resource_id: str, path: str | None = None) -> Resource | None:
         """The resource of an explorer row: the file clicked when ``path`` is

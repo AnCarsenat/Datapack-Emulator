@@ -1484,3 +1484,69 @@ def test_problems_check_once_and_only_when_shown(app, window, make_pack):
         problems.refresh()
     assert problems.label.text() == "the check failed: RecursionError: deep"
     assert window.datapack is not None
+
+
+def test_navigation_follows_tags_overlays_and_hubs(app, window, make_pack):
+    files = {
+        "data/minecraft/tags/function/tick.json": {"values": ["#test:tick"]},
+        "data/test/tags/function/tick.json": {"values": ["test:tick"]},
+        "data/test/function/tick.mcfunction": "".join(
+            f"function test:f{index}\n" for index in range(40)
+        ),
+        "overlay_old/data/test/function/tick.mcfunction": "say old\n",
+    }
+    for index in range(40):
+        files[f"data/test/function/f{index}.mcfunction"] = "say hi\n"
+    pack = make_pack(
+        files,
+        mcmeta={
+            "pack": {"pack_format": 61, "description": "t"},
+            "overlays": {"entries": [{"formats": [1, 10], "directory": "overlay_old"}]},
+        },
+    )
+    window.datapacks.load(pack)
+    navigation = window.navigation
+    tree = window.tree
+
+    # a tag named like a function is the tag, in the inspector and the explorer
+    navigation.inspect_function("#test:tick")
+    assert tree.currentIndex().data() == "tick.json"
+    navigation.calls_and_callers("test:tick")
+    assert tree.currentIndex().data() == "tick.mcfunction"
+
+    # a tag file in the source view opens its node in the call graph
+    navigation.show_source(pack / "data/test/tags/function/tick.json")
+    navigation.show_in_graph()
+    assert window.graph_widget.focused == "#test:tick"
+    # a file the version does not use still names its function
+    assert (
+        navigation.resource_id_at(pack / "overlay_old/data/test/function/tick.mcfunction")
+        == "test:tick"
+    )
+
+    # a hub stays centred and readable
+    navigation.show_in_graph("test:tick")
+    view_range = window.graph_widget.plot.viewRange()
+    x, y = window.graph_widget._positions["test:tick"]
+    assert abs(sum(view_range[0]) / 2 - x) < 1e-6
+    assert view_range[0][1] - view_range[0][0] <= 24.0 + 1e-6
+    assert "calls 40" in window.statusBar().currentMessage()
+
+    # a reload drops the old rings with the old graph
+    window.datapacks.reload()
+    assert window.graph_widget.focused is None and window.graph_widget.graph is None
+
+    # opening from the explorer does not move its row; analyze shows the function
+    navigation.reveal_in_explorer(pack / "data/test/function/f3.mcfunction")
+    index = tree.currentIndex()
+    tree.scrollTo(index)
+    before = tree.visualRect(index)
+    window.datapacks.on_tree_clicked(index)
+    assert tree.visualRect(tree.currentIndex()) == before
+    window.dock_explorer.hide()
+    navigation.analyze("say hi", "test:f5:1", function_id="test:f5")
+    assert window.dock_explorer.isVisible() or not window.isVisible()
+    assert tree.currentIndex().data() == "f5.mcfunction"
+    menu = navigation.path_menu(pack / "data/test/function/f5.mcfunction", in_explorer=True)
+    labels = [action.text() for action in menu.actions()]
+    assert "show in explorer" not in labels and "show in call graph" in labels
