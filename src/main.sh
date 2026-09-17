@@ -23,6 +23,6 @@ export PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}"
 
 if [ "${1:-}" = "--cli" ]; then
     shift
-    exec "$python" -m datapack_emulator.emulator "$@"
+    exec "$python" -m datapack_emulator.cli "$@"
 fi
 exec "$python" -m datapack_emulator "$@"

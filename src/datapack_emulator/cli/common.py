@@ -1,0 +1,231 @@
+"""What every subcommand shares: reading packs or a project, client jars,
+choosing versions, printing records."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.datapack import DatapackSet, preferred_version
+from datapack_emulator.emulator.engine import TestEngine
+from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
+from datapack_emulator.emulator.testing import CommandTest
+from datapack_emulator.emulator.vanilla import VanillaAssets, default_library
+from datapack_emulator.emulator.versions import Version
+from datapack_emulator.project import SUFFIXES, Project
+
+LEVELS = {
+    "debug": LogLevel.DEBUG,
+    "info": LogLevel.INFO,
+    "warn": LogLevel.WARNING,
+    "error": LogLevel.ERROR,
+}
+
+#: exit codes
+OK = 0
+FAILED = 1
+USAGE = 2
+
+
+class CliError(Exception):
+    """A problem with what was asked; printed without a traceback."""
+
+
+def err(text: str) -> None:
+    print(text, file=sys.stderr)
+
+
+@dataclass
+class Inputs:
+    """The packs to analyze and, when a project was given, the project."""
+
+    datapack: DatapackSet
+    project: Project | None = None
+    #: tests from the project (enabled or not) and from the command line
+    tests: list[CommandTest] = field(default_factory=list)
+
+    def setting(self, arguments: argparse.Namespace, name: str, fallback):
+        """An option given on the command line, else the project's, else ``fallback``."""
+        value = getattr(arguments, name, None)
+        if value is not None:
+            return value
+        if self.project is not None:
+            return getattr(self.project, name)
+        return fallback
+
+    def version(self, arguments: argparse.Namespace) -> Version:
+        requested = getattr(arguments, "version", None)
+        if requested:
+            return parse_version(requested)
+        if self.project is not None and self.project.version:
+            return parse_version(self.project.version)
+        return preferred_version(self.datapack)
+
+
+def parse_version(text: str | Version) -> Version:
+    try:
+        return versions.parse(text)
+    except KeyError as exc:
+        raise CliError(exc.args[0] if exc.args else f"unknown version {text!r}") from exc
+
+
+def is_project(path: Path) -> bool:
+    return path.is_file() and path.suffix in SUFFIXES
+
+
+def add_source_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "source",
+        type=Path,
+        nargs="+",
+        help="datapack folders in load order, or one .dpemu / .json project",
+    )
+
+
+def load_inputs(paths: list[Path]) -> Inputs:
+    """Datapack folders, or one project whose packs and settings are used."""
+    projects = [path for path in paths if is_project(path)]
+    if projects and len(paths) > 1:
+        raise CliError("give either one project or datapack folders, not both")
+    project = None
+    if projects:
+        try:
+            project = Project.load(projects[0])
+        except (OSError, ValueError) as exc:
+            raise CliError(f"cannot open project {projects[0]}: {exc}") from exc
+        if not project.datapacks:
+            raise CliError(f"project {projects[0]} has no datapack")
+        paths = list(project.datapacks)
+    for path in paths:
+        if not path.exists():
+            raise CliError(f"no such file or folder: {path}")
+    datapack = DatapackSet.load(paths)
+    for error in datapack.errors:
+        err(f"error: {error}")
+    if not datapack.namespaces:
+        raise CliError("nothing to analyze: no data/ folder with namespaces")
+    tests = [CommandTest.from_dict(test) for test in project.tests] if project else []
+    return Inputs(datapack, project, tests)
+
+
+def add_vanilla_arguments(parser: argparse.ArgumentParser, per_version: bool = False) -> None:
+    if per_version:
+        parser.add_argument(
+            "--vanilla", action="store_true", help="use each version's client jar when installed"
+        )
+    else:
+        parser.add_argument(
+            "--vanilla",
+            nargs="?",
+            const="",
+            default=None,
+            metavar="VERSION|JAR",
+            help="check ids and message wording against a client jar (no value: the "
+            "emulated version's)",
+        )
+    parser.add_argument("--download", action="store_true", help="fetch missing jars from Mojang")
+
+
+def vanilla_for(
+    arguments: argparse.Namespace, version: Version, inputs: Inputs | None = None
+) -> VanillaAssets | None:
+    """The client jar for a one-version command.
+
+    ``--vanilla`` picks it (a version or a jar path; no value = the emulated
+    version); without the option, a project's saved jar is used when it exists.
+    """
+    requested = getattr(arguments, "vanilla", None)
+    download = getattr(arguments, "download", False)
+    library = default_library()
+    if requested is None:
+        saved = inputs.project.vanilla_jar if inputs and inputs.project else ""
+        if saved and Path(saved).is_file():
+            return library.load_jar(Path(saved))
+        if not download:
+            return None
+        requested = ""
+    if requested and Path(requested).is_file():
+        return library.load_jar(Path(requested))
+    target = parse_version(requested).id if requested else version.id
+    assets = library.load(target, allow_download=download, progress=err)
+    if assets is None:
+        err(f"no client jar for {target}; pass --download to fetch it")
+    return assets
+
+
+def add_version_selection(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_argument_group("versions (first match wins)")
+    group.add_argument("--versions", nargs="+", default=None, metavar="VERSION")
+    group.add_argument("--from", dest="start", default=None, metavar="VERSION")
+    group.add_argument("--to", dest="end", default=None, metavar="VERSION")
+    group.add_argument("--declared", action="store_true", help="the range pack.mcmeta declares")
+    group.add_argument(
+        "--all", dest="all_versions", action="store_true", help="every known version"
+    )
+    group.add_argument(
+        "--boundaries", action="store_true", help="then keep the first release of each pack format"
+    )
+
+
+def chosen_versions(
+    arguments: argparse.Namespace, inputs: Inputs, default: list[Version]
+) -> list[Version]:
+    """``--versions``, ``--from/--to``, ``--declared``, ``--all``, else ``default``."""
+    if arguments.versions:
+        chosen = [parse_version(item) for item in arguments.versions]
+    elif arguments.start or arguments.end:
+        chosen = versions.version_range(
+            parse_version(arguments.start) if arguments.start else None,
+            parse_version(arguments.end) if arguments.end else None,
+        )
+    elif arguments.declared:
+        chosen = inputs.datapack.declared_versions()
+    elif arguments.all_versions:
+        chosen = list(versions.VERSIONS)
+    else:
+        chosen = list(default)
+    if arguments.boundaries:
+        chosen = TestEngine.format_boundaries(chosen)
+    if not chosen:
+        raise CliError("no versions selected")
+    return chosen
+
+
+def add_output_filter(parser: argparse.ArgumentParser, default_level: str = "info") -> None:
+    parser.add_argument(
+        "--level",
+        choices=sorted(LEVELS),
+        default=default_level,
+        help="lowest level of the records printed",
+    )
+    parser.add_argument(
+        "--sources",
+        nargs="+",
+        choices=[source.value for source in LogSource],
+        default=[source.value for source in LogSource],
+        help="which records to print: what this program, the emulator or the game says",
+    )
+
+
+def printing_bus(arguments: argparse.Namespace, bus: OutputBus | None = None) -> OutputBus:
+    """A bus that prints the records ``--level`` and ``--sources`` ask for."""
+    bus = bus or OutputBus()
+    minimum = LEVELS[arguments.level]
+    wanted = {LogSource(name) for name in arguments.sources}
+
+    def show(record: LogRecord) -> None:
+        if record.source in wanted and record.level >= minimum:
+            print(record.format())
+
+    bus.listeners.append(show)
+    return bus
+
+
+def report_path(arguments: argparse.Namespace, name: str) -> Path:
+    from datapack_emulator.settings import PATHS
+
+    given = getattr(arguments, "html", None)
+    return Path(given) if given else PATHS.GENERATED / name
