@@ -1,9 +1,9 @@
 """Commands on items and inventories: give, clear, item, replaceitem, enchant,
 loot, and the ``items`` condition of execute.
 
-Blocks are not modelled, so container blocks (``item … block``, ``loot insert``,
-``execute if items block``) are noted and fail. See
-:mod:`datapack_emulator.emulator.runtime.inventory` for the model.
+Container blocks work too (``item … block``, ``loot insert``, ``loot … mine``,
+``execute if items block``). See :mod:`datapack_emulator.emulator.runtime.inventory`
+and :mod:`datapack_emulator.emulator.runtime.blocks` for the models.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from datapack_emulator.emulator.commands.helpers import (
 from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import normalise_id
+from datapack_emulator.emulator.runtime.blocks import Block, Position
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.inventory import (
     SLOT_NAMES,
@@ -31,7 +32,7 @@ from datapack_emulator.emulator.runtime.inventory import (
     uses_components,
     uses_equipment,
 )
-from datapack_emulator.emulator.runtime.loot import evaluate
+from datapack_emulator.emulator.runtime.loot import LootContext, evaluate
 from datapack_emulator.emulator.runtime.world import Entity
 
 #: how many of an item give accepts at once, in stacks
@@ -65,7 +66,10 @@ def _players(context: ExecutionContext, token: str) -> list[Entity] | None:
     return found
 
 
-def _stack(context: ExecutionContext, token: str) -> ItemStack | None:
+def _stack(context: ExecutionContext, token: str, allow_air: bool = False) -> ItemStack | None:
+    """An item argument; ``allow_air`` accepts air, which empties a slot."""
+    if allow_air and normalise_id(token.split("[")[0].split("{")[0]) == "minecraft:air":
+        return ItemStack("minecraft:air", 1)
     stack = parse_item(token)
     if stack is None:
         context.game_error("argument.item.id.invalid", token)
@@ -130,9 +134,14 @@ def drop(context: ExecutionContext, position: list[float], stack: ItemStack) -> 
         context.world.spawn(entity)
 
 
-def _blocks_not_modelled(context: ExecutionContext, what: str) -> CommandResult:
-    context.note_key_once("emulator.unimplemented", what, context.emulator.version.id)
-    return CommandResult.failure()
+def _container(
+    context: ExecutionContext, tokens: list[str], key: str = "commands.item.target.not_a_container"
+) -> tuple[Position, Block] | None:
+    from datapack_emulator.emulator.commands.blocks import container_at, position_at
+
+    position = position_at(context, tokens[:3])
+    block = container_at(context, position, key) if position is not None else None
+    return (position, block) if block is not None else None
 
 
 def _usage(context: ExecutionContext) -> CommandResult:
@@ -218,13 +227,25 @@ def cmd_clear(command: Command, context: ExecutionContext) -> CommandResult:
 
 
 def _source_stack(context: ExecutionContext, arguments: list[str]) -> tuple[bool, ItemStack | None]:
-    """``entity <source> <slot>`` -> (found, the stack or None for an empty slot)."""
+    """``entity <source> <slot>`` / ``block <pos> <slot>`` -> (found, the stack
+    or None for an empty slot)."""
     if len(arguments) < 3:
         _usage(context)
         return (False, None)
     if arguments[0] == "block":
-        _blocks_not_modelled(context, "item … from block")
-        return (False, None)
+        if len(arguments) < 5:
+            _usage(context)
+            return (False, None)
+        found = _container(context, arguments[1:4], "commands.item.source.not_a_container")
+        if found is None:
+            return (False, None)
+        _, block = found
+        slots = block.slot_keys(arguments[4])
+        if slots is None or len(slots) != 1:
+            context.game_error("commands.item.source.no_such_slot", arguments[4])
+            return (False, None)
+        stack = block.get_item(slots[0])
+        return (True, stack.copy() if stack is not None else None)
     sources = require_targets(context, arguments[1])
     if not sources:
         return (False, None)
@@ -273,10 +294,10 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
         return _usage(context)
     action, kind = arguments[0], arguments[1]
     if kind == "block":
-        return _blocks_not_modelled(context, f"item {action} block")
+        return _item_block(context, arguments)
     token, slot, rest = arguments[2], arguments[3], arguments[4:]
     if action == "replace" and rest and rest[0] == "with" and len(rest) > 1:
-        stack = _stack(context, rest[1])
+        stack = _stack(context, rest[1], allow_air=True)
         count = integer(context, rest[2]) if stack is not None and len(rest) > 2 else 1
         if stack is None or count is None or not _valid_count(context, stack, count):
             return CommandResult.failure()
@@ -286,8 +307,9 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
         found, stack = _source_stack(context, rest[1:])
         if not found:
             return CommandResult.failure()
-        if len(rest) > 4 and stack is not None:
-            stack = _modify(context, stack, rest[4])
+        modifier_at = 6 if len(rest) > 1 and rest[1] == "block" else 4
+        if len(rest) > modifier_at and stack is not None:
+            stack = _modify(context, stack, rest[modifier_at])
             if stack is None:
                 return CommandResult.failure()
         return _set_slots(context, token, slot, stack)
@@ -307,6 +329,54 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
             return CommandResult.failure()
         return CommandResult(success=True, value=changed)
     return _usage(context)
+
+
+def _item_block(context: ExecutionContext, arguments: list[str]) -> CommandResult:
+    """``item replace|modify block <pos> <slot> …``"""
+    if len(arguments) < 7:
+        return _usage(context)
+    action, slot, rest = arguments[0], arguments[5], arguments[6:]
+    found = _container(context, arguments[2:5])
+    if found is None:
+        return CommandResult.failure()
+    position, block = found
+    if not _slot_exists(slot):
+        context.game_error("slot.unknown", slot)
+        return CommandResult.failure()
+    slots = block.slot_keys(slot)
+    if not slots or len(slots) != 1:
+        context.game_error("commands.item.target.no_such_slot", slot)
+        return CommandResult.failure()
+    if action == "modify":
+        current = block.get_item(slots[0])
+        if _modifier(context, rest[0]) is None:
+            return CommandResult.failure()
+        if current is None:
+            context.game_error("commands.item.target.no_changes", slot)
+            return CommandResult.failure()
+        stack = _modify(context, current, rest[0])
+    elif action == "replace" and rest[0] == "with" and len(rest) > 1:
+        stack = _stack(context, rest[1], allow_air=True)
+        count = integer(context, rest[2]) if stack is not None and len(rest) > 2 else 1
+        if stack is None or count is None or not _valid_count(context, stack, count):
+            return CommandResult.failure()
+        stack.count = count
+    elif action == "replace" and rest[0] == "from":
+        found_source, stack = _source_stack(context, rest[1:])
+        width = 3 if len(rest) > 1 and rest[1] == "block" else 1
+        modifier = rest[3 + width] if len(rest) > 3 + width else None
+        if not found_source:
+            return CommandResult.failure()
+        if modifier is not None and stack is not None:
+            stack = _modify(context, stack, modifier)
+            if stack is None:
+                return CommandResult.failure()
+    else:
+        return _usage(context)
+    block.set_item(slots[0], stack.copy() if stack is not None else None)
+    name = item_name(context, stack.id if stack is not None else "minecraft:air")
+    context.feedback("commands.item.block.set.success", *position, name)
+    return CommandResult(success=True, value=1)
 
 
 def _valid_count(context: ExecutionContext, stack: ItemStack, count: int) -> bool:
@@ -355,13 +425,14 @@ def _modify(context: ExecutionContext, stack: ItemStack, modifier_id: str) -> It
 
 
 def cmd_replaceitem(command: Command, context: ExecutionContext) -> CommandResult:
-    """``replaceitem entity <targets> <slot> <item> [count]`` (before 1.17)."""
+    """``replaceitem (entity <targets> | block <pos>) <slot> <item> [count]`` (before 1.17)."""
     arguments = command.arguments
-    if len(arguments) >= 1 and arguments[0] == "block":
-        return _blocks_not_modelled(context, "replaceitem block")
+    if len(arguments) >= 6 and arguments[0] == "block":
+        rest = ["with", *arguments[5:]]
+        return _item_block(context, ["replace", "block", *arguments[1:5], *rest])
     if len(arguments) < 4 or arguments[0] != "entity":
         return _usage(context)
-    stack = _stack(context, arguments[3])
+    stack = _stack(context, arguments[3], allow_air=True)
     count = integer(context, arguments[4]) if stack is not None and len(arguments) > 4 else 1
     if stack is None or count is None or not _valid_count(context, stack, count):
         return CommandResult.failure()
@@ -465,34 +536,79 @@ def _loot_table(context: ExecutionContext, table_id: str) -> dict[str, Any] | No
     return assets.loot_table(table_id) if assets is not None else None
 
 
+def _loot_source(
+    context: ExecutionContext, source: list[str], loot: LootContext
+) -> tuple[str, dict] | None:
+    """``loot <table>``, ``fish <table> <pos> [tool]``, ``kill <target>`` or
+    ``mine <pos> [tool]`` -> (table id, table); None once an error was reported."""
+    kind = source[0] if source else ""
+    if kind in ("loot", "fish") and len(source) >= 2:
+        table_id = normalise_id(source[1])
+        if kind == "fish":
+            context.note_once("loot … fish: the fishing context (luck, open water) is not modelled")
+    elif kind == "kill" and len(source) >= 2:
+        victims = require_targets(context, source[1])
+        if not victims:
+            return None
+        if len(victims) > 1:
+            context.game_error("argument.entity.toomany")
+            return None
+        entity_type = victims[0].type.split(":", 1)
+        table_id = f"{entity_type[0]}:entities/{entity_type[-1]}"
+    elif kind == "mine" and len(source) >= 4:
+        from datapack_emulator.emulator.commands.blocks import position_at
+
+        position = position_at(context, source[1:4])
+        if position is None:
+            return None
+        block = context.world.blocks.get(context.dimension, position)
+        loot.block = block
+        if len(source) > 4 and source[4] not in ("mainhand", "offhand"):
+            loot.tool = parse_item(source[4])
+        namespace, _, path = block.id.partition(":")
+        table_id = f"{namespace}:blocks/{path}"
+        context.note_once(
+            "loot … mine: the tool is not modelled; conditions like match_tool are not checked"
+        )
+    else:
+        _usage(context)
+        return None
+    table = _loot_table(context, table_id)
+    if table is None:
+        if kind in ("kill", "mine"):  # nothing to drop is not an error
+            return (table_id, {})
+        context.game_error("argument.resource_or_id.no_such_element", table_id, "loot_table")
+        return None
+    return (table_id, table)
+
+
+#: how many tokens each loot target takes after its own name
+_TARGET_WIDTH = {"give": 1, "spawn": 3, "insert": 3}
+
+
 def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
-    """``loot (give|spawn|replace entity) … loot <table>``; other sources are noted."""
+    """``loot <target> <source>``: give, spawn, insert, replace entity|block;
+    loot, fish, kill and mine sources."""
     arguments = command.arguments
     if len(arguments) < 3:
         return _usage(context)
     target = arguments[0]
-    if target == "insert" or (
-        target == "replace" and len(arguments) > 1 and arguments[1] == "block"
-    ):
-        return _blocks_not_modelled(context, f"loot {target} block")
-    consumed = {"give": 2, "spawn": 4}.get(target)
+    width = _TARGET_WIDTH.get(target)
     if target == "replace":
-        # replace entity <targets> <slot> [<count>] <source>
-        consumed = 5 if len(arguments) > 5 and arguments[4].lstrip("-").isdigit() else 4
-    if consumed is None or len(arguments) <= consumed:
+        # replace entity <targets> <slot> [<count>] | replace block <pos> <slot> [<count>]
+        head = 4 if len(arguments) > 1 and arguments[1] == "block" else 2
+        count_at = 1 + head + 1
+        width = head + 1 + (1 if len(arguments) > count_at and _is_int(arguments[count_at]) else 0)
+    if width is None or len(arguments) <= width + 1:
         return _usage(context)
-    source = arguments[consumed:]
-    if source[0] != "loot" or len(source) < 2:
-        context.note_once(
-            f"loot … {source[0]}: only 'loot <table>' sources are emulated (fish, kill and "
-            "mine need blocks, tools or the entity's own table)"
-        )
+    loot = LootContext()
+    found = _loot_source(context, arguments[1 + width :], loot)
+    if found is None:
         return CommandResult.failure()
-    table = _loot_table(context, source[1])
-    if table is None:
-        context.game_error("argument.resource_or_id.no_such_element", source[1], "loot_table")
-        return CommandResult.failure()
-    result = evaluate(table, lambda tid: _loot_table(context, tid), context.world.random)
+    _, table = found
+    result = evaluate(
+        table, lambda tid: _loot_table(context, tid), context.world.random, context=loot
+    )
     if result.skipped:
         context.note_once(
             "loot table parts not evaluated by the emulator (conditions pass, functions are "
@@ -510,12 +626,32 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
         position = resolve_position(arguments[1:4], context.position)
         for stack in items:
             drop(context, position, stack)
+    elif target == "insert":
+        container = _container(context, arguments[1:4])
+        if container is None:
+            return CommandResult.failure()
+        for stack in items:
+            container[1].insert(stack.copy())  # what does not fit is lost
+    elif arguments[1] == "block":
+        container = _container(context, arguments[2:5])
+        if container is None:
+            return CommandResult.failure()
+        block = container[1]
+        first = block.slot_keys(arguments[5])
+        if first is None or len(first) != 1:
+            context.game_error("slot.unknown", arguments[5])
+            return CommandResult.failure()
+        count = int(arguments[6]) if width == 6 else len(items)
+        for offset in range(count):
+            slot = first[0] + offset
+            if block.slot_keys(f"container.{slot}") is not None:
+                block.set_item(slot, items[offset].copy() if offset < len(items) else None)
     else:
         first = slot_number(arguments[3])
         if first is None:
             context.game_error("slot.unknown", arguments[3])
             return CommandResult.failure()
-        count = int(arguments[4]) if consumed == 5 else len(items)
+        count = int(arguments[4]) if width == 4 else len(items)
         for entity in require_targets(context, arguments[2]):
             for offset in range(count):
                 name = SLOT_NAMES.get(first + offset)
@@ -530,6 +666,10 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
     else:
         context.feedback("commands.drop.success.multiple", len(items))
     return CommandResult(success=bool(items), value=len(items))
+
+
+def _is_int(token: str) -> bool:
+    return token.lstrip("-").isdecimal()
 
 
 def split_stacks(stacks: list[ItemStack]) -> list[ItemStack]:
@@ -550,11 +690,26 @@ def split_stacks(stacks: list[ItemStack]) -> list[ItemStack]:
 
 
 def items_condition_count(arguments: list[str], context: ExecutionContext) -> int | None:
-    """``items entity <targets> <slots> <predicate>``: matching items; None when
-    the condition cannot be evaluated (blocks)."""
+    """``items (entity <targets> | block <pos>) <slots> <predicate>``: how many
+    matching items; None when the condition cannot be evaluated."""
     if len(arguments) >= 2 and arguments[1] == "block":
-        context.note_key_once("emulator.condition", "items block")
-        return None
+        if len(arguments) < 7:
+            return 0
+        from datapack_emulator.emulator.commands.blocks import position_at
+
+        position = position_at(context, arguments[2:5])
+        if position is None:
+            return None
+        block = context.world.blocks.stored(context.dimension, position)
+        slots = block.slot_keys(arguments[5]) if block is not None else None
+        if not slots:
+            return 0
+        predicate = _predicate(context, arguments[6])
+        return sum(
+            stack.count
+            for stack in (block.get_item(slot) for slot in slots)
+            if stack is not None and predicate.matches(stack)
+        )
     if len(arguments) < 5:
         return 0
     predicate = _predicate(context, arguments[4])

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from datapack_emulator.emulator.commands.blocks import position_at
 from datapack_emulator.emulator.commands.helpers import find_targets
 from datapack_emulator.emulator.commands.parser import Command, parse_duration
 from datapack_emulator.emulator.commands.result import CommandResult
@@ -37,16 +38,24 @@ def _macro_arguments(rest: list[str], context: ExecutionContext) -> dict[str, An
     if rest[0] != "with" or len(rest) < 3:
         return {}
     source, target = rest[1], rest[2]
-    path = rest[3] if len(rest) > 3 else ""
+    width = 3 if source == "block" else 1
+    path = rest[2 + width] if len(rest) > 2 + width else ""
     if source == "storage":
         store: Any = context.world.storage.get(normalise_id(target), {})
     elif source == "entity":
         entities = find_targets(context, target)
         store = entities[0].data(context.emulator.version) if entities else {}
+    elif source == "block":
+        position = position_at(context, rest[2:5])
+        if position is None:
+            return {}
+        block = context.world.blocks.stored(context.dimension, position)
+        if block is None or not block.has_entity:
+            context.game_error("commands.data.block.invalid")
+            return {}
+        store = block.data(context.emulator.version, position)
     else:
-        context.note_key_once(
-            "emulator.unimplemented", f"function ... with {source}", context.emulator.version.id
-        )
+        context.game_error("command.unknown.argument")
         return {}
     if path:
         store = nbt_get(store, path)

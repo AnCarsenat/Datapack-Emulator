@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from datapack_emulator.emulator.commands.helpers import find_holders, find_targets, require_targets
-from datapack_emulator.emulator.commands.parser import Command
+from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import (
     flatten_text_component,
@@ -14,6 +14,7 @@ from datapack_emulator.emulator.common import (
     normalise_id,
     to_snbt,
 )
+from datapack_emulator.emulator.runtime.blocks import block_position
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.world import Entity
 
@@ -89,15 +90,23 @@ def _text_resolver(context: ExecutionContext, viewer: Entity | None):
 
 
 def _nbt_text(context: ExecutionContext, component: dict[str, Any]) -> str:
-    """An ``nbt`` text component: the value at a path of a storage or entity."""
+    """An ``nbt`` text component: the value at a path of a storage, entity or block."""
     path = str(component.get("nbt", ""))
     if "storage" in component:
         store: Any = context.world.storage.get(normalise_id(str(component["storage"])), {})
     elif "entity" in component:
         entities = find_targets(context, str(component["entity"]))
         store = entities[0].data(context.emulator.version) if entities else None
+    elif "block" in component:
+        tokens = str(component["block"]).split()
+        store = None
+        if len(tokens) == 3:
+            position = block_position(resolve_position(tokens, context.position))
+            block = context.world.blocks.stored(context.dimension, position)
+            if block is not None:
+                store = block.data(context.emulator.version, position) or None
     else:
-        return ""  # block NBT is not modelled
+        return ""
     value = nbt_get(store, path) if isinstance(store, dict) else None
     if value is None:
         return ""
