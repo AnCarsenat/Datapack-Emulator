@@ -234,7 +234,7 @@ class Emulator:
             self.schedules = [entry for entry in self.schedules if entry[0] > game_time]
             for _, target in due:
                 self.run_scheduled(target)
-            tick_entities(self.world, self.version)
+            tick_entities(self.world, self.version, self._instant_effect)
             self._advancement_triggers()
 
         elapsed = self.profiler.total_us - start
@@ -247,6 +247,11 @@ class Emulator:
                 version=self.version.id,
             )
         return elapsed
+
+    def _instant_effect(self, entity, effect) -> None:
+        from datapack_emulator.emulator.commands.living import apply_instant
+
+        apply_instant(self.root_context(), entity, effect)
 
     @property
     def started(self) -> bool:

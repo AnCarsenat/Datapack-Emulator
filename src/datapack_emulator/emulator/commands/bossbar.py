@@ -60,7 +60,9 @@ def cmd_bossbar(command: Command, context: ExecutionContext) -> CommandResult:
             names = ", ".join(bar.shown for bar in bars.values())
             context.feedback("commands.bossbar.list.bars.some", len(bars), names)
         return CommandResult(success=True, value=len(bars))
-    if action == "add" and len(arguments) >= 3:
+    if action == "add" and len(arguments) < 3:
+        return _usage(context)
+    if action == "add":
         bar_id = normalise_id(arguments[1])
         if bar_id in bars:
             context.game_error("commands.bossbar.create.failed", bar_id)
@@ -180,7 +182,7 @@ def store_bossbar(context: ExecutionContext, bar_id: str, what: str, value: int)
     """``execute store … bossbar <id> value|max``"""
     bar = bossbars(context).get(normalise_id(bar_id))
     if bar is not None and what in ("value", "max"):
-        setattr(bar, what, max(0 if what == "value" else 1, value))
+        setattr(bar, what, value)  # stored as it is, unlike the set subcommand
 
 
 BOSSBAR_HANDLERS = {"bossbar": cmd_bossbar}

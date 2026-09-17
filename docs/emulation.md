@@ -24,17 +24,24 @@ Deliberately small: no chunks, physics or block updates.
   changes. `players` fake players (`Player1`, …) exist from the start;
   killed players stay (they respawn), other killed entities are removed.
 * **living entities** (`runtime/living.py`) — players, mobs and armor stands
-  have health (their maximum health until changed), attributes with base
-  values and modifiers, and status effects, all in `data get entity` in the
+  have health (their maximum health when they appear), attributes with base
+  values, modifiers and vanilla's value ranges (only the attributes their
+  kind has: pigs have no attack damage), and status effects (a weaker, longer
+  effect waits hidden under a stronger one), all in `data get entity` in the
   version's format (`Attributes`/`attributes`, `ActiveEffects` with numeric ids
   before 1.20.2, `active_effects` after, `generic.` attribute ids before
-  1.21.2). Mobs also report `CanPickUpLoot`, `PersistenceRequired`,
-  `LeftHanded`, `NoAI`. Base values and maximum health by type are a table
+  1.21.2, modifier UUIDs before 1.21). Mobs also report `CanPickUpLoot`,
+  `PersistenceRequired` and `LeftHanded`; armor stands their flags and pose. Base values and maximum health by type are a table
   in the code, not read from the game. Effects count down each tick;
-  `instant_health`/`instant_damage` heal or hurt (reversed for the undead);
-  the others have no other effect. Health reaching 0 kills the entity
-  (players drop their items and respawn with full health); `health`
-  criteria follow. No regeneration, hunger, AI or movement.
+  `instant_health`/`instant_damage` heal or hurt on the entity's next tick
+  (reversed for `#inverted_healing_and_harm`, with Java's int arithmetic);
+  the others have no other effect. The undead ignore poison and
+  regeneration, spiders poison, withers wither. A hit makes an entity
+  invulnerable for 10 ticks except to harder hits (which only deal the
+  difference); armor stands only break from player attacks. Health reaching
+  0 kills the entity (players drop their items and respawn with full
+  health); `health` criteria follow. No regeneration, hunger, AI or
+  movement.
 * **advancements** (`runtime/advancements.py`) — the pack's advancements and,
   with a client jar, the vanilla ones, with each player's granted criteria.
   `minecraft:tick` criteria are checked every tick and `minecraft:location`
@@ -46,9 +53,10 @@ Deliberately small: no chunks, physics or block updates.
   `data get entity`); killing or teleporting an entity gets it off its
   vehicle, teleporting a vehicle moves its riders.
 * **item entities** — age each tick and despawn at 6000 (`Age: -32768`
-  never does), count their `PickupDelay` down (32767 never), merge with
-  items of the same kind at the same spot, and are picked up by players
-  standing within reach (not in spectator mode).
+  never does), count their `PickupDelay` down (32767 never), every 40 ticks
+  merge with items of the same kind and owner next to them (the bigger stack
+  takes from the smaller), and are picked up by players standing within
+  reach (not in spectator mode, and only their `Owner` when they have one).
 * **scoreboard** — objectives with criteria, display names and display
   slots, scores per holder (players by name, other entities by UUID, fake
   players by name), enabled triggers, and the last 64 changes of every score
@@ -135,7 +143,7 @@ setting through a filter with no match adds the element).
 
 | command | notes |
 | --- | --- |
-| `execute` | `as at positioned rotated in align if unless store run summon on`; `anchored facing` pass through. `on vehicle\|passengers\|controller\|owner\|origin\|leasher` follow the entity's links (`Owner`, `Thrower`, `leash` UUIDs); `on attacker\|target` end the branch (no combat or AI). `store` (score, storage, entity, block, bossbar) binds its target where it appears in the chain; `run return` leaves the function on the first branch that reaches it |
+| `execute` | `as at positioned rotated in align if unless store run summon on`; `anchored facing` pass through. `on vehicle\|passengers\|controller\|owner\|origin\|leasher` follow the entity's links (`controller`: a mob with AI ridden by a mob; `owner`: tamed animals' `Owner`; `origin`: a projectile's `Owner` or an item's `Thrower`; `leash`); `on attacker\|target` end the branch (no combat or AI). `store` (score, storage, entity, block, bossbar) binds its target where it appears in the chain; `run return` leaves the function on the first branch that reaches it |
 | `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `predicate <id>` (or, from 1.20.5, an inline predicate), `block <pos> <predicate>` (id or `#tag` from the jar or the pack, properties, NBT subset), `blocks <start> <end> <destination> all\|masked` (the count is the number of blocks compared), `data` (entity, block, storage), `items entity\|block <…> <slots> <predicate>` (slot wildcards like `container.*`; the count is the number of matching items), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
 | `setblock` | `replace`, `keep`, `destroy`, `strict` (1.21.5+). As in vanilla a container there is emptied first, and "Could not set the block" when the block state is already the same (the NBT is then not applied) |
 | `fill` | `replace [filter]`, `keep`, `hollow`, `outline`, `destroy`, `strict`, and from 1.21.5 `replace <filter> destroy\|hollow\|outline\|strict`; counts the blocks that changed; limited to 32 768 blocks, or `commandModificationBlockLimit` from 1.19.4 ("Too many blocks in the specified area") |
@@ -168,11 +176,11 @@ setting through a filter with no match adds the element).
 | `experience`, `xp` | `add\|set <targets> <amount> [levels\|points]`, `query <player> levels\|points`, following vanilla's arithmetic: points roll levels over both ways and change `XpTotal`; levels keep the progress and reset everything below 0; `set … points` above the level's maximum fails |
 | `seed`, `list [uuids]` | the world seed; the players online |
 | `forceload` | `add`/`remove <from> [to]` (at most 256 chunks), `remove all`, `query [pos]` |
-| `effect` | `give <targets> <effect> [seconds\|infinite] [amplifier] [hideParticles]` (30 s by default; `infinite` from 1.19.4; a weaker or shorter effect fails), `clear [targets] [effect]` |
-| `attribute` | `get [scale]`, `base get [scale]\|set\|reset`, `modifier add\|remove\|value get` with resource location ids and `add_value`/`add_multiplied_base`/`add_multiplied_total` (UUIDs, a name and `add`/`multiply_base`/`multiply` before 1.20.5); ids with `generic.` before 1.21.2; only living entities |
-| `damage` | `<target> <amount> [type] […]`: absorption, then health; invulnerable entities and creative/spectator players refuse ("Target is invulnerable to the given damage type"); the damage type id is checked with a jar |
+| `effect` | `give <targets> <effect> [seconds\|infinite] [amplifier] [hideParticles]` (30 s by default; `infinite` from 1.19.4; fails when nothing changes, as vanilla's update decides), `clear [targets] [effect]` |
+| `attribute` | `get [scale]`, `base get [scale]\|set`, `base reset` (1.21.4+), `modifier add\|remove\|value get`: resource location ids from 1.21 (a UUID and a name before), operations `add_value`/`add_multiplied_base`/`add_multiplied_total` from 1.20.5 (`add`/`multiply_base`/`multiply` before); ids checked against the jar's registry, or the table with `generic.` before 1.21.2; values clamped to vanilla's ranges and scaled results saturated; "has no attribute" for kinds without it |
+| `damage` | `<target> <amount> [type] […]`: absorption, then health; invulnerable entities, creative/spectator players, armor stands (except player attacks) and entities still recovering from a harder hit refuse ("Target is invulnerable to the given damage type"); the damage type id is checked with a jar |
 | `ride` | `mount` (no loops, not onto players, same dimension) and `dismount`, with vanilla's errors |
-| `bossbar` | `add`, `remove`, `list`, `get value\|max\|visible\|players`, `set name\|color\|style\|value\|max\|visible\|players`, with the "Nothing changed" errors |
+| `bossbar` | `add`, `remove`, `list`, `get value\|max\|visible\|players`, `set name\|color\|style\|value\|max\|visible\|players`, with the "Nothing changed" errors; `execute store … bossbar` stores the raw value and fails before running on an unknown bar |
 | `setworldspawn`, `spawnpoint` | stored (`SpawnX`… on players; the angle wraps); `spawnpoint` takes players only |
 | `tick` | `rate` (1–10 000), `freeze`/`unfreeze`, `query` are kept; `step` needs a frozen game; stepping and sprinting are noted |
 
