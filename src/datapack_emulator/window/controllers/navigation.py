@@ -89,13 +89,13 @@ class NavigationController(Controller):
         resource = self.resource_of(function_id)
         return resource.path if resource is not None else None
 
-    def open_function(self, function_id: str, line: int = 0) -> None:
+    def open_function(self, function_id: str, line: int = 0, ask: bool = True) -> None:
         """Right-click target from the graph, the profiler and the logs."""
         path = self.function_path(function_id)
         if path is None:
             self.status(f"{function_id} has no file in {self.window.version.id}")
             return
-        self.show_source(path, line)
+        self.show_source(path, line, ask=ask)
 
     # -- the source view ----------------------------------------------------
 
@@ -106,11 +106,21 @@ class NavigationController(Controller):
             self._highlighter.setParent(None)
             self._highlighter = None
 
-    def show_source(self, path: Path, line: int = 0, reveal: bool = True) -> None:
+    def show_source(self, path: Path, line: int = 0, reveal: bool = True, ask: bool = True) -> None:
         """Open a file in the source view; ``reveal`` selects it in the
-        explorer too (not when the click came from the explorer)."""
+        explorer too (not when the click came from the explorer). ``ask`` is
+        false when the view follows something else (the debugger stopping,
+        reverting): unsaved edits are then kept, not asked about."""
         window = self.window
-        if not window.editor.maybe_discard():
+        same = path == self.source_path
+        if same and window.editor.modified and ask:
+            # clicking the file already open must not offer to throw the edits away
+            self._go_to_line(line)
+            return
+        if ask and not window.editor.maybe_discard():
+            return
+        if same and window.editor.modified:
+            self._go_to_line(line)  # the view keeps the edits and only moves
             return
         self.source_path = path
         self._detach_highlighter()
@@ -122,14 +132,21 @@ class NavigationController(Controller):
             return
         readable = True
         try:
-            text = path.read_text(encoding="utf-8")
+            text = window.editor.read(path)
         except (OSError, UnicodeDecodeError) as exc:
             text = f"cannot read {path}: {exc}"
             readable = False
         self._highlighter = highlighter_for(path, window.source_edit.document())
         window.source_edit.setPlainText(text)
-        window.editor.opened(path, text_file=readable)
-        window.source_label.setText(f"{path}:{line}" if line else str(path))
+        window.editor.opened(path, text_file=readable, line=line)
+        self._go_to_line(line)
+        window.debug.refresh_gutter()
+        if reveal:
+            self.reveal_in_explorer(path)
+        window.tabs.setCurrentWidget(window.tab_page(TAB_SOURCE))
+
+    def _go_to_line(self, line: int) -> None:
+        window = self.window
         if line > 0:
             block = window.source_edit.document().findBlockByNumber(line - 1)
             if block.isValid():
@@ -137,9 +154,6 @@ class NavigationController(Controller):
                 cursor.setPosition(block.position())
                 window.source_edit.setTextCursor(cursor)
                 window.source_edit.centerCursor()
-        window.debug.refresh_gutter()
-        if reveal:
-            self.reveal_in_explorer(path)
         window.tabs.setCurrentWidget(window.tab_page(TAB_SOURCE))
 
     # -- the explorer ---------------------------------------------------------
@@ -347,10 +361,15 @@ class NavigationController(Controller):
             edit.setTextCursor(cursor)
         menu = edit.createStandardContextMenu()
         menu.addSeparator()
+        window = self.window
+        save = menu.addAction("save file (Ctrl+S)", window.editor.save)
+        save.setEnabled(window.editor.modified)
+        revert = menu.addAction("revert file", window.editor.revert)
+        revert.setEnabled(window.editor.modified)
+        menu.addSeparator()
         function_id = self.function_at(self.source_path)
         text = edit.textCursor().block().text().strip()
         runnable = function_id is not None and bool(text) and not text.startswith(("#", "$"))
-        window = self.window
         analyze = menu.addAction("analyze this line", self.analyze_cursor_line)
         analyze.setEnabled(self.source_path is not None)
         run_line = menu.addAction("run this line (console)", lambda: window.console.run(text))

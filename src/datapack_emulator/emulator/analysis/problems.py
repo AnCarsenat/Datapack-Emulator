@@ -20,6 +20,7 @@ check`` show the list.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -36,7 +37,7 @@ from datapack_emulator.emulator.common import (
     normalise_tagged_id,
     parse_snbt,
 )
-from datapack_emulator.emulator.runtime.library import FunctionLibrary
+from datapack_emulator.emulator.runtime.library import FunctionLibrary, line_problems
 from datapack_emulator.emulator.versions import Version
 
 SEVERITIES = ("error", "warning", "info")
@@ -144,14 +145,12 @@ def text_problems(text: str, suffix: str, version: str | Version) -> dict[int, s
     """What the version would refuse in one file's text, by line (1-based):
     function lines for ``.mcfunction``, the parse error for JSON. The source
     view underlines these as you type; ``check --lines`` prints them."""
-    import json
-
-    from datapack_emulator.emulator.runtime.library import line_problems
-
     suffix = suffix.lower()
     if suffix == ".mcfunction":
         return line_problems(text, command_set(versions.parse(version)))
-    if suffix in (".json", ".mcmeta") and text.strip():
+    if suffix in (".json", ".mcmeta"):
+        if not text.strip():  # the game refuses an empty file too
+            return {max(1, len(text.splitlines())): "not valid JSON: the file is empty"}
         try:
             json.loads(text)
         except json.JSONDecodeError as exc:
@@ -160,7 +159,8 @@ def text_problems(text: str, suffix: str, version: str | Version) -> dict[int, s
             line = min(exc.lineno, len(lines))
             while line > 1 and not lines[line - 1].strip():
                 line -= 1
-            return {line: f"not valid JSON: {exc.msg} (line {exc.lineno})"}
+            where = f" (line {exc.lineno})" if exc.lineno != line else ""
+            return {line: f"not valid JSON: {exc.msg}{where}"}
     return {}
 
 

@@ -133,18 +133,26 @@ current version.
   use (another overlay's copy), the id its folders give is shown.
 * **Source** — the selected file with syntax highlighting for `.mcfunction`
   (commands, subcommands, selectors, resource locations, NBT, macros,
-  comments) and JSON/`pack.mcmeta`, **editable**: the label shows `●` while
-  there are unsaved edits, Ctrl+S (with the focus in the view) or *file ›
-  save file* (Ctrl+Alt+S) writes the file and reloads the datapacks, and
-  *file › revert file* reads it again. Opening another file or closing the
-  window with unsaved edits asks to save, discard or stay; a file saved
-  inside a project's packs marks the project changed (saving the project
-  keeps the edit). While you type, lines the emulated version would refuse
-  are underlined in red with a mark in the gutter — unknown or missing
-  commands and subcommands, unknown selector options, macro lines that are
-  not templates (or macros before 1.20.2), JSON that does not parse — and
-  hovering one says why; the full list is in the problems dock after a
-  save. Images are shown read-only. Right-click a line to:
+  comments) and JSON/`pack.mcmeta`, **editable**: the label and the tab show
+  `●` while there are unsaved edits, Ctrl+S (or *file › save file*,
+  Ctrl+Alt+S) writes the file — while the view has unsaved edits Ctrl+S saves
+  it wherever the focus is, otherwise it saves the project — and reloads the
+  datapacks, which stops a run; *file › revert file* reads the file again.
+  The file's line endings are kept, the breakpoints of the file follow the
+  lines they were on, and saving asks first when another program wrote the
+  file meanwhile. Saving is refused while the debugger is stopped (the
+  reload would pull the world from under it). Opening another file, opening
+  a project or closing the window with unsaved edits asks to save, discard or
+  stay; clicking the file that is already open, or the debugger stopping in
+  it, keeps the edits without asking. A file saved inside a project's packs
+  marks the project changed (saving the project keeps the edit). While you
+  type, lines the emulated version would refuse are underlined in red with an
+  amber mark in the gutter — unknown or missing commands and subcommands,
+  unknown selector options, macro lines that are not templates (or macros
+  before 1.20.2), JSON that does not parse — and hovering one says why; the
+  problems dock reports the first line that stops each function from loading,
+  so it shows fewer of them ([`check --lines`](cli.md#check--problems) prints
+  the same list as the view). Images are shown read-only. Right-click a line to:
   * **analyze this line** (also Ctrl+I): the inspector explains it without
     running it — what the command does, each `execute` step in words (who,
     where, which condition), what each selector matches, the functions and

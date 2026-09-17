@@ -826,7 +826,7 @@ QMenuBar::item:selected {
            <enum>Qt::CustomContextMenu</enum>
           </property>
           <property name="toolTip">
-           <string>edit the file here; Ctrl+S saves it and reloads the pack; underlined lines are refused by the emulated version (hover for why)</string>
+           <string>hover an underlined line for why this version refuses it</string>
           </property>
           <property name="lineWrapMode">
            <enum>QPlainTextEdit::NoWrap</enum>
@@ -2278,7 +2278,7 @@ QMenuBar::item:selected {
     <string>save project</string>
    </property>
    <property name="statusTip">
-    <string>save settings, tests, notes and a copy of the datapack into the project's .dpemu file</string>
+    <string>save settings, tests, notes and a copy of the datapack into the project's .dpemu file (Ctrl+S saves the open file first while it has unsaved edits)</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+S</string>

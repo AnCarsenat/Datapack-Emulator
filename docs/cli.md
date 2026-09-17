@@ -428,6 +428,8 @@ case-insensitively; the text cannot be empty. `--paths` adds file paths,
 datapack-emulator-cli check samples/hat --declared --boundaries
 datapack-emulator-cli check projects/hat.dpemu --severity warning --strict
 datapack-emulator-cli check samples/hat --version 1.21.4 --code selector-option --json
+datapack-emulator-cli check samples/hat --lines draft.mcfunction
+datapack-emulator-cli check samples/hat --versions 1.19 1.21.4 --lines draft.mcfunction
 ```
 
 The problems dock: every problem of the pack in the version (or each of the
@@ -440,6 +442,7 @@ the counts. Nothing runs.
 | `--severity error\|warning\|info` | the lowest severity shown |
 | `--code CODE` | only these kinds (repeatable; one of the codes below) |
 | `--strict` | exit with `1` on warnings too (errors always do) |
+| `--lines FILE` | check one file's lines the way the source view underlines them, instead of the pack (repeatable; `.mcfunction`, `.json`, `.mcmeta`). Prints `file:line: message`, with `[version]` before the message when several versions were chosen, or objects with `--json`; exit `1` when a line is refused, `2` when the file cannot be read. It takes no `--code` or `--severity` |
 | `--json` | the problems, their files and lines, and the counts, as JSON: one object, or a list when versions were chosen with `--versions`, `--from/--to`, `--declared` or `--all` |
 | `--verbose` | name each version and each problem's file |
 | `--vanilla`, `--no-vanilla`, `--download` | the client jar ids are checked against (see [client jars](#client-jars)) |
