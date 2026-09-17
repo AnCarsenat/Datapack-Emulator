@@ -8,7 +8,13 @@ from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import normalise_id, parse_snbt
 from datapack_emulator.emulator.runtime.context import ExecutionContext
-from datapack_emulator.emulator.runtime.world import Entity, ints_to_uuid, normalise_rotation
+from datapack_emulator.emulator.runtime.world import (
+    Entity,
+    dismount,
+    ints_to_uuid,
+    mount,
+    normalise_rotation,
+)
 
 
 def cmd_tag(command: Command, context: ExecutionContext) -> CommandResult:
@@ -41,18 +47,50 @@ def cmd_summon(command: Command, context: ExecutionContext) -> CommandResult:
     position = resolve_position(command.arguments[1:4], context.position)
     payload = next((a for a in command.arguments[1:] if a.startswith("{")), "")
     data = parse_snbt(payload) if payload else {}
-    entity = Entity(type=entity_type)
-    uuid = ints_to_uuid(data.get("UUID"))
-    if uuid is not None:
-        if any(other.uuid == uuid for other in context.world.entities):
-            context.game_error("commands.summon.failed.uuid")
-            return CommandResult.failure()
-        entity.uuid = uuid
     data["Pos"] = position  # the position argument wins over Pos in the NBT
-    entity.apply_data(data)
-    context.world.spawn(entity)
+    entity = build_entity(context, entity_type, data)
+    if entity is None:
+        context.game_error("commands.summon.failed.uuid")
+        return CommandResult.failure()
     context.feedback("commands.summon.success", entity.display)
     return CommandResult(success=True, value=1)
+
+
+def build_entity(context: ExecutionContext, entity_type: str, data: dict) -> Entity | None:
+    """Spawn an entity from NBT, with its ``Passengers`` riding it; None when a
+    UUID is already taken (nothing is spawned then)."""
+    world = context.world
+    taken = {other.uuid for other in world.entities}
+    created: list[Entity] = []
+
+    def make(kind: str, nbt: dict, position: list[float]) -> Entity | None:
+        entity = Entity(type=kind)
+        uuid = ints_to_uuid(nbt.get("UUID"))
+        if uuid is not None:
+            if uuid in taken:
+                return None
+            entity.uuid = uuid
+        taken.add(entity.uuid)
+        nbt = dict(nbt)
+        nbt.setdefault("Pos", position)
+        riders = nbt.pop("Passengers", None)
+        entity.apply_data(nbt)
+        created.append(entity)
+        for rider in riders if isinstance(riders, list) else []:
+            if not isinstance(rider, dict) or not isinstance(rider.get("id"), str):
+                continue
+            passenger = make(normalise_id(rider["id"]), rider, entity.position)
+            if passenger is None:
+                return None
+            mount(passenger, entity)
+        return entity
+
+    entity = make(entity_type, data, data["Pos"])
+    if entity is None:
+        return None
+    for each in created:
+        world.spawn(each)
+    return entity
 
 
 def cmd_kill(command: Command, context: ExecutionContext) -> CommandResult:
@@ -67,6 +105,12 @@ def cmd_kill(command: Command, context: ExecutionContext) -> CommandResult:
     elif victims:
         context.feedback("commands.kill.success.multiple", len(victims))
     return CommandResult(success=bool(victims), value=len(victims))
+
+
+def move_with_passengers(entity: Entity, destination: list[float]) -> None:
+    entity.position = list(destination)
+    for passenger in entity.passengers:
+        move_with_passengers(passenger, destination)
 
 
 def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
@@ -97,7 +141,8 @@ def cmd_teleport(command: Command, context: ExecutionContext) -> CommandResult:
         destination = list(anchor[0].position)
     for entity in targets:
         if entity is not None:
-            entity.position = list(destination)
+            dismount(entity)  # teleporting takes an entity off its vehicle
+            move_with_passengers(entity, destination)
             if rotation is not None:
                 entity.rotation = list(rotation)
     if len(targets) == 1 and targets[0] is not None:

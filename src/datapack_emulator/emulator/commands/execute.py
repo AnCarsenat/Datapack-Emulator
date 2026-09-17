@@ -20,7 +20,7 @@ from datapack_emulator.emulator.commands.parser import (
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import nbt_get, nbt_set, normalise_id, normalise_tagged_id
 from datapack_emulator.emulator.runtime.context import ExecutionContext
-from datapack_emulator.emulator.runtime.world import Entity
+from datapack_emulator.emulator.runtime.world import Entity, ints_to_uuid
 
 #: a store waiting for the command's result, bound to the context it appeared in
 PendingStore = tuple[Subcommand, ExecutionContext]
@@ -146,16 +146,46 @@ def _execute_step(
             Entity(type=normalise_id(arguments[0]), position=list(current.position))
         )
         return [current.branch(executor=entity)]
-    if name == "on":
-        # vehicles, passengers, owners, leashes and attackers are not modelled:
-        # vanilla ends the branch when the relation does not apply
-        current.note_once(
-            f"'execute on {' '.join(arguments)}': entity relations are not emulated, "
-            "so the branch ends"
-        )
-        return []
+    if name == "on" and arguments:
+        executor = current.executor
+        if executor is None:
+            return []
+        return [
+            current.branch(executor=entity) for entity in related(current, executor, arguments[0])
+        ]
     # store (bound by the caller), anchored, facing: nothing to change
     return [current]
+
+
+def related(context: ExecutionContext, entity: Entity, relation: str) -> list[Entity]:
+    """``execute on``: the entities ``relation`` leads to (none when it does not apply)."""
+    world = context.world
+    if relation == "vehicle":
+        return [entity.vehicle] if entity.vehicle is not None else []
+    if relation == "passengers":
+        return list(entity.passengers)
+    if relation == "controller":
+        return entity.passengers[:1]
+    keys = {
+        "owner": ("Owner",),
+        "origin": ("Owner", "Thrower", "owner"),
+        "leasher": ("leash", "Leash"),
+    }.get(relation)
+    if keys is None:
+        # attacker and target need combat and AI
+        context.note_once(f"'execute on {relation}': not modelled, so the branch ends")
+        return []
+    for key in keys:
+        value = entity.nbt.get(key)
+        if isinstance(value, dict):
+            value = value.get("UUID")
+        uuid = ints_to_uuid(value) if isinstance(value, list) else None
+        if uuid is None and isinstance(value, str):
+            uuid = value
+        if uuid is not None:
+            found = world.entity_by_id(uuid)
+            return [found] if found is not None else []
+    return []
 
 
 def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: CommandResult) -> None:
@@ -176,6 +206,10 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
             data = block.data(context.emulator.version, position)
             nbt_set(data, arguments[5], _stored_number(value, arguments[6:8]))
             block.apply_data(data)
+    elif target == "bossbar":
+        from datapack_emulator.emulator.commands.bossbar import store_bossbar
+
+        store_bossbar(context, arguments[2], arguments[3], value)
     elif target == "entity":
         for entity in find_targets(context, arguments[2]):
             if entity.is_player:  # player data cannot be modified
