@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt, QUrl
+from PySide6.QtCore import QAbstractItemModel, QPoint, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QMenu
 
-from datapack_emulator.window.controllers.base import TAB_SOURCE, Controller
+from datapack_emulator.window.controllers.base import TAB_GRAPH, TAB_SOURCE, Controller
 from datapack_emulator.window.panels import (
     PACK_INDEX_ROLE,
     PATH_ROLE,
@@ -127,7 +127,58 @@ class NavigationController(Controller):
                 window.source_edit.setTextCursor(cursor)
                 window.source_edit.centerCursor()
         window.debug.refresh_gutter()
+        self.reveal_in_explorer(path)
         window.tabs.setCurrentWidget(window.tab_page(TAB_SOURCE))
+
+    # -- the explorer ---------------------------------------------------------
+
+    def reveal_in_explorer(self, path: Path | None) -> bool:
+        """Select a file's row in the explorer, expanding its folders and
+        scrolling to it; whether the explorer has it."""
+        tree = self.window.tree
+        model: QAbstractItemModel | None = tree.model()
+        if path is None or model is None or model.rowCount() == 0:
+            return False
+        matches = model.match(
+            model.index(0, 0),
+            PATH_ROLE,
+            str(path),
+            1,
+            Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+        )
+        if not matches:
+            return False
+        index = matches[0]
+        parent = index.parent()
+        while parent.isValid():
+            tree.expand(parent)
+            parent = parent.parent()
+        tree.setCurrentIndex(index)
+        tree.scrollTo(index, tree.ScrollHint.PositionAtCenter)
+        return True
+
+    # -- the call graph ---------------------------------------------------------
+
+    def show_in_graph(self, function_id: str | None = None) -> None:
+        """The call graph tab, centred on a function (default: the one in the
+        source view) with its callers and calls ringed."""
+        window = self.window
+        if function_id is None:
+            function_id = self.function_at(self.source_path)
+        if function_id is None:
+            self.status("open a function in the source view first")
+            return
+        if window.call_graph is None or window.graph_widget.graph is not window.call_graph:
+            window.runs.run_graphview()
+        window.tabs.setCurrentWidget(window.tab_page(TAB_GRAPH))
+        if window.graph_widget.focus(function_id):
+            graph = window.call_graph
+            self.status(
+                f"{function_id}: called by {len(graph.predecessors(function_id))}, "
+                f"calls {len(graph.successors(function_id))}"
+            )
+        else:
+            self.status(f"{function_id} is not in the call graph of {window.version.id}")
 
     # -- analysing lines ------------------------------------------------------
 
@@ -195,6 +246,7 @@ class NavigationController(Controller):
         window.datapacks.fill_inspector(rows + window.notes.rows_for(function_id))
         window.dock_inspector.show()
         window.dock_inspector.raise_()
+        self.reveal_in_explorer(self.function_path(function_id))
 
     def analyze_cursor_line(self) -> None:
         if self.source_path is None:
@@ -217,8 +269,10 @@ class NavigationController(Controller):
             return menu
         if path.is_file():
             menu.addAction("open in source view", lambda: self.open_in_source(path))
+            menu.addAction("show in explorer", lambda: self.reveal_in_explorer(path))
             function_id = self.function_at(path)
             if function_id is not None:
+                menu.addAction("show in call graph", lambda: self.show_in_graph(function_id))
                 menu.addAction(
                     "edit note…", lambda: self.window.notes.edit_function_note(function_id)
                 )
@@ -258,6 +312,12 @@ class NavigationController(Controller):
             "show callers and calls", lambda: self.calls_and_callers(function_id)
         )
         graph.setEnabled(function_id is not None)
+        in_graph = menu.addAction(
+            "show in call graph (Ctrl+Shift+G)", lambda: self.show_in_graph(function_id)
+        )
+        in_graph.setEnabled(function_id is not None)
+        inspect = menu.addAction("show in inspector", lambda: self.inspect_function(function_id))
+        inspect.setEnabled(function_id is not None)
         note = menu.addAction(
             "edit note on this function…",
             lambda: self.window.notes.edit_function_note(function_id),
@@ -308,6 +368,8 @@ class NavigationController(Controller):
             rows = describe_resource(resource, window.version)
             window.datapacks.fill_inspector(rows + window.notes.rows_for(function_id))
             window.dock_inspector.show()
+            window.dock_explorer.show()
+            self.reveal_in_explorer(resource.path)
 
     def _on_profile_double_click(self, item, _column: int) -> None:
         from datapack_emulator.window.panels.profile import FUNCTION_ROLE

@@ -273,6 +273,7 @@ class MainWindow(QMainWindow):
             "actionopen_in_source": lambda: navigation.open_in_source(navigation.selected_path()),
             "actioncopy_path": lambda: navigation.copy_path(navigation.selected_path()),
             "actionanalyze_line": navigation.analyze_cursor_line,
+            "actionshow_in_graph": lambda: navigation.show_in_graph(),
             "actionquick_open": lambda: navigation.search(0),
             "actionreset_layout": lambda: self.session.reset_layout(),
             "actionfocus_console": lambda: self.session.focus_console(),

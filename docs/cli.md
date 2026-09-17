@@ -21,7 +21,7 @@ logger (records from the emulator still print).
 | [`explain`](#explain--analyze-a-line) | what a command line does | analyze line (Ctrl+I) |
 | [`search`](#search) | text in functions, or ids | search in pack (Ctrl+Shift+F), quick open (Ctrl+P) |
 | [`check`](#check--problems) | what a version refuses or cannot run, without running (exit 1 on an error) | problems dock, *run › check pack* (Ctrl+Shift+K) |
-| [`graph`](#graph--the-call-graph) | the call graph, callers and calls | call graph tab, *show callers and calls*, export .dot |
+| [`graph`](#graph--the-call-graph) | the call graph, callers and calls | call graph tab, *show callers and calls*, *show in call graph*, export .dot |
 | [`project`](#project--dpemu-files) | create, show and edit projects | *file › new / save project*, environment tab, notes |
 | [`versions`](#versions) | list known versions | the version combo |
 | [`vanilla`](#vanilla--client-jars) | list, download, inspect client jars | *file › load / download client jar* |

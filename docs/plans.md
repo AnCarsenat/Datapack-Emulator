@@ -10,11 +10,6 @@ Nothing is queued here right now; take the next item from the lists below.
 
 ## Reported
 
-* **Show in inspector does not reveal the node** (bug) — *show in
-  inspector* from the profiler tree, the call graph and the other views
-  fills the inspector but does not expand the explorer to that function or
-  tag and highlight it. Select the matching explorer row (expanding its
-  parents and scrolling to it) whenever something is shown in the inspector.
 * **Open the last project on launch** (bug / feature) — the window starts on
   the first sample pack even when a project was open last time. Reopen the
   most recent project (the first entry of *open recent project*, as

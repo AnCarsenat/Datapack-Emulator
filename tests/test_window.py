@@ -1411,3 +1411,42 @@ def test_problems_dock(app, window, make_pack):
     problems.edit_filter.clear()
     problems.combo_severity.setCurrentText("info")
     assert problems.problems == [] and problems.tree.topLevelItemCount() == 0
+
+
+def test_inspector_and_source_reveal_the_explorer_row_and_the_graph(app, window, make_pack):
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "function test:deep/inner\n",
+            "data/test/function/deep/inner.mcfunction": "say hi\n",
+            "data/test/function/other.mcfunction": "say other\n",
+        }
+    )
+    window.datapacks.load(pack)
+    tree = window.tree
+    tree.collapseAll()
+    tree.clearSelection()
+    # show in inspector (graph, profiler, notes menus) selects and reveals the file
+    window.navigation.inspect_function("test:deep/inner")
+    index = tree.currentIndex()
+    assert index.data() == "inner.mcfunction"
+    assert tree.isExpanded(index.parent()) and tree.isExpanded(index.parent().parent())
+    # opening a file in the source view follows in the explorer too
+    window.navigation.open_function("test:other")
+    assert tree.currentIndex().data() == "other.mcfunction"
+    assert window.navigation.reveal_in_explorer(pack / "nope.mcfunction") is False
+
+    # from the source view, the call graph opens centred on the function
+    window.navigation.open_function("test:deep/inner")
+    assert window.call_graph is None
+    window._action("actionshow_in_graph").trigger()
+    assert window.call_graph is not None
+    assert window.tabs.currentWidget() is window.tab_page("graph_view")
+    assert window.graph_widget.focused == "test:deep/inner"
+    assert "called by 1, calls 0" in window.statusBar().currentMessage()
+    window.navigation.show_in_graph("test:missing")
+    assert window.graph_widget.focused is None
+    assert "not in the call graph" in window.statusBar().currentMessage()
+    window.navigation.source_path = None
+    window.navigation.show_in_graph()
+    assert "open a function" in window.statusBar().currentMessage()
