@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from datapack_emulator.emulator.commands.handlers import (
-    _integer,
-    _require_id,
-    _require_targets,
-    _targets,
+from datapack_emulator.emulator.commands.helpers import (
+    find_targets,
+    integer,
+    require_id,
+    require_targets,
 )
 from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
@@ -56,7 +56,7 @@ def item_name(context: ExecutionContext, item_id: str) -> str:
 
 def _players(context: ExecutionContext, token: str) -> list[Entity] | None:
     """Targets that must all be players; None once an error was reported."""
-    found = _require_targets(context, token)
+    found = require_targets(context, token)
     if not found:
         return None
     if any(not entity.is_player for entity in found):
@@ -70,7 +70,7 @@ def _stack(context: ExecutionContext, token: str) -> ItemStack | None:
     if stack is None:
         context.game_error("argument.item.id.invalid", token)
         return None
-    if not _require_id(context, "item", stack.id, "argument.item.id.invalid"):
+    if not require_id(context, "item", stack.id, "argument.item.id.invalid"):
         return None
     return stack
 
@@ -150,7 +150,7 @@ def cmd_give(command: Command, context: ExecutionContext) -> CommandResult:
     if len(arguments) < 2:
         return _usage(context)
     stack = _stack(context, arguments[1])
-    count = _integer(context, arguments[2]) if stack is not None and len(arguments) > 2 else 1
+    count = integer(context, arguments[2]) if stack is not None and len(arguments) > 2 else 1
     if stack is None or count is None:
         return CommandResult.failure()
     if count < 1:
@@ -187,7 +187,7 @@ def cmd_clear(command: Command, context: ExecutionContext) -> CommandResult:
     if players is None:
         return CommandResult.failure()
     predicate = _predicate(context, arguments[1]) if len(arguments) > 1 else ItemPredicate()
-    max_count = _integer(context, arguments[2]) if len(arguments) > 2 else -1
+    max_count = integer(context, arguments[2]) if len(arguments) > 2 else -1
     if max_count is None:
         return CommandResult.failure()
     if len(arguments) > 2 and max_count < 0:
@@ -225,7 +225,7 @@ def _source_stack(context: ExecutionContext, arguments: list[str]) -> tuple[bool
     if arguments[0] == "block":
         _blocks_not_modelled(context, "item … from block")
         return (False, None)
-    sources = _require_targets(context, arguments[1])
+    sources = require_targets(context, arguments[1])
     if not sources:
         return (False, None)
     if len(sources) > 1:
@@ -245,7 +245,7 @@ def _set_slots(
     if not _slot_exists(slot):
         context.game_error("slot.unknown", slot)
         return CommandResult.failure()
-    targets = _require_targets(context, token)
+    targets = require_targets(context, token)
     if not targets:
         return CommandResult.failure()
     changed = []
@@ -277,7 +277,7 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
     token, slot, rest = arguments[2], arguments[3], arguments[4:]
     if action == "replace" and rest and rest[0] == "with" and len(rest) > 1:
         stack = _stack(context, rest[1])
-        count = _integer(context, rest[2]) if stack is not None and len(rest) > 2 else 1
+        count = integer(context, rest[2]) if stack is not None and len(rest) > 2 else 1
         if stack is None or count is None or not _valid_count(context, stack, count):
             return CommandResult.failure()
         stack.count = count
@@ -294,7 +294,7 @@ def cmd_item(command: Command, context: ExecutionContext) -> CommandResult:
     if action == "modify" and rest:
         if _modifier(context, rest[0]) is None:
             return CommandResult.failure()
-        targets = _require_targets(context, token)
+        targets = require_targets(context, token)
         changed = 0
         for entity in targets:
             keys = entity.inventory.keys_for(slot) or []
@@ -362,7 +362,7 @@ def cmd_replaceitem(command: Command, context: ExecutionContext) -> CommandResul
     if len(arguments) < 4 or arguments[0] != "entity":
         return _usage(context)
     stack = _stack(context, arguments[3])
-    count = _integer(context, arguments[4]) if stack is not None and len(arguments) > 4 else 1
+    count = integer(context, arguments[4]) if stack is not None and len(arguments) > 4 else 1
     if stack is None or count is None or not _valid_count(context, stack, count):
         return CommandResult.failure()
     stack.count = count
@@ -379,12 +379,12 @@ def cmd_enchant(command: Command, context: ExecutionContext) -> CommandResult:
     if len(arguments) < 2:
         return _usage(context)
     enchantment = normalise_id(arguments[1])
-    if not _require_id(context, "enchantment", enchantment, "enchantment.unknown"):
+    if not require_id(context, "enchantment", enchantment, "enchantment.unknown"):
         return CommandResult.failure()
-    level = _integer(context, arguments[2]) if len(arguments) > 2 else 1
+    level = integer(context, arguments[2]) if len(arguments) > 2 else 1
     if level is None:
         return CommandResult.failure()
-    targets = _require_targets(context, arguments[0])
+    targets = require_targets(context, arguments[0])
     context.note_once(
         "enchant does not check which items accept an enchantment or clashing enchantments"
     )
@@ -516,7 +516,7 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
             context.game_error("slot.unknown", arguments[3])
             return CommandResult.failure()
         count = int(arguments[4]) if consumed == 5 else len(items)
-        for entity in _require_targets(context, arguments[2]):
+        for entity in require_targets(context, arguments[2]):
             for offset in range(count):
                 name = SLOT_NAMES.get(first + offset)
                 keys = entity.inventory.keys_for(name) if name else None
@@ -559,7 +559,7 @@ def items_condition_count(arguments: list[str], context: ExecutionContext) -> in
         return 0
     predicate = _predicate(context, arguments[4])
     total = 0
-    for entity in _targets(context, arguments[2]):
+    for entity in find_targets(context, arguments[2]):
         for key in entity.inventory.keys_for(arguments[3]) or []:
             stack = entity.inventory.get(key)
             if stack is not None and predicate.matches(stack):
