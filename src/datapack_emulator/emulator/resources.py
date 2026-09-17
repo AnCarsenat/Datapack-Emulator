@@ -96,7 +96,8 @@ class Tag(JsonResource):
     @property
     def entries(self) -> list[TagEntry]:
         out: list[TagEntry] = []
-        for entry in self.content.get("values", []):
+        values = self.content.get("values", []) if isinstance(self.content, dict) else []
+        for entry in values if isinstance(values, list) else []:
             if isinstance(entry, str):
                 out.append(TagEntry(entry))
             elif isinstance(entry, dict) and "id" in entry:

@@ -125,7 +125,12 @@ current version.
     tick, calls and total ms for the whole run).
 * **Call graph** — layered DAG of `function`, `schedule`, `execute if function`
   and tag edges. Purple nodes are tags, blue ones come from an overlay, orange
-  ones are macros, red ones are called but missing.
+  ones are macros, red ones are called but missing. *Show in call graph*
+  (Ctrl+Shift+G, from the source view, the edit menu or a file's menu)
+  centres the view on a function or function tag and rings it in red, with
+  a thinner ring on its direct callers and calls; a busy node keeps a
+  readable zoom and the rest is a pan away. For a file the version does not
+  use (another overlay's copy), the id its folders give is shown.
 * **Source** — the selected file with syntax highlighting for `.mcfunction`
   (commands, subcommands, selectors, resource locations, NBT, macros,
   comments) and JSON/`pack.mcmeta`. Right-click a line to:
@@ -151,8 +156,10 @@ All six are open by default and can be toggled from *view*.
   unknown selector options, SNBT and (with a client jar) ids the version
   does not have, calls to missing functions, broken JSON resources and
   unknown conditions or item functions in them, and — as notes — unused
-  functions and recursion. It is checked again when a pack loads, the
-  version or the client jar changes, or with *check again* (Ctrl+Shift+K).
+  functions and recursion. It is checked again once after a pack loads or
+  the version or client jar changes (while the dock is hidden, when it is
+  next shown), or with *check again* (Ctrl+Shift+K); if a check fails, the
+  label says why and the pack still loads.
   Filter by severity or text; double-click a problem to open its file at
   the line, right-click to analyze the line or copy the problem.
 * **explorer** — every analyzed pack as it sits on disk, one root per pack in
@@ -160,9 +167,11 @@ All six are open by default and can be toggled from *view*.
   directory with its format range. Right-click a pack's root to remove it from
   the project or to load it earlier or later; *add datapack…* adds another.
   It follows what you look at: *show in inspector* (from the call graph, the
-  profiler, notes or the source view), *show callers and calls* and opening a
+  profiler, notes or the source view), *show callers and calls*, *analyze*
+  from a log record, the problems dock or the source view, and opening a
   file in the source view select that file's row, expanding the folders
-  above it.
+  above it (a `#tag` selects the tag's `.json`, not a function of the same
+  name). The inspector comes to the front, and a hidden explorer is shown.
 * **inspector** — facts about the selection: for the pack, its declared
   formats and active overlays for the current version; for a function, its
   calls, estimated cost, and which features it uses that the current version
@@ -264,8 +273,8 @@ All six are open by default and can be toggled from *view*.
 
 | where | menu |
 | --- | --- |
-| explorer row | open in source view · show in explorer · show in call graph (functions) · open in external editor · open in external file manager · copy path |
-| call-graph node | same, plus *show in inspector*; tags open their `.json` |
+| explorer row | open in source view · show in call graph (functions and function tags) · open in external editor · open in external file manager · copy path |
+| call-graph node | same, plus *show in explorer* and *show in inspector*; tags open their `.json` |
 | profiler row | same as a graph node |
 | explorer file, call-graph node, profiler row of a function | also *edit note…* |
 | source view | the editor's own menu · analyze this line · run this line · add this line as a test · toggle breakpoint · run this function · show callers and calls · show in call graph · show in inspector · edit note on this function |

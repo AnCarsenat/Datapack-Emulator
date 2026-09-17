@@ -112,6 +112,7 @@ class DatapackController(Controller):
         window = self.window
         window.log_view.clear()
         window.call_graph = None
+        window.graph_widget.clear_graph()
         if not packs and window.project.path is None and not keep_project:
             # no project open: fall back to the default pack rather than nothing
             sample = default_sample()
@@ -219,7 +220,7 @@ class DatapackController(Controller):
             window.version_note.setText("")
             window.pack_label.setText("no datapack loaded")
             self.fill_inspector([])
-            window.problems.refresh()
+            window.problems.schedule_refresh()
             return
         compatibility = datapack.compatibility(window.version)
         window.pack_label.setText(
@@ -228,7 +229,7 @@ class DatapackController(Controller):
         )
         window.version_note.setText(version_note(datapack, window.version))
         self.fill_inspector(describe_datapack(datapack, window.version))
-        window.problems.refresh()
+        window.problems.schedule_refresh()
 
     def on_tree_clicked(self, index: QModelIndex) -> None:
         window = self.window
@@ -246,7 +247,7 @@ class DatapackController(Controller):
             return
         path = Path(path_value)
         if path.is_file():
-            window.navigation.show_source(path)
+            window.navigation.show_source(path, reveal=False)  # the row is right there
 
     def find_resource(self, resource_id: str, path: str | None = None) -> Resource | None:
         """The resource of an explorer row: the file clicked when ``path`` is

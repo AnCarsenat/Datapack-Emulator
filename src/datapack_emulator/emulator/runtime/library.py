@@ -20,6 +20,7 @@ session in decompiled Mojang jars (1.16.1 to 26.3-rc-3):
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from datapack_emulator.emulator import versions
@@ -144,13 +145,65 @@ class FunctionLibrary:
         return [*self.function_failures.values(), *self.tag_failures.values()]
 
 
+#: the options vanilla's entity selector parser knows (EntitySelectorOptions,
+#: the same from 1.16 to 26.x)
+SELECTOR_OPTIONS = frozenset(
+    {
+        "name", "distance", "level", "x", "y", "z", "dx", "dy", "dz", "x_rotation",
+        "y_rotation", "limit", "sort", "gamemode", "team", "type", "tag", "nbt",
+        "scores", "advancements", "predicate",
+    }
+)  # fmt: skip
+_MACRO_NAME = re.compile(r"[A-Za-z0-9_]+")
+
+
+def unknown_selector_option(command) -> str:
+    """The first selector option the game does not know ("" when none)."""
+    for selector in command.selectors:
+        for key in selector.arguments:
+            if key not in SELECTOR_OPTIONS:
+                return key
+    return ""
+
+
+def macro_template_problem(raw: str) -> str:
+    """Why a ``$`` line is not a macro template ("" when it is): it needs at
+    least one ``$(name)``, closed, with a name of letters, digits and ``_``."""
+    body = raw.strip()[1:]
+    names = []
+    index = 0
+    while True:
+        start = body.find("$(", index)
+        if start < 0:
+            break
+        end = body.find(")", start + 2)
+        if end < 0:
+            return "Unterminated macro variable"
+        name = body[start + 2 : end]
+        if not _MACRO_NAME.fullmatch(name):
+            return f"Invalid macro variable name '{name}'"
+        names.append(name)
+        index = end + 1
+    return "" if names else "No variables in macro"
+
+
 def _parse_failure(
     function: Function, commands: CommandSet, macros_supported: bool
 ) -> LoadFailure | None:
     """The first line of ``function`` this version cannot parse, if any."""
     for command in function.content:
         if command.is_macro and macros_supported:
-            continue  # macro lines are parsed when the function is called
+            # the command is parsed when the function is called, but the
+            # template itself is read now
+            problem = macro_template_problem(command.raw)
+            if problem:
+                return LoadFailure(
+                    function.id,
+                    f"Failed to load function {function.id}",
+                    detail=f"Whilst parsing command on line {command.line}: {problem}",
+                    line=command.line,
+                )
+            continue
         if command.is_macro:  # before 1.20.2 a `$` line is just an unknown command
             return LoadFailure(
                 function.id,
@@ -161,6 +214,15 @@ def _parse_failure(
                 ),
                 line=command.line,
                 key="command.unknown.command",
+            )
+        option = unknown_selector_option(command)
+        if option:
+            return LoadFailure(
+                function.id,
+                f"Failed to load function {function.id}",
+                detail=f"Whilst parsing command on line {command.line}: Unknown option '{option}'",
+                line=command.line,
+                key="argument.entity.options.unknown",
             )
         for feature, _since in commands.missing_features(command.features()):
             unknown_command = feature.startswith("command:")

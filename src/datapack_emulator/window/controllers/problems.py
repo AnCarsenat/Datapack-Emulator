@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt
+import logging
+
+from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -17,6 +19,8 @@ from PySide6.QtWidgets import (
 
 from datapack_emulator.emulator.analysis.problems import SEVERITIES, Problem, count, find_problems
 from datapack_emulator.window.controllers.base import Controller
+
+log = logging.getLogger(__name__)
 
 PROBLEM_ROLE = Qt.UserRole + 1
 COLOURS = {
@@ -37,6 +41,15 @@ class ProblemsController(Controller):
         self.refresh_button: QPushButton = find(QPushButton, "buttonProblemsRefresh")
         #: every problem of the last check, before filtering
         self.problems: list[Problem] = []
+        #: the pack, version or jar changed since the last check
+        self.stale = False
+        self._refresh_timer = QTimer(window)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.timeout.connect(lambda: self.refresh())
+        self._filter_timer = QTimer(window)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(150)
+        self._filter_timer.timeout.connect(self.fill)
 
     def connect(self) -> None:
         window = self.window
@@ -45,21 +58,43 @@ class ProblemsController(Controller):
         if action is not None:
             action.triggered.connect(lambda: self.refresh(show=True))
         self.combo_severity.currentIndexChanged.connect(lambda _index: self.fill())
-        self.edit_filter.textChanged.connect(lambda _text: self.fill())
+        self.edit_filter.textChanged.connect(lambda _text: self._filter_timer.start())
+        window.dock_problems.visibilityChanged.connect(self._on_visibility)
         self.tree.itemDoubleClicked.connect(lambda item, _column: self.open(item))
         self.tree.customContextMenuRequested.connect(self.menu)
 
     # -- checking ------------------------------------------------------------
 
+    def schedule_refresh(self) -> None:
+        """The pack, version or jar changed: check again once the current
+        action is over (several changes make one check), or when the dock
+        is next shown."""
+        self.stale = True
+        if not self.window.dock_problems.isHidden():
+            self._refresh_timer.start(0)
+
+    def _on_visibility(self, visible: bool) -> None:
+        if visible and self.stale:
+            self._refresh_timer.start(0)
+
     def refresh(self, show: bool = False) -> None:
         """Check the pack again for the emulated version."""
         window = self.window
+        self.stale = False
+        self._refresh_timer.stop()
         if window.datapack is None:
             self.problems = []
             self.label.setText("no pack loaded")
             self.fill()
             return
-        self.problems = find_problems(window.datapack, window.version, window.vanilla)
+        try:
+            self.problems = find_problems(window.datapack, window.version, window.vanilla)
+        except Exception as exc:  # a bug in a check must not break loading
+            log.exception("checking the pack failed")
+            self.problems = []
+            self.label.setText(f"the check failed: {type(exc).__name__}: {exc}")
+            self.fill()
+            return
         totals = count(self.problems)
         jar = "" if window.vanilla else " (no client jar: ids are not checked)"
         self.label.setText(
@@ -119,11 +154,17 @@ class ProblemsController(Controller):
         if problem is not None:
             opened = menu.addAction("open in source view", lambda: self.open(item))
             opened.setEnabled(problem.path is not None)
-            if problem.line and not problem.resource.startswith("#"):
-                text = window.navigation.line_text(problem.resource, problem.line) or ""
+            text = (
+                window.navigation.line_text(problem.resource, problem.line)
+                if problem.line and not problem.resource.startswith("#")
+                else None
+            )
+            if text is not None:
                 menu.addAction(
                     "analyze the line",
-                    lambda: window.navigation.analyze(text, problem.where),
+                    lambda: window.navigation.analyze(
+                        text, problem.where, function_id=problem.resource
+                    ),
                 )
             menu.addAction(
                 "copy", lambda: window.navigation.copy_text(problem.format(), "the problem")

@@ -1393,6 +1393,7 @@ def test_problems_dock(app, window, make_pack):
     from test_problems import BAD_PACK
 
     window.datapacks.load(make_pack(BAD_PACK))
+    app.processEvents()  # the check runs once the load is over
     problems = window.problems
     assert problems.problems and "error(s)" in problems.label.text()
     count_all = problems.tree.topLevelItemCount()
@@ -1400,14 +1401,16 @@ def test_problems_dock(app, window, make_pack):
     errors = problems.tree.topLevelItemCount()
     assert 0 < errors < count_all
     problems.edit_filter.setText("tpye")
+    problems.fill()  # the filter waits for typing to pause
     assert problems.tree.topLevelItemCount() == 1
     item = problems.tree.topLevelItem(0)
-    assert item.text(1) == "test:tick:1" and item.text(3) == "selector-option"
+    assert item.text(1) == "test:tick:1" and item.text(3) == "function-not-loaded"
     problems.open(item)
     assert window.navigation.source_path.name == "tick.mcfunction"
     assert window.source_edit.textCursor().blockNumber() == 0
     # a fixed pack checks clean after a reload
     window.datapacks.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}))
+    app.processEvents()
     problems.edit_filter.clear()
     problems.combo_severity.setCurrentText("info")
     assert problems.problems == [] and problems.tree.topLevelItemCount() == 0
@@ -1450,3 +1453,100 @@ def test_inspector_and_source_reveal_the_explorer_row_and_the_graph(app, window,
     window.navigation.source_path = None
     window.navigation.show_in_graph()
     assert "open a function" in window.statusBar().currentMessage()
+
+
+def test_problems_check_once_and_only_when_shown(app, window, make_pack):
+    from unittest import mock
+
+    from test_problems import BAD_PACK
+
+    problems = window.problems
+    with mock.patch(
+        "datapack_emulator.window.controllers.problems.find_problems",
+        wraps=__import__(
+            "datapack_emulator.emulator.analysis.problems", fromlist=["find_problems"]
+        ).find_problems,
+    ) as checked:
+        window.datapacks.load(make_pack(BAD_PACK))
+        app.processEvents()
+        assert checked.call_count == 1
+        window.dock_problems.hide()
+        window.datapacks.reload()
+        app.processEvents()
+        assert checked.call_count == 1 and problems.stale
+        window.dock_problems.show()
+        app.processEvents()
+        assert checked.call_count == 2 and not problems.stale
+    with mock.patch(
+        "datapack_emulator.window.controllers.problems.find_problems",
+        side_effect=RecursionError("deep"),
+    ):
+        problems.refresh()
+    assert problems.label.text() == "the check failed: RecursionError: deep"
+    assert window.datapack is not None
+
+
+def test_navigation_follows_tags_overlays_and_hubs(app, window, make_pack):
+    files = {
+        "data/minecraft/tags/function/tick.json": {"values": ["#test:tick"]},
+        "data/test/tags/function/tick.json": {"values": ["test:tick"]},
+        "data/test/function/tick.mcfunction": "".join(
+            f"function test:f{index}\n" for index in range(40)
+        ),
+        "overlay_old/data/test/function/tick.mcfunction": "say old\n",
+    }
+    for index in range(40):
+        files[f"data/test/function/f{index}.mcfunction"] = "say hi\n"
+    pack = make_pack(
+        files,
+        mcmeta={
+            "pack": {"pack_format": 61, "description": "t"},
+            "overlays": {"entries": [{"formats": [1, 10], "directory": "overlay_old"}]},
+        },
+    )
+    window.datapacks.load(pack)
+    navigation = window.navigation
+    tree = window.tree
+
+    # a tag named like a function is the tag, in the inspector and the explorer
+    navigation.inspect_function("#test:tick")
+    assert tree.currentIndex().data() == "tick.json"
+    navigation.calls_and_callers("test:tick")
+    assert tree.currentIndex().data() == "tick.mcfunction"
+
+    # a tag file in the source view opens its node in the call graph
+    navigation.show_source(pack / "data/test/tags/function/tick.json")
+    navigation.show_in_graph()
+    assert window.graph_widget.focused == "#test:tick"
+    # a file the version does not use still names its function
+    assert (
+        navigation.resource_id_at(pack / "overlay_old/data/test/function/tick.mcfunction")
+        == "test:tick"
+    )
+
+    # a hub stays centred and readable
+    navigation.show_in_graph("test:tick")
+    view_range = window.graph_widget.plot.viewRange()
+    x, y = window.graph_widget._positions["test:tick"]
+    assert abs(sum(view_range[0]) / 2 - x) < 1e-6
+    assert view_range[0][1] - view_range[0][0] <= 24.0 + 1e-6
+    assert "calls 40" in window.statusBar().currentMessage()
+
+    # a reload drops the old rings with the old graph
+    window.datapacks.reload()
+    assert window.graph_widget.focused is None and window.graph_widget.graph is None
+
+    # opening from the explorer does not move its row; analyze shows the function
+    navigation.reveal_in_explorer(pack / "data/test/function/f3.mcfunction")
+    index = tree.currentIndex()
+    tree.scrollTo(index)
+    before = tree.visualRect(index)
+    window.datapacks.on_tree_clicked(index)
+    assert tree.visualRect(tree.currentIndex()) == before
+    window.dock_explorer.hide()
+    navigation.analyze("say hi", "test:f5:1", function_id="test:f5")
+    assert window.dock_explorer.isVisible() or not window.isVisible()
+    assert tree.currentIndex().data() == "f5.mcfunction"
+    menu = navigation.path_menu(pack / "data/test/function/f5.mcfunction", in_explorer=True)
+    labels = [action.text() for action in menu.actions()]
+    assert "show in explorer" not in labels and "show in call graph" in labels

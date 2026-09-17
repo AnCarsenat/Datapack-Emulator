@@ -1072,7 +1072,8 @@ def test_check_reports_problems(make_pack, tmp_path, capsys):
     bad = str(make_pack(BAD_PACK))
     assert main(["check", bad, "--version", "1.21.4", "--no-vanilla"]) == 1
     out = capsys.readouterr().out
-    assert "error   test:tick:1: unknown selector option 'tpye'" in out
+    assert "error   test:tick:1: Failed to load function test:tick" in out
+    assert "Unknown option 'tpye'" in out
     assert "1.21.4: " in out and "error(s)" in out
     assert main(["check", bad, "--version", "1.21.4", "--severity", "error", "--no-vanilla"]) == 1
     assert "info" not in capsys.readouterr().out.split("1.21.4: ")[0]
@@ -1087,3 +1088,10 @@ def test_check_reports_problems(make_pack, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "== 1.20.4, no client jar" in out and "1.21.4: 0 error(s)" in out
     assert main(["check", bad, "--code", "missing-function", "--strict", "--no-vanilla"]) == 1
+    with pytest.raises(SystemExit):
+        main(["check", bad, "--code", "nonsense"])
+    capsys.readouterr()
+    assert main(["check", bad, "--boundaries", "--no-vanilla"]) == 2
+    assert main(["check", bad, "--version", "1.21.4", "--versions", "1.21.4"]) == 2
+    code = main(["check", pack, "--versions", "1.21.4", "--json", "--no-vanilla"])
+    assert code == 0 and isinstance(json.loads(capsys.readouterr().out), list)
