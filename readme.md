@@ -30,7 +30,8 @@ checked against the real base game read out of a `client.jar`.
 * a function debugger: breakpoints (with conditions) on function lines, step
   into / over / out, the call stack, the command source and watched scores,
   storage and NBT — in the window and in the command-line shell
-* profiler with per-function estimated cost, call-graph DAG, version matrix
+* profiler with per-function estimated cost, dearest lines, a flame graph and
+  before/after comparison of two runs, call-graph DAG, version matrix
 * reads registries, tags and message strings straight from a `client.jar`
 
 ## Quick start

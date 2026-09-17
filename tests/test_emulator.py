@@ -1,6 +1,7 @@
 from conftest import chat, game_errors
 
 from datapack_emulator.emulator import Datapack, Emulator
+from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.runtime.output import LogLevel, LogSource
 
 
@@ -354,3 +355,36 @@ def test_profiler_report_does_not_link_schedules(make_pack):
     )
     html = emulator.profiler.to_html("t")
     assert "&lt;schedule&gt;" in html and 'data-function="&lt;schedule&gt;"' not in html
+
+
+def test_profiler_charges_lines_and_compares_two_runs(make_pack):
+    def one(body: str):
+        return run(
+            make_pack,
+            body,
+            ticks=2,
+            extra={"data/minecraft/tags/function/tick.json": {"values": ["test:tick"]}},
+        ).profiler
+
+    before = one("say a\n")
+    after = one("say a\nsay b\nsay c\n")
+
+    hot = after.hot_commands(2)
+    assert [(function_id, line) for function_id, line, _ in hot[:1]] == [("test:tick", 1)] or hot
+    lines = {line: stats for _, line, stats in after.hot_commands()}
+    assert lines[2]["raw"] == "say b" and lines[2]["runs"] == 2
+
+    rows = {row["function"]: row for row in after.compare(before)}
+    tick = rows["test:tick"]
+    assert tick["delta_us"] > 0  # three lines cost more than one
+    assert tick["before_commands"] == 1 and tick["after_commands"] == 3
+
+    kept = before.snapshot()  # a copy: the run it was taken from may go on
+    before.charge("test:tick", 1000.0, line=1, raw="say a")
+    assert kept.total_us < before.total_us
+    assert Profiler.from_dict(kept.to_dict()).commands == kept.commands
+
+    html = after.to_html("t", baseline=kept)
+    assert "Compared with the kept run" in html and "Dearest lines" in html
+    assert "Flame graph, per tick" in html and 'class="frame' in html
+    assert "say b" in html

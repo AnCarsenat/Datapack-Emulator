@@ -1153,3 +1153,58 @@ def test_shell_snapshots(make_pack, tmp_path, capsys, monkeypatch):
     assert "0 change(s) from start to the world now" in out
     assert "no snapshots" in out
     assert "error: no snapshot 1 (there are 0)" in out
+
+
+def test_run_saves_a_profile_and_compares_a_later_run(make_pack, tmp_path, capsys):
+    saved = tmp_path / "before.json"
+    pack = str(_pack(make_pack))
+    assert main(["run", pack, "--ticks", "2", "--save-profile", str(saved)]) == 0
+    out = capsys.readouterr().out
+    assert "dearest line" in out and "test:tick:1" in out
+    assert saved.is_file()
+
+    bigger = make_pack(  # the same pack with two more lines in its tick function
+        {
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add t dummy\n",
+            "data/test/function/tick.mcfunction": (
+                "scoreboard players add #ticks t 1\nsay a\nsay b\n"
+            ),
+        }
+    )
+    assert main(["run", str(bigger), "--ticks", "2", "--baseline", str(saved)]) == 0
+    out = capsys.readouterr().out
+    comparison = out.split("Compared with the saved run", 1)[1]
+    row = next(line for line in comparison.splitlines() if line.startswith("test:tick "))
+    assert row.split()[-1].startswith("+")  # the extra lines cost more
+    assert main(["run", str(bigger), "--baseline", str(tmp_path / "none.json")]) == 2
+    assert "cannot read the profile" in capsys.readouterr().err
+
+
+def test_shell_hot_lines_and_baseline(make_pack, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(
+            "\n".join(
+                [
+                    ".compare",
+                    ".step",
+                    ".baseline",
+                    ".hot 3",
+                    ".run",
+                    ".compare",
+                    "",
+                ]
+            )
+        ),
+    )
+    assert main(["shell", pack]) == 0
+    out = capsys.readouterr().out
+    assert "no baseline yet" in out
+    assert "kept this run as the baseline: 1 tick(s)" in out
+    assert "test:tick:1" in out and "run(s)" in out
+    assert "Compared with the saved run" in out

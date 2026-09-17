@@ -412,7 +412,12 @@ class Emulator:
     def run_command(self, command: Command, context: ExecutionContext) -> CommandResult:
         """Dispatch one command, after checking it exists in this version."""
         inner = context.branch(line=command.line)
-        self.profiler.charge(inner.function_id, command.estimate_cost(len(self.world.entities)))
+        self.profiler.charge(
+            inner.function_id,
+            command.estimate_cost(len(self.world.entities)),
+            line=command.line,
+            raw=command.raw,
+        )
         self.commands_run += 1
 
         spec = self.commands.spec(command.name)

@@ -44,10 +44,12 @@ from datapack_emulator.cli.runs import (
     TICK_SECONDS,
     add_world_arguments,
     parse_test,
+    print_comparison,
     print_result,
     ticks_setting,
 )
 from datapack_emulator.emulator.analysis.explain import explain_line
+from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.analysis.world_view import (
     blocks_text,
     entities_text,
@@ -114,6 +116,8 @@ class Session:
         self.results: dict[int, TestResult] = {}
         #: worlds kept aside (.snapshot), in the order they were taken
         self.snapshots: list[Snapshot] = []
+        #: a run kept to compare later runs against (.baseline)
+        self.baseline: Profiler | None = None
         #: breakpoints and watches, kept across new worlds (checked in the shell)
         self.debugger = Debugger()
         if project is not None:
@@ -503,6 +507,8 @@ Lines starting with a dot control the session:
            .unsnapshot N|all
   analyze  .explain COMMAND      analyze a command line
            .profile              the per-tick call tree
+           .hot [N]              the lines that cost the most
+           .baseline / .compare  keep this run, then compare a later one
            .report [FILE]        write the HTML profiler report
            .dot [FILE]           write the call graph for Graphviz
   settings .version [V]          show or switch the version (a fresh world)
@@ -721,6 +727,29 @@ class Shell(DebugCommands):
                 f"{one['self_us'] / 1000:9.4f} {one['calls']:7.2f} {one['commands']:7.1f}"
             )
 
+    def do_baseline(self, session: Session, rest: str) -> None:
+        session.baseline = session.emulator.profiler.snapshot()
+        print(
+            f"kept this run as the baseline: {session.baseline.ticks} tick(s), "
+            f"{session.baseline.total_us / 1000:.2f} ms"
+        )
+
+    def do_compare(self, session: Session, rest: str) -> None:
+        if session.baseline is None:
+            raise CliError("no baseline yet: .baseline keeps the current run")
+        print_comparison(session.emulator.profiler, session.baseline)
+
+    def do_hot(self, session: Session, rest: str) -> None:
+        limit = _number(rest, 1) if rest else 10
+        rows = session.emulator.profiler.hot_commands(limit)
+        if not rows:
+            print("no commands run yet")
+        for function_id, line, stats in rows:
+            print(
+                f"{function_id}:{line:<4} {stats['self_us'] / 1000:8.3f} ms  "
+                f"{int(stats['runs']):5d} run(s)  {str(stats['raw'])[:60]}"
+            )
+
     def do_report(self, session: Session, rest: str) -> None:
         path = Path(rest) if rest else Path("generated") / "index.html"
         try:
@@ -728,6 +757,7 @@ class Shell(DebugCommands):
                 path,
                 f"Function profiler — {session.datapack.name}",
                 f"{session.version.id} (pack_format {session.version.format_string})",
+                baseline=session.baseline,
             )
         except OSError as exc:
             raise CliError(f"cannot write {path}: {exc}") from exc
