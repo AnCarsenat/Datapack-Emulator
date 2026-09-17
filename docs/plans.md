@@ -46,20 +46,14 @@ A large version matrix runs on the UI thread and freezes the window.
 
 ## Emulation gaps
 
-* **Predicates and advancements** — `execute if predicate`, the `predicate=`
-  and `advancements=` selector arguments, and the `advancement` command:
-  evaluate predicate JSON from the pack (and the jar) for the conditions the
-  world model can answer (scores, entity properties, NBT, random chance), and
-  keep per-player advancement progress.
-* **Loot conditions and functions** — evaluate loot table conditions (random
-  chance, entity/score checks, `match_tool` with the `mine` tool) and the
-  common functions beyond `set_count`,
-  `set_components`, `set_nbt` (`set_name`, `set_lore`, `enchant_randomly`,
-  `copy_components`, `set_damage`, …); share them with item modifiers.
 * **Entity data from the game** — maximum health and base attributes by
   type are a table in the code; the game has them only in code, so a
   generated table per version (like `version_data.py`) would be the next
   step. Regeneration, hunger and effects' side effects stay out of scope.
+* **More of the game's context** — killers, damage sources, enchantment
+  levels and biomes, so `killed_by_player`, `damage_source_properties`,
+  `enchantment_active_check`, bonus-based loot and biome locations can be
+  answered; advancement triggers beyond `tick` and `location`.
 * **Default block states** — read each block's default state (the jar's
   blockstates only list the combinations) so `if block …[facing=north]`
   matches blocks placed without properties; block updates and drops stay

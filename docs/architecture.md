@@ -35,6 +35,7 @@ src/datapack_emulator/     the package (standard src layout)
       players.py           gamemode, defaultgamemode, experience, team, teammsg
       living.py            effect, attribute, damage, ride
       bossbar.py           bossbar
+      conditions.py        advancement, if predicate, predicate=/advancements=, loot contexts
       misc.py              commands that only check their ids (effect), noop
       registry.py          CommandSet: what exists in a version, who runs it
     runtime/
@@ -44,8 +45,10 @@ src/datapack_emulator/     the package (standard src layout)
       blocks.py            Block, BlockPredicate, Blocks: the sparse block world
       state.py             ServerState: time, weather, border, teams, random sequences
       living.py            Living (attributes, effects), health, item entities each tick
+      predicates.py        conditions, number providers, entity/item/location predicates
+      advancements.py      AdvancementTree, Progress (criteria per player)
       inventory.py         ItemStack, Inventory, item parsing, per-version item NBT
-      loot.py              loot table evaluation for the loot command
+      loot.py              loot tables and item modifiers (entries, item functions)
       context.py           ExecutionContext (the command source; silent in functions)
       library.py           FunctionLibrary: functions and tags a version's server loads
       emulator.py          Emulator: start, load/tick order, dispatch, schedules
