@@ -524,7 +524,7 @@ datapack-emulator-cli project list
 | `note FILE FUNCTION [TEXT]` | read, write or (with `''`) remove the note on a function or `#tag` (a warning when the packs have no such id) |
 | `debug FILE` | list the debugger's breakpoints and watches; `--break FUNC:LINE[ if COND]`, `--unbreak FUNC:LINE\|all`, `--enable FUNC:LINE`, `--disable FUNC:LINE`, `--watch EXPR`, `--unwatch N\|all` (the debugger dock's lists) |
 | `list` | the projects in the projects folder the window saves to (`projects/` of the checkout, or the per-user data folder) |
-| `recent` | the window's recent projects and datapacks, and what it will start on (its *open the last project on launch*) |
+| `recent` | the window's recent projects and datapacks, and what it will start on; `--on-launch on\|off` changes *open the last project on launch* |
 
 `packs` and `tests` options can be repeated and mixed; they apply in the
 order given, and every number refers to the list **as it was before the

@@ -1,5 +1,6 @@
 """Offscreen checks of the main window. Skipped when PySide6 is not installed."""
 
+import json
 import os
 
 import pytest
@@ -1844,8 +1845,11 @@ def test_the_window_opens_the_last_project_on_launch(app, tmp_path, monkeypatch,
     # the command line and the menu entry both say "the sample instead"
     plain = MainWindow(open_last=False)
     try:
-        assert plain.project.name != "kept"
-        plain.session._set_open_last_on_launch(False)
+        assert plain.datapack is not None and plain.datapack.name == "hat"  # the sample
+        action = plain._action("actionopen_last_on_launch")
+        assert action is not None and action.isChecked()
+        action.setChecked(False)  # the menu entry, not the method behind it
+        assert not plain.session.open_last_on_launch
     finally:
         plain.projects.modified = False
         plain.close()
@@ -1864,10 +1868,69 @@ def test_the_window_opens_the_last_project_on_launch(app, tmp_path, monkeypatch,
         remembered.close()
 
 
+def test_the_window_survives_what_it_opens_on_launch(app, tmp_path, monkeypatch, make_pack):
+    from PySide6.QtWidgets import QMessageBox
+
+    from datapack_emulator.project import state_file
+    from datapack_emulator.settings import PATHS
+
+    monkeypatch.setattr(PATHS, "PROJECTS", tmp_path / "projects")
+    monkeypatch.setattr(PATHS, "GENERATED", tmp_path / "generated")
+    monkeypatch.setattr(PATHS, "CACHE", tmp_path / ".cache")
+    from datapack_emulator.window import MainWindow
+
+    boxes = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *args, **kw: boxes.append(args[2]) or QMessageBox.Ok
+    )
+    broken = tmp_path / "broken.dpemu"
+    broken.write_bytes(b"not a zip at all")
+    gone = tmp_path / "gone.dpemu"
+    state_file().parent.mkdir(parents=True, exist_ok=True)
+    state_file().write_text(
+        json.dumps({"recent_projects": [str(gone), str(broken)]}), encoding="utf-8"
+    )
+
+    window = MainWindow()
+    try:
+        # no box in front of a window that is not there yet, and the sample opened
+        assert boxes == []
+        assert window.datapack is not None and window.datapack.name == "hat"
+        # the file that cannot be read is off the list, so the next launch is quiet
+        assert str(broken) not in window.session.recent_projects
+    finally:
+        window.projects.modified = False
+        window.close()
+
+    # a path on the command line that is not a pack says so instead of loading nothing
+    loose = tmp_path / "notes.txt"
+    loose.write_text("hello", encoding="utf-8")
+    window = MainWindow(start_path=loose)
+    try:
+        assert "not a project or a datapack folder" in window.statusBar().currentMessage()
+        assert window.datapack is not None and window.datapack.name == "hat"
+    finally:
+        window.projects.modified = False
+        window.close()
+
+    # a datapack folder given on the command line is opened as one
+    pack = make_pack({"data/test/function/tick.mcfunction": "say hi\n"})
+    window = MainWindow(start_path=pack)
+    try:
+        assert window.datapack is not None and window.datapack.name == pack.name
+    finally:
+        window.projects.modified = False
+        window.close()
+
+
 def test_the_window_entry_point_reads_its_arguments():
     from datapack_emulator.app import parse_arguments
 
-    assert parse_arguments([]).path is None and parse_arguments([]).open_last is None
-    assert parse_arguments(["--no-last-project"]).open_last is False
-    assert parse_arguments(["--last-project"]).open_last is True
-    assert parse_arguments(["some/project.dpemu"]).path.name == "project.dpemu"
+    arguments, for_qt = parse_arguments([])
+    assert arguments.path is None and arguments.open_last is None and for_qt == []
+    assert parse_arguments(["--no-last-project"])[0].open_last is False
+    assert parse_arguments(["--last-project"])[0].open_last is True
+    assert parse_arguments(["some/project.dpemu"])[0].path.name == "project.dpemu"
+    # Qt's own options are left for it, not refused
+    arguments, for_qt = parse_arguments(["-platform", "offscreen", "--no-last-project"])
+    assert for_qt == ["-platform", "offscreen"] and arguments.open_last is False
