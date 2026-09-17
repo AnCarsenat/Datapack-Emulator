@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import QEventLoop, QObject, Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -50,20 +50,23 @@ UI_FILE = Path(__file__).with_name("engine.ui")
 
 
 class EngineWorker(QObject):
-    """Runs the chosen versions off the UI thread."""
+    """Runs the chosen versions off the UI thread. Every signal carries the
+    run's generation, so a window that moved on can ignore a late one."""
 
-    #: (1-based index, count, version id) before each version
-    started_version = Signal(int, int, str)
-    #: a finished (or cancelled) VersionRun
-    finished_version = Signal(object)
-    #: every version ran, or the run was cancelled (True)
-    done = Signal(bool)
-    failed = Signal(str)
+    #: (generation, 1-based index, count, version id) before each version
+    started_version = Signal(int, int, int, str)
+    #: (generation, a finished or cancelled VersionRun)
+    finished_version = Signal(int, object)
+    #: (generation, cancelled): every version ran, or the run was cancelled
+    done = Signal(int, bool)
+    #: (generation, version id, message)
+    failed = Signal(int, str, str)
 
-    def __init__(self, engine: TestEngine, chosen: list):
+    def __init__(self, engine: TestEngine, chosen: list, generation: int = 0):
         super().__init__()
         self.engine = engine
         self.chosen = chosen
+        self.generation = generation
         self._cancel_requested = False
 
     def request_cancel(self) -> None:
@@ -75,19 +78,22 @@ class EngineWorker(QObject):
 
     @Slot()
     def run(self) -> None:
+        generation = self.generation
+        current = ""
         try:
             for index, version in enumerate(self.chosen, start=1):
                 if self._cancel_requested:
                     break
-                self.started_version.emit(index, len(self.chosen), version.id)
+                current = version.id
+                self.started_version.emit(generation, index, len(self.chosen), version.id)
                 run = self.engine.run_version(version, output=OutputBus(), cancelled=self.cancelled)
-                self.finished_version.emit(run)
+                self.finished_version.emit(generation, run)
                 if run.cancelled:
                     break
         except Exception as exc:  # a crash must end the run, not the app
             log.exception("engine run failed")
-            self.failed.emit(f"{type(exc).__name__}: {exc}")
-        self.done.emit(self._cancel_requested)
+            self.failed.emit(generation, current, f"{type(exc).__name__}: {exc}")
+        self.done.emit(generation, self._cancel_requested)
 
 
 class EngineWindow(QMainWindow):
@@ -100,9 +106,12 @@ class EngineWindow(QMainWindow):
         self.results = ResultsTableModel(self)
         self.records = LogTableModel(self)
         self._runs: list[VersionRun] = []
-        self._thread: QThread | None = None
-        self._worker: EngineWorker | None = None
+        #: running (or ending) runs by generation; only the current one reports
+        self._jobs: dict[int, tuple[QThread, EngineWorker]] = {}
+        self._generation = 0
         self._total = 0
+        self._cancelling = False
+        self._failure = ""
 
         load_ui_into(self, UI_FILE)
         self._bind_widgets()
@@ -146,6 +155,14 @@ class EngineWindow(QMainWindow):
         self.button_run.clicked.connect(self.run_matrix)
         self.button_cancel.clicked.connect(self.cancel)
         find(QPushButton, "buttonExport").clicked.connect(self.export_html)
+        self._locked_while_running = [
+            self.list_versions, self.spin_ticks, self.spin_players, self.spin_seed,
+            self.check_run_tests, self.combo_from, self.combo_to,
+            *(find(QPushButton, name) for name in (
+                "buttonSelectRange", "buttonSelectDeclared", "buttonSelectBoundaries",
+                "buttonSelectAll", "buttonSelectNone",
+            )),
+        ]  # fmt: skip
         find(QPushButton, "buttonSelectRange").clicked.connect(self.select_range)
         find(QPushButton, "buttonSelectDeclared").clicked.connect(self.select_declared)
         find(QPushButton, "buttonSelectBoundaries").clicked.connect(self.select_boundaries)
@@ -174,7 +191,11 @@ class EngineWindow(QMainWindow):
         self.combo_to.setCurrentIndex(self.combo_to.count() - 1)
 
     def set_datapack(self, datapack: Datapack) -> None:
-        self.cancel(wait=True)  # a run of the old pack would report into the new one
+        # a run of the old pack must not report into the new one; it ends in
+        # the background (waiting here would run the UI's events mid-switch)
+        self.detach()
+        self._clear_results()
+        self.label_results.setText("results")
         self.datapack = datapack
         self.setWindowTitle(f"Version test engine — {datapack.name}")
         self.select_declared()
@@ -243,7 +264,7 @@ class EngineWindow(QMainWindow):
 
     @property
     def running(self) -> bool:
-        return self._thread is not None
+        return self._generation in self._jobs
 
     def run_matrix(self) -> None:
         if self.running:
@@ -266,56 +287,85 @@ class EngineWindow(QMainWindow):
             library=self.library,
             tests=tests,
         )
-        self.results.clear()
-        self.records.clear()
-        self._runs = []
+        self._clear_results()
         self.progress.setMaximum(len(chosen))
         self.progress.setValue(0)
         self._total = len(chosen)
+        self._cancelling = False
+        self._failure = ""
 
-        self._thread = QThread(self)
-        self._worker = EngineWorker(engine, chosen)
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.started_version.connect(self._on_started_version)
-        self._worker.finished_version.connect(self._on_finished_version)
-        self._worker.failed.connect(self._on_failed)
-        self._worker.done.connect(self._on_done)
+        self._generation += 1
+        thread = QThread(self)
+        worker = EngineWorker(engine, chosen, self._generation)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.started_version.connect(self._on_started_version)
+        worker.finished_version.connect(self._on_finished_version)
+        worker.failed.connect(self._on_failed)
+        worker.done.connect(self._on_done)
+        # ends the thread's loop from the worker thread itself, so closing can
+        # wait for it without running the UI's event loop
+        worker.done.connect(thread.quit, Qt.DirectConnection)
+        self._jobs[self._generation] = (thread, worker)
         self._set_running(True)
-        self._thread.start()
+        thread.start()
+
+    def _clear_results(self) -> None:
+        self.results.clear()
+        self.records.clear()
+        self._runs = []
+        self.label_detail.clear()
 
     def cancel(self, wait: bool = False) -> None:
         """Stop after the current tick (``wait``: block until the worker ended)."""
-        if self._worker is None:
+        job = self._jobs.get(self._generation)
+        if job is None:
             return
-        self._worker.request_cancel()
+        job[1].request_cancel()
+        self._cancelling = True
         self.button_cancel.setEnabled(False)
         self.statusBar().showMessage("cancelling after this tick…")
         if wait:
             self.wait()
 
+    def detach(self) -> None:
+        """Cancel the current run and forget it: its results are ignored and
+        its thread ends in the background (switching packs)."""
+        job = self._jobs.get(self._generation)
+        if job is not None:
+            job[1].request_cancel()
+        self._generation += 1  # late signals of the old run no longer match
+        self._set_running(False)
+
     def wait(self) -> None:
-        """Block until the run ended and its results were shown (tests, closing)."""
-        while self._thread is not None:
-            self._thread.wait(10)
-            QApplication.processEvents()
+        """Block until the current run ended and its results were shown (tests)."""
+        while self.running:
+            self._jobs[self._generation][0].wait(10)
+            QApplication.processEvents(QEventLoop.ExcludeUserInputEvents)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
-        self.cancel(wait=True)
+        # no event loop here: the threads end on their own once cancelled
+        for _thread, worker in self._jobs.values():
+            worker.request_cancel()
+        for thread, _worker in list(self._jobs.values()):
+            thread.wait()
         super().closeEvent(event)
 
     def _set_running(self, running: bool) -> None:
         self.button_run.setEnabled(not running)
         self.button_cancel.setEnabled(running)
-        for widget in (self.list_versions, self.spin_ticks, self.spin_players, self.spin_seed,
-                       self.check_run_tests):  # fmt: skip
+        for widget in self._locked_while_running:
             widget.setEnabled(not running)
 
-    def _on_started_version(self, index: int, total: int, version_id: str) -> None:
+    def _on_started_version(self, generation: int, index: int, total: int, version_id: str) -> None:
+        if generation != self._generation or self._cancelling:
+            return
         self.statusBar().showMessage(f"[{index}/{total}] {version_id}…")
         self.progress.setValue(index - 1)
 
-    def _on_finished_version(self, run: VersionRun) -> None:
+    def _on_finished_version(self, generation: int, run: VersionRun) -> None:
+        if generation != self._generation:
+            return
         self._runs.append(run)
         self.results.append(run)
         self.progress.setValue(len(self._runs))
@@ -323,17 +373,19 @@ class EngineWindow(QMainWindow):
         if len(self._runs) == 1:
             self.table_results.selectRow(0)
 
-    def _on_failed(self, message: str) -> None:
-        self.statusBar().showMessage(f"the run failed: {message}")
+    def _on_failed(self, generation: int, version_id: str, message: str) -> None:
+        if generation == self._generation:
+            self._failure = f"{version_id}: {message}" if version_id else message
 
-    def _on_done(self, cancelled: bool) -> None:
-        thread = self._thread
-        self._thread = None
-        self._worker = None
-        if thread is not None:
-            thread.quit()
+    def _on_done(self, generation: int, cancelled: bool) -> None:
+        job = self._jobs.pop(generation, None)
+        if job is not None:
+            thread, worker = job
             thread.wait()
             thread.deleteLater()
+            worker.deleteLater()
+        if generation != self._generation:
+            return
         self._set_running(False)
         worst = [
             run for run in self._runs if run.status in ("errors", "tests failed", "unsupported")
@@ -341,16 +393,18 @@ class EngineWindow(QMainWindow):
         self.label_results.setText(
             f"results — {len(self._runs)} version(s), {len(worst)} with problems"
         )
-        if self.statusBar().currentMessage().startswith("the run failed"):
-            return
         summary = (
             f"{len(self._runs)} version(s), "
             f"{sum(run.errors for run in self._runs)} error(s), "
             f"{sum(run.warnings for run in self._runs)} warning(s)"
         )
-        if cancelled:
-            skipped = self._total - len(self._runs)
-            self.statusBar().showMessage(f"cancelled: {summary}; {skipped} version(s) not run")
+        not_run = self._total - len(self._runs)
+        if self._failure:
+            self.statusBar().showMessage(
+                f"the run failed on {self._failure}; {summary}, {not_run} version(s) not run"
+            )
+        elif cancelled:
+            self.statusBar().showMessage(f"cancelled: {summary}; {not_run} version(s) not run")
         else:
             self.progress.setValue(self._total)
             self.statusBar().showMessage(f"done: {summary}")
@@ -363,7 +417,9 @@ class EngineWindow(QMainWindow):
             self.statusBar().showMessage("run the matrix first")
             return
         target = PATHS.GENERATED / f"{self.datapack.name.replace(' + ', '+')}-matrix.html"
-        TestEngine.write_html(self._runs, target, self.datapack.name)
+        TestEngine.write_html(
+            self._runs, target, self.datapack.name, max(0, self._total - len(self._runs))
+        )
         self.statusBar().showMessage(f"wrote {target}")
 
     # -- detail -----------------------------------------------------------
@@ -375,7 +431,8 @@ class EngineWindow(QMainWindow):
         self.records.set_records(run.records)
         self._apply_filter()
         self.label_detail.setText(
-            f"{run.version.id} — {run.status}, {run.commands} command(s), "
+            f"{run.version.id} — {run.status}, {run.ticks_summary} tick(s), "
+            f"{run.commands} command(s), "
             f"worst tick {run.worst_tick_us / 1000:.2f} ms"
             + (f", tests {run.tests_summary}" if run.tests else "")
             + (f", overlays: {', '.join(run.overlays)}" if run.overlays else "")

@@ -35,6 +35,8 @@ OK = 0
 FAILED = 1
 USAGE = 2
 CRASHED = 3
+#: stopped with Ctrl+C (what a shell reports for SIGINT)
+INTERRUPTED = 130
 
 
 class Interrupt:

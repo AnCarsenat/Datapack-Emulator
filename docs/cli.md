@@ -44,7 +44,7 @@ Commands that print records (`run`, `test --verbose`, `matrix --verbose`,
 Exit status: `0` success, `1` something failed (a test, or `matrix --strict`),
 `2` a usage problem (missing pack, unknown version, unreadable jar, report
 that cannot be written, nothing to test), `3` an internal error (a bug —
-please report it with the traceback).
+please report it with the traceback), `130` stopped with Ctrl+C.
 
 Reports (`--html`) default to `generated/` in the working directory.
 
@@ -127,13 +127,16 @@ a project ticked in the engine window, otherwise every known version.
 | `--html` | matrix report, default `generated/matrix.html` |
 | `--verbose` | print every version's records as they come (the engine window's lower pane), filtered as in [records](#records) |
 
-Output is one row per version: format, status, commands, total ms, worst ms,
-warnings, errors, tests passed, unknown commands, overlays. The first Ctrl+C
-stops after the current tick, like the engine window's *cancel*: the
-versions that ran are reported (the current one as `cancelled`), the
-command exits with `1`, and a second Ctrl+C quits at once. `test` does the
-same. See
-[engine.md](engine.md).
+Output is one row per version: format, status, ticks (`7/20` for a
+cancelled run), commands, total ms, worst ms, warnings, errors, tests
+passed, unknown commands, overlays. The first Ctrl+C stops after the
+current tick, like the engine window's *cancel*: the versions that ran are
+reported (the last one as `cancelled`, even when the cancel came between
+two versions), the reports say how many versions did not run (the JUnit
+file gets an empty suite for each), the command exits with `130`, and a
+second Ctrl+C quits at once. `test` does the same; its tests that a cancel
+stopped print as `SKIP`, count as skipped (not failed) and are `skipped` in
+JUnit. See [engine.md](engine.md).
 
 ## `test` — a project's tests
 
@@ -178,7 +181,8 @@ hold.
 
 Exit status `0` when every test passed, `1` when one failed, `2` when there
 was nothing to run or an option was wrong (an `--expect-value` that is not a
-range, `--only` without `--test`, …).
+range, `--only` without `--test`, …), `130` when Ctrl+C stopped it (see
+`matrix`).
 
 ### In CI
 

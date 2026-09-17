@@ -1152,7 +1152,11 @@ def test_debugger_stops_steps_and_keeps_breakpoints(app, window, make_pack, tmp_
     assert debug.tree_watches.topLevelItemCount() == 0
 
 
-def test_engine_window_runs_in_the_background_and_cancels(window, make_pack):
+def test_engine_window_runs_in_the_background_and_cancels(window, make_pack, monkeypatch):
+    import threading
+
+    from datapack_emulator.emulator.runtime.emulator import Emulator
+
     pack = make_pack(
         {
             "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
@@ -1163,35 +1167,79 @@ def test_engine_window_runs_in_the_background_and_cancels(window, make_pack):
     window.runs.open_engine()
     engine = window.engine_window
     engine.select_ids(["1.20.4", "1.21.4", "1.21.5"])
-    engine.spin_ticks.setValue(engine.spin_ticks.maximum())
+    engine.spin_ticks.setValue(50)
+
+    # the worker blocks in its third tick until the test lets it go on
+    ticking = threading.Event()
+    go_on = threading.Event()
+    original = Emulator.run_tick
+    main_thread = threading.current_thread()
+
+    def run_tick(self):
+        if threading.current_thread() is not main_thread and self.world.tick == 2:
+            ticking.set()
+            go_on.wait(10)
+        return original(self)
+
+    monkeypatch.setattr(Emulator, "run_tick", run_tick)
+    engine.label_detail.setText("stale")
     engine.run_matrix()
+    assert engine.running and engine.label_detail.text() == ""
+    assert not engine.combo_from.isEnabled()
     engine.run_matrix()  # a second run waits for the first
     assert "cancel it first" in engine.statusBar().currentMessage()
-    import time
+    assert ticking.wait(10)
+    engine.cancel()
+    go_on.set()
+    engine.wait()
+    assert not engine.running and engine.combo_from.isEnabled()
+    assert [run.status for run in engine._runs] == ["cancelled"]
+    assert engine._runs[0].ticks_summary == "3/50"
+    message = engine.statusBar().currentMessage()
+    assert message.startswith("cancelled: 1 version(s)") and "2 version(s) not run" in message
+    assert "3/50 tick(s)" in engine.label_detail.text()
 
-    from PySide6.QtWidgets import QApplication
-
-    deadline = time.monotonic() + 10
-    while not engine.statusBar().currentMessage().startswith("["):
-        assert time.monotonic() < deadline
-        QApplication.processEvents()
-        time.sleep(0.005)
-    time.sleep(0.1)  # a few ticks
-    engine.cancel(wait=True)
-    assert not engine.running
-    assert engine._runs[-1].status == "cancelled"
-    assert engine._runs[-1].ticks < engine.spin_ticks.maximum()
-    not_run = 3 - len(engine._runs)
-    assert not_run >= 1
-    assert f"cancelled: {len(engine._runs)} version(s)" in engine.statusBar().currentMessage()
-    assert f"{not_run} version(s) not run" in engine.statusBar().currentMessage()
     # a finished run reports every version
+    monkeypatch.setattr(Emulator, "run_tick", original)
     engine.spin_ticks.setValue(2)
     engine.run_matrix()
     engine.wait()
-    assert [run.status for run in engine._runs] != [] and len(engine._runs) == 3
-    assert all(run.ticks == 2 for run in engine._runs)
+    assert len(engine._runs) == 3 and all(run.ticks == 2 for run in engine._runs)
     assert engine.statusBar().currentMessage().startswith("done: 3 version(s)")
+
+    # switching packs forgets a run without waiting for it
+    ticking.clear()
+    go_on.clear()
+    monkeypatch.setattr(Emulator, "run_tick", run_tick)
+    engine.spin_ticks.setValue(50)
+    engine.run_matrix()
+    assert ticking.wait(10)
+    engine.set_datapack(window.datapack)
+    assert not engine.running and engine._runs == []
+    go_on.set()
+    old = list(engine._jobs.values())
+    for thread, _worker in old:
+        thread.wait(10000)
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.processEvents()
+    assert engine._runs == [] and engine._jobs == {}
+
+    # a failing version says which one
+    def broken(self, version, output=None, cancelled=None):
+        raise RuntimeError("kaput")
+
+    from datapack_emulator.emulator.engine import TestEngine
+
+    monkeypatch.setattr(TestEngine, "run_version", broken)
+    engine.select_ids(["1.20.4", "1.21.4"])
+    engine.run_matrix()
+    engine.wait()
+    assert (
+        engine.statusBar()
+        .currentMessage()
+        .startswith("the run failed on 1.20.4: RuntimeError: kaput")
+    )
     engine.close()
 
 

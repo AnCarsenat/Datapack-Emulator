@@ -11,6 +11,7 @@ COLUMNS = (
     "version",
     "format",
     "status",
+    "ticks",
     "commands",
     "total ms",
     "worst ms",
@@ -26,12 +27,14 @@ COLUMN_HELP = {
     "format": "its pack format",
     "status": "cancelled (stopped before its last tick) › errors › tests failed › warnings › "
     "unsupported (the metadata does not claim this version; it still loads) › ok",
+    "ticks": "ticks run; a cancelled run shows how far it got (7/20)",
     "commands": "commands run in all ticks",
     "total ms": "estimated time of every tick together (a cost model, not a measurement)",
     "worst ms": "estimated time of the slowest tick; 50 ms is a whole tick",
     "warnings": "warning records: functions or tags that failed to load, metadata problems, …",
     "errors": "error records: typed or test commands that failed, emulator crashes",
-    "tests": "command tests passed, when run tests is ticked",
+    "tests": "command tests passed out of those run, when run tests is ticked; tests a "
+    "cancel stopped are counted as skipped",
     "unknown commands": "commands the version does not have, used by functions that failed to load",
     "overlays": "overlay folders active in this version",
 }
@@ -73,6 +76,7 @@ class ResultsTableModel(QAbstractTableModel):
                 run.version.id,
                 run.version.format_string,
                 run.status,
+                run.ticks_summary,
                 str(run.commands),
                 f"{run.total_us / 1000:.2f}",
                 f"{run.worst_tick_us / 1000:.2f}",
