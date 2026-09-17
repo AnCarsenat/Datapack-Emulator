@@ -87,7 +87,7 @@ def print_result(version: Version, result: TestResult, show_records: bool | str)
     mark = "PASS" if result.passed else "SKIP" if result.skipped else "FAIL"
     print(
         f"{mark} {version.id:10} tick {result.test.at_tick:<4} "
-        f"{result.test.command or '(checks only)'}  — {result.reason}"
+        f"{result.test.describe()}  — {result.reason}"
     )
     if show_records == "all" or (show_records and not result.passed):
         for record in result.records:
@@ -401,8 +401,11 @@ def command_test(arguments: argparse.Namespace) -> int:
         for line in arguments.check or []:
             problem = valid_check(line)
             if problem:
-                raise CliError(f"--check {line!r}: {problem}")
+                raise CliError(problem)
         extra[0].checks = list(arguments.check or [])
+    for test in extra:
+        if not test.command and not test.checks:
+            raise CliError(f"--test at tick {test.at_tick} has no command (give --check)")
         extra[0].expect = arguments.expect or ""
         extra[0].expect_value = (arguments.expect_value or "").strip()
         if extra[0].expect_value and not valid_range(extra[0].expect_value):

@@ -922,7 +922,8 @@ def test_checks_from_the_command_line(make_pack, tmp_path, capsys):
         ["test", pack, "--test", "2:", "--check", "score #ticks t = 3", "--check", "@e = 1.."]
     )
     out = capsys.readouterr().out
-    assert code == 0 and "(checks only)  — passed (checks only), 2 check(s) held" in out
+    assert code == 0 and "— passed (checks only), 2 check(s) held" in out
+    assert "(checks only)  (check score #ticks t = 3; check @e = 1..)" in out
     code = main(["test", pack, "--test", "2:", "--check", "score #ticks t = 9"])
     assert code == 1
     assert "score #ticks t: expected exactly 9, got 3" in capsys.readouterr().out
@@ -941,14 +942,19 @@ def test_checks_from_the_command_line(make_pack, tmp_path, capsys):
             "--check",
             "1",
             "@e[type=pig] = 0",
-            "--uncheck",
+            "--check",
             "1",
-            "2",
+            "@e[type=cow] = 0",
         ]
     )
+    assert code == 0
+    # check numbers refer to the checks before the command
+    code = main(["project", "tests", path, "--uncheck", "1", "2", "--uncheck", "1", "3"])
     out = capsys.readouterr().out
     assert code == 0 and "say hi  (check score #ticks t = 2)" in out
     assert Project.load(Path(path)).tests[0]["checks"] == ["score #ticks t = 2"]
+    assert main(["project", "tests", path, "--uncheck", "1", "4"]) == 2
+    assert main(["test", pack, "--test", "3:"]) == 2
     assert main(["test", path]) == 0
     capsys.readouterr()
 
@@ -964,7 +970,7 @@ def test_checks_from_the_command_line(make_pack, tmp_path, capsys):
         sys.stdin = sys.__stdin__
     out = capsys.readouterr().out
     assert "check storage test:mem x = 5" in out
-    assert "error: a check needs ' = ' or ' != '" in out
+    assert "error: check 'bad' needs ' = ' or ' != ' with spaces around it" in out
     assert "storage test:mem x: expected 5, got nothing" in out
     assert "  1. [x] tick 1    say hi\n" in out
 

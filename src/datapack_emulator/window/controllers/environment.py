@@ -38,6 +38,8 @@ class EnvironmentController(Controller):
         super().__init__(window)
         #: the last result of each row, to reveal its records
         self.results: dict[int, TestResult] = {}
+        #: the table is being filled from code (not edited by hand)
+        self._filling = False
 
     def connect(self) -> None:
         window = self.window
@@ -48,6 +50,7 @@ class EnvironmentController(Controller):
         table.verticalHeader().setVisible(False)
         table.customContextMenuRequested.connect(self.test_menu)
         table.cellDoubleClicked.connect(self._on_double_click)
+        table.itemChanged.connect(self._on_item_changed)
         window.add_test_button.clicked.connect(lambda: self.add_test())
         window.remove_test_button.clicked.connect(self.remove_selected)
         window.duplicate_test_button.clicked.connect(self.duplicate_selected)
@@ -60,6 +63,13 @@ class EnvironmentController(Controller):
     # -- the table ----------------------------------------------------------
 
     def add_test(self, test: CommandTest | None = None, row: int | None = None) -> int:
+        self._filling = True
+        try:
+            return self._add_test(test, row)
+        finally:
+            self._filling = False
+
+    def _add_test(self, test: CommandTest | None, row: int | None) -> int:
         test = test or CommandTest("say hello")
         table = self.window.table_tests
         row = table.rowCount() if row is None else row
@@ -260,32 +270,65 @@ class EnvironmentController(Controller):
         )
 
     def edit_checks(self, row: int, text: str | None = None) -> bool:
-        """Edit a test's checks (one per line); ``text`` skips the dialog."""
-        if text is None:
-            text, accepted = QInputDialog.getMultiLineText(
-                self.window,
-                "checks",
-                "What must hold after the command, one per line:\n" + CHECK_HELP,
-                "\n".join(self._checks(row)),
-            )
-            if not accepted:
-                return False
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        for line in lines:
-            problem = valid_check(line)
-            if problem:
+        """Edit a test's checks (one per line); ``text`` skips the dialog. A
+        line that cannot be read reopens the dialog with what was typed."""
+        interactive = text is None
+        typed = "\n".join(self._checks(row))
+        problem = ""
+        while True:
+            if interactive:
+                prompt = "What must hold after the command, one per line:\n" + CHECK_HELP
+                if problem:
+                    prompt = f"{problem}\n\n{prompt}"
+                typed, accepted = QInputDialog.getMultiLineText(
+                    self.window, "checks", prompt, typed
+                )
+                if not accepted:
+                    return False
+            else:
+                typed = text
+            lines = [line.strip() for line in typed.splitlines() if line.strip()]
+            problem = next((p for p in map(valid_check, lines) if p), "")
+            if not problem:
+                break
+            if not interactive:
                 self.status(f"not saved: {problem}")
                 return False
+        if lines == self._checks(row):
+            return True
         self._show_checks(row, lines)
         self._fit_columns()
-        self.results.pop(row, None)
+        self.clear_result(row)
         self.window.projects.mark_modified()
         return True
 
+    def clear_result(self, row: int) -> None:
+        """A test was edited: its last result no longer says anything."""
+        table = self.window.table_tests
+        self.results.pop(row, None)
+        item = table.item(row, COLUMN_RESULT)
+        if item is not None and item.text():
+            self._filling = True
+            try:
+                item.setText("edited: run it again")
+                item.setToolTip("")
+                item.setForeground(QBrush(QColor("#7f8c8d")))
+            finally:
+                self._filling = False
+            self.window.test_summary.setText("tests edited since the last run")
+
+    def _on_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._filling or item.column() == COLUMN_RESULT:
+            return
+        self.clear_result(item.row())
+
     def reveal_records(self, row: int) -> None:
         result = self.results.get(row)
-        if result is None or not result.records:
+        if result is None:
             self.status("run this test first")
+            return
+        if not result.records:
+            self.status("this test produced no records")
             return
         self.window.log_view.reveal(result.records[0])
 

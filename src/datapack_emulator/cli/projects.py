@@ -301,28 +301,31 @@ def _set(key: str, value):
     return lambda entry: entry.__setitem__(key, value)
 
 
-def _add_check(line: str):
-    def change(entry: dict) -> None:
-        entry["checks"] = [*(entry.get("checks") or []), line]
+class _CheckEdits:
+    """Every --check / --uncheck of one test, applied at once: check numbers
+    refer to the test's checks before the command, like test numbers do."""
 
-    return change
+    def __init__(self) -> None:
+        self.added: list[str] = []
+        self.removed: list[str] = []
 
-
-def _remove_check(which: str):
-    def change(entry: dict) -> None:
-        checks = list(entry.get("checks") or [])
-        if which == "all":
-            checks = []
-        else:
-            del checks[_position(checks, which, "check")]
-        entry["checks"] = checks
-
-    return change
+    def __call__(self, entry: dict) -> None:
+        original = CommandTest.from_dict(entry).checks
+        gone: set[int] = set()
+        for which in self.removed:
+            if which == "all":
+                gone.update(range(len(original)))
+            else:
+                gone.add(_position(original, which, "check"))
+        entry["checks"] = [
+            line for index, line in enumerate(original) if index not in gone
+        ] + self.added
 
 
 def command_tests(arguments: argparse.Namespace) -> int:
     project = _load(arguments.project)
     operations = []
+    check_edits: dict[str, _CheckEdits] = {}
     for action, values in getattr(arguments, "operations", None) or []:
         if action == "add":
             operations.append(("add", [parse_test(values[0]).to_dict()]))
@@ -338,13 +341,16 @@ def command_tests(arguments: argparse.Namespace) -> int:
             operations.append(("set", [values[0], _set("at_tick", int(values[1]))]))
         elif action in ("enable", "disable"):
             operations.append(("set", [values[0], _set("enabled", action == "enable")]))
-        elif action == "check":
-            problem = valid_check(values[1])
-            if problem:
-                raise CliError(f"--check {values[1]!r}: {problem}")
-            operations.append(("set", [values[0], _add_check(values[1])]))
-        elif action == "uncheck":
-            operations.append(("set", [values[0], _remove_check(values[1])]))
+        elif action in ("check", "uncheck"):
+            if action == "check":
+                problem = valid_check(values[1])
+                if problem:
+                    raise CliError(problem)
+            edits = check_edits.get(values[0])
+            if edits is None:
+                edits = check_edits[values[0]] = _CheckEdits()
+                operations.append(("set", [values[0], edits]))
+            (edits.added if action == "check" else edits.removed).append(values[1])
         else:
             operations.append((action, values))
     if _edit_list(project.tests, operations, "test"):
@@ -523,7 +529,7 @@ def register(subparsers) -> None:
         action=_Ordered,
         nargs=2,
         metavar=("N", "M|all"),
-        help="remove test N's check M",
+        help="remove test N's check M (numbered as before the command)",
     )
     tests.add_argument("--enable", action=_Ordered, metavar="N")
     tests.add_argument("--disable", action=_Ordered, metavar="N")

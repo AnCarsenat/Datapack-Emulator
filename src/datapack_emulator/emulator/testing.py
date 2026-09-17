@@ -47,6 +47,16 @@ def _as_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _check_lines(value: Any) -> list[str]:
+    """``checks`` from a hand-edited file: a list of strings (one string is
+    one check; anything else is dropped)."""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    return [line.strip() for line in value if isinstance(line, str) and line.strip()]
+
+
 @dataclass
 class CommandTest:
     command: str
@@ -71,7 +81,8 @@ class CommandTest:
         if self.expect_value:
             expect.append(f"value {self.expect_value}")
         expect.extend(f"check {line}" for line in self.checks)
-        return (self.command or "(checks only)") + (f"  ({'; '.join(expect)})" if expect else "")
+        shown = self.command or ("(checks only)" if self.checks else "(empty)")
+        return shown + (f"  ({'; '.join(expect)})" if expect else "")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CommandTest:
@@ -81,9 +92,7 @@ class CommandTest:
             expect=str(data.get("expect", "")),
             enabled=bool(data.get("enabled", True)),
             expect_value=str(data.get("expect_value", "")).strip(),
-            checks=[str(line).strip() for line in data.get("checks") or [] if str(line).strip()]
-            if isinstance(data.get("checks"), list)
-            else [],
+            checks=_check_lines(data.get("checks")),
         )
 
 
@@ -198,14 +207,15 @@ class TestSchedule:
 
 def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
     command = Command.parse(test.command, source="<test>")
-    if command is None:
-        if test.checks:
-            return _checked(emulator, test, 0, [], "passed (checks only)")
+    if command is None and not test.checks:
         return TestResult(test, False, "nothing to run: the command is empty or a comment")
     # listen rather than slice the bus: a full bus drops its oldest records
     records: list[LogRecord] = []
     emulator.output.listeners.append(records.append)
     try:
+        if command is None:
+            emulator.output.app(f"test: checks only (tick {test.at_tick})")
+            return _checked(emulator, test, 0, records, "passed (checks only)")
         emulator.output.app(f"test: {test.command} (tick {test.at_tick})")
         result = emulator.run_command(command, emulator.root_context())
     finally:
@@ -240,15 +250,21 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
         return TestResult(
             test, False, f"expected output not found: {test.expect!r}", result.value, records
         )
-    return _checked(emulator, test, result.value, records, f"passed (value {result.value})")
+    emulator.output.listeners.append(records.append)
+    try:
+        return _checked(emulator, test, result.value, records, f"passed (value {result.value})")
+    finally:
+        emulator.output.listeners.remove(records.append)
 
 
 def _checked(
     emulator: Emulator, test: CommandTest, value: int, records: list[LogRecord], detail: str
 ) -> TestResult:
+    """Run the test's checks; a failed one is logged (so it is in the records)."""
     for line in test.checks:
         passed, message = check_world(emulator, line)
         if not passed:
+            emulator.output.app(f"check failed: {message}", level=LogLevel.WARNING)
             return TestResult(test, False, message, value, records)
     if test.checks:
         detail += f", {len(test.checks)} check(s) held"
@@ -259,45 +275,117 @@ def _checked(
 # world checks
 # ---------------------------------------------------------------------------
 
-#: the operator between what is read and what is expected
-_OPERATOR = re.compile(r"\s(!?=)\s")
-
 CHECK_HELP = """\
 score HOLDER OBJECTIVE = RANGE        #global counter = 3, @p points != 0
-storage ID PATH = SNBT                 storage ns:mem x = 1b
+storage ID [PATH] = SNBT               storage ns:mem x = 1b
 entity SELECTOR [PATH] = SNBT          entity @e[type=pig,limit=1] Tags = ["a"]
 SELECTOR = RANGE                       @e[type=pig] = 2 (how many match)
 block X Y Z = BLOCK                    block 0 64 0 = minecraft:chest[facing=north]
-if CONDITION / unless CONDITION        if entity @a[tag=winner]"""
+if CONDITION / unless CONDITION        if entity @a[tag=winner]
+(spaces around = and != are needed; checks run as the server, at 0 0 0)"""
+
+#: what a check starts with, for the short error
+CHECK_KINDS = "score, storage, entity, block, a selector, if or unless"
+_OPERATORS = {"=": False, "==": False, "!=": True}
+
+
+@dataclass
+class ParsedCheck:
+    """One check line, read."""
+
+    text: str
+    #: score, count, storage, entity, block or condition
+    kind: str
+    #: the words before the operator (a condition: the whole line)
+    words: list[str]
+    negate: bool = False
+    #: what follows the operator
+    expected: str = ""
+
+
+def _tokens(text: str) -> list[tuple[str, int]]:
+    """Words and where they end, split on spaces outside brackets and quotes
+    (``@e[type=pig, tag=a]`` and ``"a b"`` stay whole)."""
+    tokens: list[tuple[str, int]] = []
+    depth = 0
+    quote = ""
+    start = None
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                index += 1
+            elif char == quote:
+                quote = ""
+        elif char in "\"'":
+            quote = char
+        elif char in "[{(":
+            depth += 1
+        elif char in "]})":
+            depth = max(0, depth - 1)
+        if char.isspace() and not quote and depth == 0:
+            if start is not None:
+                tokens.append((text[start:index], index))
+                start = None
+        elif start is None:
+            start = index
+        index += 1
+    if start is not None:
+        tokens.append((text[start:], len(text)))
+    return tokens
+
+
+def _integer_range(expression: str) -> bool:
+    return valid_range(expression) and all(
+        part.lstrip("-").isdigit() for part in expression.split("..") if part
+    )
+
+
+def parse_check(line: str) -> ParsedCheck | str:
+    """A check line, or why it cannot be read (naming the line)."""
+    from datapack_emulator.emulator.runtime.debugger import condition_problem
+
+    text = line.strip()
+    tokens = _tokens(text)
+    if not tokens:
+        return "an empty check"
+    words = [word for word, _ in tokens]
+    if any(word.startswith("@s") for word in words):
+        return f"check {text!r}: @s is nobody here (checks run as the server)"
+    if words[0] in ("if", "unless"):
+        problem = condition_problem(text)
+        return f"check {text!r}: {problem}" if problem else ParsedCheck(text, "condition", words)
+    operator = next((i for i, word in enumerate(words) if word in _OPERATORS), None)
+    if operator is None:
+        return f"check {text!r} needs ' = ' or ' != ' with spaces around it"
+    left = words[:operator]
+    expected = text[tokens[operator][1] :].strip()
+    negate = _OPERATORS[words[operator]]
+    if not left or not expected:
+        return f"check {text!r} needs something on both sides of {words[operator]}"
+    kind = left[0]
+    if kind == "score" or kind.startswith("@"):
+        if kind == "score" and len(left) != 3:
+            return f"check {text!r}: score HOLDER OBJECTIVE = RANGE"
+        if kind.startswith("@") and len(left) != 1:
+            return f"check {text!r}: SELECTOR = RANGE"
+        if not _integer_range(expected):
+            return f"check {text!r}: not a whole-number range: {expected!r} (5, 1.., ..3, 1..4)"
+        return ParsedCheck(text, "score" if kind == "score" else "count", left, negate, expected)
+    if kind in ("storage", "entity") and len(left) in (2, 3):
+        if snbt_value(expected, strict=True) is _UNREADABLE:
+            return f"check {text!r}: not an NBT value: {expected!r}"
+        return ParsedCheck(text, kind, left, negate, expected)
+    if kind == "block" and len(left) == 4:
+        return ParsedCheck(text, kind, left, negate, expected)
+    return f"unknown check {text!r}: it starts with {CHECK_KINDS}"
 
 
 def valid_check(line: str) -> str:
     """Why a check line cannot be read ("" when it can)."""
-    text = line.strip()
-    if text.startswith(("if ", "unless ")):
-        return ""
-    match = _OPERATOR.search(text)
-    if match is None:
-        return f"a check needs ' = ' or ' != ': {text!r}"
-    left, right = text[: match.start()].split(), text[match.end() :].strip()
-    if not left or not right:
-        return f"a check needs something on both sides: {text!r}"
-    kind = left[0]
-    if kind == "score" and len(left) != 3:
-        return "score HOLDER OBJECTIVE = RANGE"
-    if kind in ("score",) or kind.startswith("@"):
-        if not valid_range(right):
-            return f"not a range: {right!r} (5, 1.., ..3, 1..4)"
-        if kind.startswith("@") and len(left) != 1:
-            return "SELECTOR = RANGE"
-        return ""
-    if kind == "storage" and len(left) in (2, 3):
-        return ""
-    if kind == "entity" and len(left) in (2, 3):
-        return ""
-    if kind == "block" and len(left) == 4:
-        return ""
-    return f"unknown check {text!r}; one of:\n{CHECK_HELP}"
+    parsed = parse_check(line)
+    return parsed if isinstance(parsed, str) else ""
 
 
 def check_world(emulator: Emulator, line: str) -> tuple[bool, str]:
@@ -305,49 +393,57 @@ def check_world(emulator: Emulator, line: str) -> tuple[bool, str]:
     from datapack_emulator.emulator.commands.helpers import find_holders, find_targets
     from datapack_emulator.emulator.runtime.debugger import Debugger
 
-    text = line.strip()
-    problem = valid_check(text)
-    if problem:
-        return False, f"check {text!r}: {problem}"
+    parsed = parse_check(line)
+    if isinstance(parsed, str):
+        return False, parsed
+    text = parsed.text
+    words = parsed.words
+    negate = parsed.negate
+    expected = parsed.expected
     context = emulator.root_context()
-    if text.startswith(("if ", "unless ")):
-        passed, error = Debugger().test(text, context)
-        return passed, "" if passed else f"check failed: {text}" + (f" ({error})" if error else "")
-    match = _OPERATOR.search(text)
-    assert match is not None
-    negate = match.group(1) == "!="
-    words = text[: match.start()].split()
-    expected = text[match.end() :].strip()
-    kind = words[0]
     world = emulator.world
     version = emulator.version
 
-    if kind == "score" or kind.startswith("@"):
-        if kind == "score":
+    if parsed.kind == "condition":
+        # the emulator's own debugger, so a breakpoint never stops inside a check
+        passed, error = (emulator.debugger or Debugger()).test(text, context)
+        return passed, "" if passed else f"check failed: {text}" + (f" ({error})" if error else "")
+
+    if parsed.kind in ("score", "count"):
+        if parsed.kind == "score":
             holders = find_holders(context, words[1])
+            if len(holders) > 1:
+                return False, f"check {text!r}: {words[1]} is {len(holders)} holders; name one"
             value = world.scoreboard.get(holders[0], words[2]) if holders else None
             what = f"score {words[1]} {words[2]}"
         else:
-            value = len(find_targets(context, kind))
-            what = f"{kind} count"
+            value = len(find_targets(context, words[0]))
+            what = f"{words[0]} count"
         wanted = ("not " if negate else "") + describe_range(expected)
         if value is None:
             return negate, "" if negate else f"{what}: expected {wanted}, but it is not set"
         holds = in_range(value, expected) != negate
         return holds, "" if holds else f"{what}: expected {wanted}, got {value}"
 
-    if kind == "block":
-        from datapack_emulator.emulator.commands.blocks import parse_block_position
-        from datapack_emulator.emulator.runtime.blocks import parse_block_predicate
+    if parsed.kind == "block":
+        from datapack_emulator.emulator.commands.blocks import (
+            block_predicate,
+            note_unknown_properties,
+            parse_block_position,
+        )
 
-        position, error = parse_block_position(context, words[1:4])
+        quiet = context.branch(depth=1)  # the game's errors stay out of the logs' errors
+        position, error = parse_block_position(quiet, words[1:4])
         if position is None:
             return False, f"check {text!r}: {context.render(error)}"
-        predicate = parse_block_predicate(expected)
+        predicate = block_predicate(quiet, expected)
         if predicate is None:
             return False, f"check {text!r}: not a block: {expected!r}"
+        if predicate.is_tag and predicate.tag_members is None:
+            return False, f"check {text!r}: the block tag {predicate.id} is not known"
         block = world.blocks.get(context.dimension, position)
         holds = predicate.matches(block, version) != negate
+        note_unknown_properties(quiet, predicate)
         shown = block.id + (
             "[" + ",".join(f"{k}={v}" for k, v in sorted(block.properties.items())) + "]"
             if block.properties
@@ -362,7 +458,7 @@ def check_world(emulator: Emulator, line: str) -> tuple[bool, str]:
         )
 
     # NBT: storage ID [PATH] / entity SELECTOR [PATH]
-    if kind == "storage":
+    if parsed.kind == "storage":
         data = world.storage.get(normalise_id(words[1]), {})
         what = f"storage {normalise_id(words[1])}"
     else:
@@ -388,15 +484,27 @@ def check_world(emulator: Emulator, line: str) -> tuple[bool, str]:
     )
 
 
-def snbt_value(text: str) -> Any:
-    """Any SNBT value (``5b``, ``"hi"``, ``[1, 2]``, ``{a: 1}``); text that is
-    not SNBT is taken as a string."""
-    parsed = parse_snbt("{v: " + text + "}")
-    return parsed["v"] if "v" in parsed else text.strip().strip('"')
+_UNREADABLE = object()
+_BARE_DECIMAL = re.compile(r"^(-?)\.(\d)")
+
+
+def snbt_value(text: str, strict: bool = False) -> Any:
+    """Any SNBT value (``5b``, ``"hi"``, ``[1, 2]``, ``{a: 1}``, ``-.5``). A
+    bare word is a string; text that looks like a number, a list or a compound
+    but does not parse is ``_UNREADABLE`` when ``strict``, else a string."""
+    stripped = _BARE_DECIMAL.sub(r"\g<1>0.\2", text.strip())
+    parsed = parse_snbt("{v: " + stripped + "}")
+    if "v" in parsed:
+        return parsed["v"]
+    looks_structured = stripped[:1] in ("{", "[", "-", ".") or stripped[:1].isdigit()
+    if strict and looks_structured:
+        return _UNREADABLE
+    return stripped.strip('"')
 
 
 def nbt_equal(actual: Any, wanted: Any) -> bool:
-    """Equal as NBT values, ignoring number types (``1b`` is ``1``)."""
+    """Equal as NBT values, ignoring number types (``1b`` is ``1``); whole
+    numbers compare exactly, decimals within a float's precision."""
     if isinstance(wanted, dict):
         return (
             isinstance(actual, dict)
@@ -409,14 +517,10 @@ def nbt_equal(actual: Any, wanted: Any) -> bool:
             and len(actual) == len(wanted)
             and all(nbt_equal(a, w) for a, w in zip(actual, wanted, strict=True))
         )
-    if isinstance(wanted, (int, float)) and not isinstance(wanted, bool):
-        return (
-            isinstance(actual, (int, float))
-            and not isinstance(actual, bool)
-            and math.isclose(float(actual), float(wanted), rel_tol=1e-6, abs_tol=1e-9)
-        ) or (isinstance(actual, bool) and float(actual) == float(wanted))
-    if isinstance(wanted, bool):
-        return isinstance(actual, (int, float)) and float(actual) == float(wanted)
+    if isinstance(wanted, (int, float)) and isinstance(actual, (int, float)):
+        if isinstance(wanted, (int, bool)) and isinstance(actual, (int, bool)):
+            return int(actual) == int(wanted)
+        return math.isclose(float(actual), float(wanted), rel_tol=1e-7, abs_tol=1e-12)
     return actual == wanted
 
 

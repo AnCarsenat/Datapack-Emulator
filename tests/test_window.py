@@ -1349,3 +1349,41 @@ def test_tests_have_checks(window, make_pack):
     env.run()
     assert window.table_tests.item(0, 5).text() == "✘ score #ticks t: expected exactly 7, got 2"
     assert window.projects.capture().tests[0]["checks"] == ["score #ticks t = 7"]
+
+
+def test_checks_edits_clear_results_and_keep_records(window, make_pack):
+    from datapack_emulator.emulator.testing import CommandTest
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add t dummy\n",
+            "data/test/function/tick.mcfunction": "scoreboard players add #ticks t 1\n",
+        }
+    )
+    window.datapacks.load(pack)
+    env = window.environment
+    env.set_tests(
+        [
+            CommandTest("", at_tick=1, checks=["score #ticks t = 2"]),
+            CommandTest("say hi", at_tick=1),
+        ]
+    )
+    env.run()
+    assert env.results[0].records  # a checks-only test has records too
+    env.reveal_records(0)
+    assert "run this test first" not in window.statusBar().currentMessage()
+    window.projects.mark_saved()
+    assert env.edit_checks(0, "score #ticks t = 2")  # unchanged: nothing to do
+    assert not window.projects.modified and 0 in env.results
+    assert env.edit_checks(0, "score #ticks t = 99")
+    assert window.table_tests.item(0, 5).text() == "edited: run it again"
+    assert 0 not in env.results and 1 in env.results
+    window.table_tests.item(1, 1).setText("say changed")
+    assert window.table_tests.item(1, 5).text() == "edited: run it again"
+    assert window.test_summary.text() == "tests edited since the last run"
+    env.duplicate_selected()  # no selection: nothing
+    window.table_tests.selectRow(0)
+    env.duplicate_selected()
+    assert env.tests()[1].checks == ["score #ticks t = 99"]

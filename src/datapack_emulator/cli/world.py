@@ -814,6 +814,8 @@ class Shell(DebugCommands):
 
     def do_uncheck(self, session: Session, rest: str) -> None:
         test, value = self._test_and_value(session, rest)
+        if not value:
+            raise CliError("usage: .uncheck N M|all")
         if value == "all":
             test.checks = []
         else:

@@ -89,11 +89,14 @@ current version.
       edit: `score #global counter = 3`, `storage ns:mem x = 1b`,
       `@e[type=pig] = 2`, `block 0 64 0 = stone`, `if entity @a[tag=won]`,
       `!=` to invert — see [checks](cli.md#checks); with checks the command
-      may be empty); and the *result*: hover it for the records it produced, double-click it to
-      select them in the logs.
+      may be empty; a line that cannot be read reopens the editor with what
+      you typed and why); and the *result*: hover it for the records it
+      produced, double-click it to select them in the logs. Editing a test
+      clears its result ("edited: run it again").
 
     A test passes when the command succeeds without a visible error and the
-    expectations that are set hold. *run tests* (F8) runs them in the
+    expectations that are set hold; a test with only checks passes when they
+    all hold. *run tests* (F8) runs them in the
     window's world, so the world dock shows what they did; *run selected*
     runs only the selected ones. *duplicate* and ↑/↓ reorder them, and a
     right-click on a test runs it, shows its records, analyzes its command,
@@ -254,7 +257,7 @@ All five are open by default and can be toggled from *view*.
 | source view | the editor's own menu · analyze this line · run this line · add this line as a test · toggle breakpoint · run this function · show callers and calls · edit note on this function |
 | source view gutter | click: set or remove a breakpoint |
 | log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from (double-click too) · analyze the command · add the command as a test |
-| test | run this test · show its records in the logs · analyze the command · duplicate · move up / down · remove · add test |
+| test | run this test · show its records in the logs · analyze the command · edit checks… · duplicate · move up / down · remove · add test |
 | world › score | set… · add 1 · remove 1 · reset · enable trigger · graph over time… · copy value · new objective… |
 | world › entity | change value… (on an NBT value) · teleport… · add tag… · give item… and clear inventory (players) · set item in slot… · kill · run a command as this entity (starts `execute as @e[nbt={UUID:[I;…]},limit=1] at @s run `, or the player's name) · copy UUID · copy data (SNBT) |
 | world › storage value | change value… · remove · copy value |
