@@ -6,6 +6,9 @@ terminal or CI::
     datapack-emulator-cli run    samples/hat --ticks 20 --version 1.21.4
     datapack-emulator-cli matrix samples/hat --from 1.20.4 --to 1.21.6
     datapack-emulator-cli test   projects/hat.dpemu --junit generated/tests.xml
+    datapack-emulator-cli shell  projects/hat.dpemu
+    datapack-emulator-cli world  samples/hat --ticks 5 --scores
+    datapack-emulator-cli explain samples/hat --at hat:tick
     datapack-emulator-cli versions
     datapack-emulator-cli vanilla --download 1.21.4
 
@@ -18,7 +21,7 @@ import argparse
 import logging
 import traceback
 
-from datapack_emulator.cli import jars, runs
+from datapack_emulator.cli import inspect, jars, projects, runs, world
 from datapack_emulator.cli.common import CRASHED, USAGE, CliError, err
 
 PROG = "datapack-emulator-cli"
@@ -35,6 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
     runs.register_run(subparsers)
     runs.register_matrix(subparsers)
     runs.register_test(subparsers)
+    world.register(subparsers)
+    inspect.register(subparsers)
+    projects.register(subparsers)
     jars.register(subparsers)
     return parser
 

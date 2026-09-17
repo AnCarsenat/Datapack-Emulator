@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 
 from datapack_emulator.cli.common import (
@@ -33,6 +34,9 @@ from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.testing import CommandTest, TestResult, TestSchedule, valid_range
 from datapack_emulator.emulator.versions import Version
 from datapack_emulator.settings import EMULATION
+
+#: real time: 20 ticks per second
+TICK_SECONDS = 0.05
 
 # ---------------------------------------------------------------------------
 # shared
@@ -107,20 +111,23 @@ def command_run(arguments: argparse.Namespace) -> int:
     if with_tests and not tests:
         err("note: no enabled tests to run during the run")
 
-    if tests:
-        warn_unreached(tests, ticks)
-        schedule = TestSchedule(tests)
-        emulator.start()
-        if ticks <= 0:
-            emulator.run(ticks=0)
-        for _ in range(ticks):
-            tick = emulator.world.tick
-            emulator.run_tick()
+    warn_unreached(tests, ticks)
+    schedule = TestSchedule(tests) if tests else None
+    realtime = arguments.realtime or bool(
+        arguments.realtime is None and inputs.project and inputs.project.speed == "realtime"
+    )
+    emulator.start()
+    if ticks <= 0:
+        emulator.run(ticks=0)
+    for _ in range(ticks):
+        started = time.perf_counter()
+        tick = emulator.world.tick
+        emulator.run_tick()
+        if schedule is not None:
             schedule.after_tick(emulator, tick)
-        results = schedule.results()
-    else:
-        emulator.run(ticks=ticks)
-        results = []
+        if realtime:
+            time.sleep(max(0.0, TICK_SECONDS - (time.perf_counter() - started)))
+    results = schedule.results() if schedule is not None else []
     profiler = emulator.profiler
     datapack = inputs.datapack
 
@@ -192,6 +199,12 @@ def register_run(subparsers) -> None:
     )
     run.add_argument(
         "--show-records", action="store_true", help="print the records of failed tests"
+    )
+    run.add_argument(
+        "--realtime",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="20 ticks per second instead of as fast as possible (default: the project's speed)",
     )
     run.add_argument("--html", type=Path, default=None, help="default: generated/index.html")
     run.add_argument("--dot", action="store_true", help="also write the call graph (Graphviz)")
