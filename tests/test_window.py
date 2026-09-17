@@ -1387,3 +1387,27 @@ def test_checks_edits_clear_results_and_keep_records(window, make_pack):
     window.table_tests.selectRow(0)
     env.duplicate_selected()
     assert env.tests()[1].checks == ["score #ticks t = 99"]
+
+
+def test_problems_dock(app, window, make_pack):
+    from test_problems import BAD_PACK
+
+    window.datapacks.load(make_pack(BAD_PACK))
+    problems = window.problems
+    assert problems.problems and "error(s)" in problems.label.text()
+    count_all = problems.tree.topLevelItemCount()
+    problems.combo_severity.setCurrentText("error")
+    errors = problems.tree.topLevelItemCount()
+    assert 0 < errors < count_all
+    problems.edit_filter.setText("tpye")
+    assert problems.tree.topLevelItemCount() == 1
+    item = problems.tree.topLevelItem(0)
+    assert item.text(1) == "test:tick:1" and item.text(3) == "selector-option"
+    problems.open(item)
+    assert window.navigation.source_path.name == "tick.mcfunction"
+    assert window.source_edit.textCursor().blockNumber() == 0
+    # a fixed pack checks clean after a reload
+    window.datapacks.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}))
+    problems.edit_filter.clear()
+    problems.combo_severity.setCurrentText("info")
+    assert problems.problems == [] and problems.tree.topLevelItemCount() == 0

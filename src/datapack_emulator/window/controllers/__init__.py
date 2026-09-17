@@ -13,6 +13,7 @@ from datapack_emulator.window.controllers.jars import JarController
 from datapack_emulator.window.controllers.logs import LogController
 from datapack_emulator.window.controllers.navigation import NavigationController
 from datapack_emulator.window.controllers.notes import NotesController
+from datapack_emulator.window.controllers.problems import ProblemsController
 from datapack_emulator.window.controllers.projects import ProjectController
 from datapack_emulator.window.controllers.runs import RunController
 from datapack_emulator.window.controllers.session import SessionController
@@ -27,6 +28,7 @@ __all__ = [
     "LogController",
     "NavigationController",
     "NotesController",
+    "ProblemsController",
     "ProjectController",
     "RunController",
     "SessionController",

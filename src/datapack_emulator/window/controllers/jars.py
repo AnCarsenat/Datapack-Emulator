@@ -29,6 +29,8 @@ class JarController(Controller):
             window.vanilla_label.setText(f"client.jar {assets.version_id}")
             window.vanilla_label.setToolTip(assets.summary)
             window.output.app(f"vanilla assets: {assets.summary}")
+        if (assets.jar_path if assets else None) != previous:
+            window.problems.refresh()  # ids are checked against the jar
         window.datapacks.rebuild_emulator()
 
     def autoload(self) -> None:

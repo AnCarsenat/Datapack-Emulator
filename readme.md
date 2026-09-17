@@ -20,6 +20,9 @@ checked against the real base game read out of a `client.jar`.
   entity counts, in the window, during runs and across versions —
   and in CI: `datapack-emulator-cli test` exits non-zero on a failure and
   writes JUnit XML
+* a problems list for the whole pack, per version: functions that do not
+  load, unknown selector options, bad SNBT and ids, missing functions,
+  broken loot tables and predicates, unused functions
 * explains any command line: execute steps, selectors, references, version
   support and cost; your own notes on the project and its functions
 * a function debugger: breakpoints (with conditions) on function lines, step
@@ -51,6 +54,7 @@ console with a debugger and project editing — on packs or saved projects:
 .venv/bin/datapack-emulator-cli shell  samples/hat          # type commands, .step, .scores, .help
 .venv/bin/datapack-emulator-cli shell  samples/hat --break hat:tick:2 --watch "score Player1 hat"   # debug
 .venv/bin/datapack-emulator-cli world  samples/hat --ticks 5 --scores
+.venv/bin/datapack-emulator-cli check  samples/hat --declared --boundaries
 src/main.sh --cli run samples/hat_v2 --version 26.3      # same runner through the script
 ```
 

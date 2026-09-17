@@ -1062,3 +1062,28 @@ def test_ctrl_c_between_versions_and_skipped_tests(make_pack, tmp_path, capsys, 
     assert code == 130
     assert "SKIP 1.21.4" in out and "skipped: the run was cancelled after 2 tick(s)" in out
     assert "1/1 passed in 1.21.4, 1 skipped" in out
+
+
+def test_check_reports_problems(make_pack, tmp_path, capsys):
+    import json
+
+    from test_problems import BAD_PACK
+
+    bad = str(make_pack(BAD_PACK))
+    assert main(["check", bad, "--version", "1.21.4", "--no-vanilla"]) == 1
+    out = capsys.readouterr().out
+    assert "error   test:tick:1: unknown selector option 'tpye'" in out
+    assert "1.21.4: " in out and "error(s)" in out
+    assert main(["check", bad, "--version", "1.21.4", "--severity", "error", "--no-vanilla"]) == 1
+    assert "info" not in capsys.readouterr().out.split("1.21.4: ")[0]
+    code = main(
+        ["check", bad, "--version", "1.21.4", "--code", "recursion", "--json", "--no-vanilla"]
+    )
+    data = json.loads(capsys.readouterr().out)
+    assert code == 0 and data["counts"] == {"error": 0, "warning": 0, "info": 1}
+    assert data["problems"][0]["resource"] == "test:loop"
+    pack = str(_pack(make_pack))
+    assert main(["check", pack, "--versions", "1.20.4", "1.21.4", "--no-vanilla"]) == 0
+    out = capsys.readouterr().out
+    assert "== 1.20.4, no client jar" in out and "1.21.4: 0 error(s)" in out
+    assert main(["check", bad, "--code", "missing-function", "--strict", "--no-vanilla"]) == 1

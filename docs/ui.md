@@ -31,9 +31,9 @@ layout changes are made in Qt Designer, never in code.
 | --- | --- |
 | file | new / open / save / save as project ([projects](projects.md)) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor |
-| run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · version engine… · export call graph (.dot) |
+| run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · check pack (the problems dock) · version engine… · export call graph (.dot) |
 | debug | toggle breakpoint · remove all breakpoints · continue · step into · step over · step out · pause (see the [debugger](#debugger-dock)) |
-| view | explorer · inspector · logs · world · debugger (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
+| view | explorer · inspector · logs · world · debugger · problems (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
 
 Hovering a menu entry explains it in the status bar; buttons, filters,
 column headers and inspector rows explain themselves in tooltips.
@@ -143,8 +143,18 @@ current version.
 
 ### Docks
 
-All five are open by default and can be toggled from *view*.
+All six are open by default and can be toggled from *view*.
 
+* **problems** — what the emulated version refuses or cannot run in the
+  pack, found without running ([command line](cli.md#check--problems):
+  `check`, which lists every kind): functions and tags that do not load,
+  unknown selector options, SNBT and (with a client jar) ids the version
+  does not have, calls to missing functions, broken JSON resources and
+  unknown conditions or item functions in them, and — as notes — unused
+  functions and recursion. It is checked again when a pack loads, the
+  version or the client jar changes, or with *check again* (Ctrl+Shift+K).
+  Filter by severity or text; double-click a problem to open its file at
+  the line, right-click to analyze the line or copy the problem.
 * **explorer** — every analyzed pack as it sits on disk, one root per pack in
   load order: `pack.mcmeta`, `pack.png`, `data/`, and one subtree per overlay
   directory with its format range. Right-click a pack's root to remove it from
@@ -294,7 +304,8 @@ file type or folders.
 | F10 / F11 / Shift+F11 | step over / into / out (debugger) |
 | Ctrl+F6 | pause a running emulation (debugger) |
 | Ctrl+1 … Ctrl+4 | environment / profiler / call graph / source tab |
-| Alt+1 … Alt+5 | show or hide explorer / inspector / logs / world / debugger |
+| Ctrl+Shift+K | check the pack (problems dock) |
+| Alt+1 … Alt+6 | show or hide explorer / inspector / logs / world / debugger / problems |
 | Ctrl+Q | quit |
 
 ## Client-jar download popup

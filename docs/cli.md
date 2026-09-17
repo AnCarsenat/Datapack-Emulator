@@ -20,6 +20,7 @@ logger (records from the emulator still print).
 | [`info`](#info--the-inspector) | what a pack or a resource is | inspector dock, version note |
 | [`explain`](#explain--analyze-a-line) | what a command line does | analyze line (Ctrl+I) |
 | [`search`](#search) | text in functions, or ids | search in pack (Ctrl+Shift+F), quick open (Ctrl+P) |
+| [`check`](#check--problems) | what a version refuses or cannot run, without running (exit 1 on an error) | problems dock, *run › check pack* (Ctrl+Shift+K) |
 | [`graph`](#graph--the-call-graph) | the call graph, callers and calls | call graph tab, *show callers and calls*, export .dot |
 | [`project`](#project--dpemu-files) | create, show and edit projects | *file › new / save project*, environment tab, notes |
 | [`versions`](#versions) | list known versions | the version combo |
@@ -415,6 +416,45 @@ datapack-emulator-cli search samples/hat tick --ids         # functions and tags
 Searches the emulated version's view (base pack and active overlays),
 case-insensitively; the text cannot be empty. `--paths` adds file paths,
 `--json` prints JSON; the exit status is `1` when nothing matched.
+
+## `check` — problems
+
+```sh
+datapack-emulator-cli check samples/hat --declared --boundaries
+datapack-emulator-cli check projects/hat.dpemu --severity warning --strict
+datapack-emulator-cli check samples/hat --version 1.21.4 --code selector-option --json
+```
+
+The problems dock: every problem of the pack in the version (or each of the
+chosen versions), errors first, as `severity place: message [code]`, then
+the counts. Nothing runs.
+
+| option | |
+| --- | --- |
+| `--version`, `--versions`, `--from/--to`, `--declared`, `--all`, `--boundaries` | which versions (default: the project's, else the pack's newest) |
+| `--severity error\|warning\|info` | the lowest severity shown |
+| `--code CODE` | only these kinds (repeatable) |
+| `--strict` | exit with `1` on warnings too (errors always do) |
+| `--json` | the problems, their files and lines, and the counts, as JSON (a list with several versions) |
+| `--verbose` | name each version and each problem's file |
+| `--vanilla`, `--no-vanilla`, `--download` | the client jar ids are checked against (see [client jars](#client-jars)) |
+
+| code | severity | |
+| --- | --- | --- |
+| `function-not-loaded`, `tag-not-loaded` | error | the version's server refuses the function or tag (unknown command, a feature it lacks, a missing tag entry) |
+| `selector-option` | error | a selector option vanilla does not know (`@e[tpye=pig]`): the function does not load |
+| `snbt` | error | an NBT argument of `summon`, `data`, `give`, `item`, `clear`, `setblock` or `fill` that does not parse |
+| `unknown-id` | error | with a client jar: an entity, item or block id the version does not have |
+| `json` | error | a JSON resource that does not parse |
+| `loot-table`, `recipe` | error | a loot table without `rolls` or with `pools`/`entries` that are not lists; a recipe without `type` |
+| `advancement` | error / warning | a criterion without `trigger` (error); no criteria, or a parent that is not in the pack (warning) |
+| `missing-function`, `missing-tag` | warning | a `function`, `schedule`, `execute if function` or advancement reward that names nothing |
+| `text-component` | warning | `tellraw`/`title` text that does not parse |
+| `condition`, `item-function`, `loot-entry` | warning | an unknown condition, item function or loot entry type in a predicate, item modifier or loot table |
+| `unused-function` | info | nothing calls it from `#minecraft:load`, `#minecraft:tick` or an advancement reward |
+| `recursion` | info | the function calls itself (directly or not) |
+
+Macro lines (`$…`) are checked only when called, as the game does.
 
 ## `graph` — the call graph
 
