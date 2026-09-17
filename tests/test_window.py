@@ -1147,3 +1147,82 @@ def test_debugger_stops_steps_and_keeps_breakpoints(app, window, make_pack, tmp_
     assert debug.debugger.breakpoints[("test:tick", 3)].condition == "if score #t n matches 5"
     assert not debug.debugger.breakpoints[("test:inner", 2)].enabled
     assert debug.tree_watches.topLevelItemCount() == 0
+
+
+def test_debugger_guards_while_stopped(app, window, make_pack):
+    from datapack_emulator.emulator.testing import CommandTest
+
+    pack = make_pack(
+        {
+            **DEBUG_PACK,
+            "data/test/function/probe.mcfunction": "say probe\n",
+        }
+    )
+    window.datapacks.load(pack)
+    debug = window.debug
+    debug.debugger.add("test:tick", 1)
+    checks = {}
+
+    def while_stopped():
+        checks["stop enabled"] = window.stop_button.isEnabled()
+        checks["run refused"] = window.environment.run() == []
+        checks["message"] = window.statusBar().currentMessage()
+        window.runs.step()  # refused too: no second stop
+        checks["still one stop"] = debug.paused
+
+    from PySide6.QtCore import QTimer
+
+    def poll():
+        if debug.paused:
+            while_stopped()
+            window.findChild(QPushButton_type(), "buttonDebugStop").click()
+        else:
+            QTimer.singleShot(2, poll)
+
+    QTimer.singleShot(0, poll)
+    window.runs.step()
+    assert checks == {
+        "stop enabled": True,
+        "run refused": True,
+        "message": "stopped in the debugger: continue or stop first",
+        "still one stop": True,
+    }
+    assert window.emulator.world.tick == 1  # the abandoned tick still counted
+    assert not window.stop_button.isEnabled()
+
+    # a stop inside a test run during a step is abandoned cleanly
+    debug.debugger.clear()
+    debug.debugger.add("test:probe", 1)
+    window.check_tests_during_runs.setChecked(True)
+    window.environment.set_tests([CommandTest("function test:probe", at_tick=1)])
+    QTimer.singleShot(0, poll)
+    window.runs.step()
+    assert not debug.paused and window.step_button.isEnabled()
+
+    # a pause nothing reached is forgotten when the run ends
+    window.check_tests_during_runs.setChecked(False)
+    debug.debugger.clear()
+    window.spin_ticks.setValue(-1)
+    window.runs.start(graph=False)
+    debug.pause()
+    window.runs.stop()
+    assert not debug.debugger._pause_requested.is_set()
+
+    # unticking a breakpoint rebuilds the list later, not inside the signal
+    debug.debugger.add("test:tick", 3)
+    debug.fill_breakpoints()
+    item = debug.tree_breakpoints.topLevelItem(0)
+    item.setCheckState(0, Qt.Unchecked)
+    assert debug.tree_breakpoints.topLevelItem(0) is item
+    app.processEvents()
+    assert not debug.debugger.breakpoints[("test:tick", 3)].enabled
+    debug.edit_watch.setText("if function test:probe")
+    debug.add_watch()
+    assert debug.debugger.watches == []
+    assert "cannot be a condition" in window.statusBar().currentMessage()
+
+
+def QPushButton_type():  # noqa: N802
+    from PySide6.QtWidgets import QPushButton
+
+    return QPushButton

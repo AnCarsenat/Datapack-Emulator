@@ -209,28 +209,35 @@ All five are open by default and can be toggled from *view*.
     once it ends);
   * *out* (Shift+F11) stops at the next line of the caller;
   * *pause* (Ctrl+F6) stops a running emulation at its next function line;
-  * *stop* (and the toolbar's stop, Shift+F5) abandons the rest of the tick;
-    the world keeps what already ran.
+  * *stop* (and the toolbar's stop, Shift+F5, which is enabled while
+    stopped) abandons the rest of the tick; the world keeps what already
+    ran, and the tick still counts (the game time moves on).
 
   A step ends with its tick. While stopped, the command line runs commands
   as the stopped line would (same executor and position), and run, step,
-  run tests and the version choice wait; reloading or replacing the world
-  abandons the tick first. The tabs:
+  run tests (the buttons and a test's *run this test*), the engine and the
+  version choice wait; reloading or replacing the world abandons the tick
+  first. A pause that nothing reached is forgotten when the run ends. The tabs:
   * *call stack*: the running functions, innermost first, with each one's
     line and executor; double-click to open one;
   * *context*: the stopped line's function, command, tick, executor,
     position, rotation, dimension and depth;
   * *watches*: expressions evaluated at every stop and after every run —
     `score HOLDER OBJECTIVE` (`@s` works), `storage ID [PATH]`,
-    `entity SELECTOR [PATH]`, `block X Y Z [PATH]`, `if …`/`unless …`,
-    `executor`, `position`, `rotation`, `dimension`; double-click to change
-    one;
+    `entity SELECTOR [PATH]`, `block X Y Z [PATH]`, `if …`/`unless …`
+    (`if function` is refused: watches only read), `executor`, `position`,
+    `rotation`, `dimension`; `@s` is the stopped line's executor, and the
+    server once nothing is stopped; double-click to change one;
   * *breakpoints*: every breakpoint with its hit count; untick to disable
     one, double-click the condition column to give it an `execute`
     condition (`if score @s x matches 5`), double-click the location to open
     it.
 
-  Breakpoints and watches are saved with the project.
+  Breakpoints and watches are saved with the project. When a project opens
+  or the world is rebuilt, each breakpoint moves to its function's first
+  command on or after its line, and the logs warn about the ones the
+  version does not have. *next* and *out* follow the call stack's depth,
+  so past the end of a tick function they stop in whatever runs next.
 
 ### Right-click
 

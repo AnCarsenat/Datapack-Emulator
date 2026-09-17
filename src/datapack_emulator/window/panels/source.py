@@ -31,6 +31,9 @@ class _Gutter(QWidget):
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt API)
         self.editor.paint_gutter(event)
 
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        event.accept()  # the press already toggled; a second toggle would undo it
+
     def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt API)
         if event.button() == Qt.LeftButton:
             line = self.editor.line_at(int(event.position().y()))
@@ -63,7 +66,7 @@ class SourceEdit(QPlainTextEdit):
         self.stopped_line = line
         selections = []
         if line > 0:
-            block = self.document().findBlockByLineNumber(line - 1)
+            block = self.document().findBlockByNumber(line - 1)
             if block.isValid():
                 selection = QTextEdit.ExtraSelection()
                 selection.format.setBackground(STOPPED_COLOUR)
@@ -110,6 +113,7 @@ class SourceEdit(QPlainTextEdit):
 
     def paint_gutter(self, event) -> None:
         painter = QPainter(self._gutter)
+        painter.setFont(self.font())  # the editor's (monospace) font, as measured
         painter.fillRect(event.rect(), GUTTER_BACKGROUND)
         block = self.firstVisibleBlock()
         top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()

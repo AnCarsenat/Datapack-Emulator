@@ -831,7 +831,8 @@ def test_run_prints_debugger_stops(make_pack, tmp_path, capsys):
     )
     assert "    score #ticks t = 1" in captured.out
     assert "debugger: 1 stop(s)" in captured.err
-    assert main(["run", str(_pack(make_pack)), "--break", "test:tick:1 score"]) == 2
+    assert main(["run", str(_pack(make_pack)), "--break", "test:tick:1 if function test:tick"]) == 2
+    assert "if function runs the function" in capsys.readouterr().err
 
 
 def test_project_debug_edits_breakpoints_and_watches(make_pack, tmp_path, capsys):
@@ -881,3 +882,51 @@ def test_project_debug_edits_breakpoints_and_watches(make_pack, tmp_path, capsys
     assert "    score #ticks t = 1" not in out and "  score #ticks t = 1" in out
     assert Project.load(Path(path)).breakpoints == []
     assert Project.load(Path(path)).watches == ["score #ticks t"]
+
+
+def test_shell_debugger_edge_cases(make_pack, tmp_path, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    first = tmp_path / "a.txt"
+    second = tmp_path / "b.txt"
+    first.write_text("c\n.break\n.step\n", encoding="utf-8")
+    second.write_text(".break\n.save " + str(tmp_path / "x.dpemu") + "\n", encoding="utf-8")
+    # a stop during --run answers from the first script; its end mutes stops
+    # until the next script, and the breakpoints survive
+    code = main(
+        [
+            "shell", pack, "--run", "--ticks", "2", "--break", "test:tick:1",
+            "--script", str(first), "--script", str(second),
+        ]
+    )  # fmt: skip
+    out = capsys.readouterr().out
+    assert code == 0
+    assert out.count("stopped: test:tick:1") == 2
+    assert "Unknown or incomplete command" not in out
+    assert "(end of input: continuing)" in out
+    assert out.count("test:tick:1  (hit") == 2
+    assert Project.load(tmp_path / "x.dpemu").breakpoints == ["test:tick:1"]
+
+    # a stop in a 0-tick run, and a stopped first tick still counts
+    monkeypatch.setattr(
+        "sys.stdin", io.StringIO(".ticks 0\n.run\nq\nsay hi\nq\nsay again\n.tick\n")
+    )
+    assert main(["shell", pack, "--break", "test:load:1"]) == 0
+    out = capsys.readouterr().out
+    assert "Traceback" not in out
+    assert "stopped at test:load:1" in out
+    assert "[Server] again" in out
+
+    # project breakpoints are checked when the shell opens
+    path = str(_project(tmp_path, make_pack, []))
+    assert main(["project", "debug", path, "--break", "test:nope:3", "--break", "test:tick:9"]) == 0
+    err = capsys.readouterr().err
+    assert "breakpoint test:nope:3: no function test:nope" in err
+    assert "breakpoint test:tick:9: no command on or after line 9" in err
+    monkeypatch.setattr("sys.stdin", io.StringIO(".disable-break test:tick:9\n.break\n"))
+    assert main(["shell", path]) == 0
+    captured = capsys.readouterr()
+    assert "warning: breakpoint test:nope:3: no function test:nope" in captured.err
+    assert "test:tick:9 (disabled)" in captured.out
+    assert main(["shell", pack, "--watch", "if function test:tick"]) == 2

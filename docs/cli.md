@@ -97,7 +97,7 @@ datapack-emulator-cli run projects/hat.dpemu --level debug
 | `--vanilla`, `--no-vanilla`, `--download` | installed jar | see [client jars](#client-jars) |
 | `--html` | `generated/index.html` | profiler report |
 | `--dot` | off | also write the call graph as Graphviz, next to the report |
-| `--break FUNC:LINE[ if COND]`, `--watch EXPR` | none | print each [debugger](#the-debugger) stop with the watches and go on (standard error ends with the number of stops) |
+| `--break FUNC:LINE[ if COND]`, `--watch EXPR` | none | print each [debugger](#the-debugger) stop with the watches and go on; the number of stops goes to standard error |
 
 Prints every record as `[tick] source/level function:line: message`, then a
 per-function table (calls, commands, self and total ms for the run, and ms per
@@ -293,13 +293,19 @@ when a dot-command failed or a test run had a failure.
 The window's debugger dock, in the shell. A breakpoint stops **before** a
 function line runs; `FUNC:LINE` on a comment or blank line moves to the next
 command. A condition is an `execute` condition checked in the stopped line's
-context: `.break hat:tick:4 if score @s hat matches 3..`.
+context: `.break hat:tick:4 if score @s hat matches 3..` (`if` may be left
+out). Conditions and `if`/`unless` watches only read the world: `if function`
+is refused, and what a check prints is not recorded. A project's breakpoints
+are checked when the shell opens: each moves to its function's first command
+on or after its line, and the ones the version does not have are warned
+about (`project debug` warns the same way).
 
 | line | does |
 | --- | --- |
 | `.break FUNC:LINE [if\|unless COND]` | add a breakpoint (the function must exist in the version) |
 | `.break` | list them, with how often each stopped |
 | `.unbreak FUNC:LINE\|all` | remove |
+| `.enable-break FUNC:LINE`, `.disable-break FUNC:LINE` | a disabled breakpoint never stops |
 | `.watch EXPR` / `.watch` | add a watch / list the watches with their values |
 | `.unwatch N\|all` | remove |
 | `.eval EXPR` | an expression's value now (or where it stopped) |
@@ -323,12 +329,18 @@ of the session — the keyboard or the script:
 | `where` / `bt` | the call stack, innermost first |
 | `context` / `ctx` | executor, position, rotation, dimension |
 | `list` / `l [N]` | the source around the line (`●` breakpoints, `->` the line) |
-| a command | runs as the stopped line would (same executor and position); its function calls do not stop |
+| a command | runs as the stopped line would (same executor and position); its function calls do not stop. A command named like an answer (`list`, `stop`) needs a leading `/` |
 | `.scores`, `.storage`, `.entities`, `.nbt`, `.blocks`, `.state`, `.world`, `.json`, `.history`, `.tick`, the debugger's own dot-commands, `.help` | as in the shell; the others wait until the tick goes on |
 
-A step ends with its tick. When the input runs out while stopped, the
-breakpoints are cleared and the run goes on. `run --break` prints the stops
-instead of asking.
+*next* and *out* follow the call stack's depth: past the end of a tick
+function they stop in whatever runs next at that depth (the next function of
+the tag, a schedule). A step ends with its tick (or its test). An abandoned
+tick still counts: the game time moves on, so the next step runs the next
+tick. When a script runs out while stopped, the run goes on and later stops
+are skipped until the next `--script` starts (the breakpoints are kept);
+Ctrl+D at the prompt just continues. With `--run`, the stops read from the
+first script or standard input. `run --break` prints the stops instead of
+asking.
 
 ## `info` — the inspector
 

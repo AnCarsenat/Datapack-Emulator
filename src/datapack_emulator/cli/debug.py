@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 
-from datapack_emulator.cli.common import CliError
+from datapack_emulator.cli.common import CliError, err
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.runtime.debugger import (
     Action,
@@ -15,7 +15,9 @@ from datapack_emulator.emulator.runtime.debugger import (
     Pause,
     Trace,
     command_line_at,
+    condition_problem,
     parse_location,
+    split_breakpoint,
     watch_value,
 )
 
@@ -23,6 +25,7 @@ DEBUG_HELP = """\
   debug    .break FUNC:LINE [if|unless CONDITION]   stop before that line
            .break                list the breakpoints
            .unbreak FUNC:LINE|all
+           .enable-break / .disable-break FUNC:LINE
            .watch EXPR           show EXPR at every stop; .watch lists them
            .unwatch N|all
            .eval EXPR            the value of EXPR now (or where it stopped)
@@ -42,7 +45,8 @@ Stopped before a function line. Answer with:
   context (ctx)   executor, position, rotation, dimension
   list (l) [N]    the source around the line
   COMMAND         run a command as the stopped function would (same executor
-                  and position); its function calls do not stop
+                  and position); its function calls do not stop. A command
+                  named like an answer (list, stop) needs a leading /
   .scores .storage .entities .nbt .blocks .state .world .json .history .tick
   .break .unbreak .watch .unwatch .eval .help   as in the shell
 """
@@ -89,15 +93,24 @@ def add_debug_arguments(parser: argparse.ArgumentParser) -> None:
 
 def breakpoint_argument(text: str) -> tuple[str, int, str]:
     """``FUNC:LINE [if|unless COND]`` -> (function, line, condition)."""
-    location, _, condition = text.strip().partition(" ")
+    location, condition = split_breakpoint(text)
     try:
         function_id, line = parse_location(location)
     except ValueError as exc:
         raise CliError(str(exc)) from None
-    condition = condition.strip()
-    if condition and not condition.startswith(("if ", "unless ")):
-        raise CliError(f"a breakpoint condition starts with if or unless: {condition!r}")
+    if condition:
+        problem = condition_problem(condition)
+        if problem:
+            raise CliError(problem)
     return function_id, line, condition
+
+
+def location_argument(text: str) -> tuple[str, int]:
+    """``FUNC:LINE`` alone (removing, enabling)."""
+    function_id, line, condition = breakpoint_argument(text)
+    if condition:
+        raise CliError(f"a location takes no condition: {text!r}")
+    return function_id, line
 
 
 def add_breakpoint(debugger: Debugger, emulator, text: str) -> str:
@@ -117,14 +130,30 @@ def add_breakpoint(debugger: Debugger, emulator, text: str) -> str:
 
 
 def setup_debugger(debugger: Debugger, emulator, arguments: argparse.Namespace) -> None:
+    """The project's breakpoints (checked against the version) and the
+    command line's."""
+    for problem in debugger.resolve(emulator.library.function):
+        err(f"warning: {problem}")
     for text in getattr(arguments, "breakpoints", []) or []:
         print(add_breakpoint(debugger, emulator, text))
-    debugger.watches.extend(getattr(arguments, "watches", []) or [])
+    watches = getattr(arguments, "watches", []) or []
+    for text in watches:
+        check_watch(text)
+    debugger.watches.extend(watches)
+
+
+def check_watch(text: str) -> None:
+    if text.split(None, 1)[:1] in (["if"], ["unless"]):
+        problem = condition_problem(text)
+        if problem:
+            raise CliError(problem)
 
 
 def trace_debugger(arguments: argparse.Namespace, emulator) -> Trace | None:
     """For ``run``: a debugger that prints each stop, when breakpoints were given."""
     if not getattr(arguments, "breakpoints", None):
+        if getattr(arguments, "watches", None):
+            err("note: --watch is shown at breakpoints; give --break too")
         return None
     debugger = Debugger()
     setup_debugger(debugger, emulator, arguments)
@@ -139,6 +168,10 @@ class DebugCommands:
 
     session: object
     failed: bool
+    #: reading from a keyboard (else a script or a pipe)
+    interactive: bool = False
+    #: stops are skipped until the next input starts (its script ended)
+    muted: bool = False
 
     # provided by Shell
     def dot(self, line: str) -> None:  # pragma: no cover - overridden
@@ -170,13 +203,28 @@ class DebugCommands:
             self.debugger.clear()
             print("no breakpoints")
             return
-        function_id, line, _ = breakpoint_argument(rest)
+        function_id, line = location_argument(rest)
         if not self.debugger.remove(function_id, line):
             raise CliError(f"no breakpoint at {function_id}:{line}")
         print(f"removed {function_id}:{line}")
 
+    def _set_enabled(self, rest: str, enabled: bool) -> None:
+        function_id, line = location_argument(rest)
+        point = self.debugger.breakpoints.get((function_id, line))
+        if point is None:
+            raise CliError(f"no breakpoint at {function_id}:{line}")
+        point.enabled = enabled
+        print(f"breakpoint {point}")
+
+    def do_enable_break(self, session, rest: str) -> None:
+        self._set_enabled(rest, True)
+
+    def do_disable_break(self, session, rest: str) -> None:
+        self._set_enabled(rest, False)
+
     def do_watch(self, session, rest: str) -> None:
         if rest:
+            check_watch(rest)
             self.debugger.watches.append(rest)
         watches = self.debugger.watches
         if not watches:
@@ -207,14 +255,19 @@ class DebugCommands:
     # -- stopped -----------------------------------------------------------
 
     def on_pause(self, pause: Pause) -> Action:
+        if self.muted:
+            return Action.CONTINUE
         print(f"stopped: {pause.describe()}")
         for text, value in self.debugger.watch_values(pause.context):
             print(f"  {text} = {value}")
         while True:
             line = self.next_line(f"(debug {pause.function_id}:{pause.line})> ")
             if line is None:
-                print("(no more input: breakpoints cleared, running on)")
-                self.debugger.clear()
+                # the script ended: run on without stopping until the next input
+                # starts (the breakpoints are kept); Ctrl+D just continues
+                if not self.interactive:
+                    self.muted = True
+                print("(end of input: continuing)")
                 return Action.CONTINUE
             line = line.strip()
             if not line or line.startswith("#"):
@@ -235,7 +288,7 @@ class DebugCommands:
         elif word in ("context", "ctx"):
             for name in ("executor", "position", "rotation", "dimension"):
                 print(f"{name}: {watch_value(name, pause.context)}")
-        elif word in ("list", "l"):
+        elif word in ("list", "l") and (not rest or rest.isdigit()):
             self._list(pause, int(rest) if rest.isdigit() else 3)
         elif word == "help":
             print(PAUSED_HELP)
@@ -265,8 +318,12 @@ class DebugCommands:
         if command is None:
             return
         emulator = self.session.emulator
-        with self.debugger.aside():
-            # typed, so the game's answers are shown (depth 0)
-            result = emulator.run_command(command, pause.context.branch(depth=0))
+        counted = emulator.commands_run
+        try:
+            with self.debugger.aside():
+                # typed, so the game's answers are shown (depth 0)
+                result = emulator.run_command(command, pause.context.branch(depth=0))
+        finally:
+            emulator.commands_run = counted  # not part of the tick's command budget
         outcome = "succeeded" if result.success else "failed"
         print(f"→ {outcome} (value {result.value})")
