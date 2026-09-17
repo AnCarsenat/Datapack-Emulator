@@ -38,7 +38,13 @@ src/datapack_emulator/     the package (standard src layout)
       explain.py           explain_line: what one command line does (analyze line)
     engine.py              TestEngine, VersionRun
     testing.py             CommandTest, TestSchedule, run_tests (the environment tab's tests)
-    __main__.py            CLI: datapack-emulator-cli
+    __main__.py            python -m datapack_emulator.emulator (the CLI below)
+  cli/                     datapack-emulator-cli; no Qt, packs or .dpemu projects
+    __init__.py            main(), the argument parser
+    common.py              reading packs/projects, client jars, version selection
+    runs.py                run, matrix, test
+    junit.py               JUnit XML reports
+    jars.py                versions, vanilla
   window/                  Qt only
     window.ui, engine.ui,  ALL layout
     download.ui, search.ui,
@@ -113,6 +119,10 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
   from `VanillaAssets` instead.
 * **`src/datapack_emulator/emulator` never imports Qt**; the window is one consumer among the
   CLI and tests.
+* **The command line can do what the window does.** A feature added to the
+  window gets its subcommand or option in `cli/` (and a test in
+  `tests/test_cli.py`); logic both need lives in `emulator/` or `project.py`,
+  never in a controller.
 * **All layout is in `.ui` files.** Python looks widgets up by object name.
   The only widget created in code is the pyqtgraph canvas, which Designer
   cannot describe; it goes into the `graphContainer` placeholder.
