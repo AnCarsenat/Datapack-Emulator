@@ -1651,21 +1651,63 @@ def test_world_snapshots_rewind_and_compare(app, window, make_pack):
     world = window.emulator.world
     assert world.tick == 1 and world.scoreboard.get("#ticks", "t") == 1
     assert not [e for e in world.entities if not e.is_player]
-    assert "rewound to start" in window.statusBar().currentMessage()
+    assert "rewound to 1. start" in window.statusBar().currentMessage()
     # the world goes on from there
     window.runs.step()
     assert window.emulator.world.scoreboard.get("#ticks", "t") == 2
 
     # comparing one snapshot with the world now
     snapshots.compare_selected()
-    assert "start → the world now" in snapshots.label.text()
+    assert "1. start → the world now" in snapshots.label.text()
 
     # renaming, removing, and a new world forgetting them
     item = snapshots.tree.topLevelItem(0)
     item.setText(0, "checkpoint")
     assert snapshots.snapshots[0].label == "checkpoint"
+    assert [item.text(0) for item in snapshots.tree.selectedItems()] == ["checkpoint"]  # kept
+    snapshots.tree.clearSelection()
     snapshots.tree.topLevelItem(1).setSelected(True)
     snapshots.remove_selected()
     assert len(snapshots.snapshots) == 1
     window.datapacks.reload()
     assert snapshots.snapshots == [] and snapshots.tree.topLevelItemCount() == 0
+
+
+def test_snapshots_refuse_to_run_while_the_debugger_is_stopped(window, make_pack):
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "scoreboard players add #t n 1\n",
+        }
+    )
+    window.datapacks.load(pack)
+    window.runs.step()
+    snapshots = window.snapshots
+    snapshots.take("start")
+    window.runs.step()
+    from PySide6.QtCore import QEventLoop
+
+    window.debug._loop = QEventLoop()  # as if stopped at a breakpoint
+    window.debug._set_paused(True)
+    try:
+        assert snapshots.take("while stopped") is None
+        assert len(snapshots.snapshots) == 1
+        snapshots.tree.topLevelItem(0).setSelected(True)
+        tick = window.emulator.world.tick
+        snapshots.rewind()
+        assert window.emulator.world.tick == tick  # the world was not swapped
+        assert "stopped in the debugger" in window.statusBar().currentMessage()
+    finally:
+        window.debug._loop = None
+        window.debug._set_paused(False)
+
+
+def test_the_world_dock_tabs_are_scores_entities_storage_blocks_snapshots(window):
+    tabs = window.tabs_world
+    assert [tabs.tabText(i) for i in range(tabs.count())] == [
+        "scoreboard",
+        "entities",
+        "storage",
+        "blocks",
+        "snapshots",
+    ]

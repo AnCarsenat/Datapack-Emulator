@@ -1145,11 +1145,40 @@ def test_shell_snapshots(make_pack, tmp_path, capsys, monkeypatch):
     )
     assert main(["shell", pack, "--version", "1.21.4"]) == 0
     out = capsys.readouterr().out
-    assert "1. start: tick 1" in out and "2. tick 3:" in out
+    assert "1. start: tick 1" in out and "2. tick 3," in out
     assert "~ state game time: 1 -> 3" in out
     assert "~ score #ticks t: 1 -> 3" in out
     assert any(line.startswith("+ entity ") for line in out.splitlines())
-    assert "rewound to start: game time 1" in out
-    assert "0 change(s) from start to the world now" in out
+    assert "rewound to 1. start: game time 1" in out
+    assert "0 change(s) from 1. start to the world now" in out
     assert "no snapshots" in out
     assert "error: no snapshot 1 (there are 0)" in out
+
+
+def test_shell_forgets_snapshots_on_a_new_world(make_pack, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(
+            "\n".join(
+                [
+                    ".step 2",
+                    ".snapshot five",
+                    ".reset",
+                    ".snapshots",
+                    ".snapshot again",
+                    ".diff 1 2 3",
+                    ".unsnapshot ALL",
+                    "",
+                ]
+            )
+        ),
+    )
+    assert main(["shell", pack]) == 0
+    out = capsys.readouterr().out
+    assert "1 snapshot(s) forgotten: this is a new world" in out
+    assert "no snapshots (.snapshot [LABEL] takes one)" in out
+    assert "usage: .diff N [M]" in out  # a third argument is a mistake, not ignored
+    assert out.rstrip().endswith("no snapshots (.snapshot [LABEL] takes one)")  # .unsnapshot ALL

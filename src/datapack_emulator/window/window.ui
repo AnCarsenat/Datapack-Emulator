@@ -1550,6 +1550,51 @@ QMenuBar::item:selected {
          </item>
         </layout>
        </widget>
+       <widget class="QWidget" name="tabBlocks">
+        <attribute name="title">
+         <string>blocks</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="blocksLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QTreeWidget" name="treeBlocks">
+           <property name="contextMenuPolicy">
+            <enum>Qt::CustomContextMenu</enum>
+           </property>
+           <property name="toolTip">
+            <string>every block a command placed (the rest is air), with its block entity data; double-click a value to change it</string>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>position / key</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>block / value</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
        <widget class="QWidget" name="tabSnapshots">
         <attribute name="title">
          <string>snapshots</string>
@@ -1685,51 +1730,6 @@ QMenuBar::item:selected {
            <column>
             <property name="text">
              <string>after</string>
-            </property>
-           </column>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-       <widget class="QWidget" name="tabBlocks">
-        <attribute name="title">
-         <string>blocks</string>
-        </attribute>
-        <layout class="QVBoxLayout" name="blocksLayout">
-         <property name="leftMargin">
-          <number>0</number>
-         </property>
-         <property name="topMargin">
-          <number>0</number>
-         </property>
-         <property name="rightMargin">
-          <number>0</number>
-         </property>
-         <property name="bottomMargin">
-          <number>0</number>
-         </property>
-         <item>
-          <widget class="QTreeWidget" name="treeBlocks">
-           <property name="contextMenuPolicy">
-            <enum>Qt::CustomContextMenu</enum>
-           </property>
-           <property name="toolTip">
-            <string>every block a command placed (the rest is air), with its block entity data; double-click a value to change it</string>
-           </property>
-           <property name="alternatingRowColors">
-            <bool>true</bool>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
-           </property>
-           <column>
-            <property name="text">
-             <string>position / key</string>
-            </property>
-           </column>
-           <column>
-            <property name="text">
-             <string>block / value</string>
             </property>
            </column>
           </widget>

@@ -25,7 +25,7 @@ from datapack_emulator.window.panels.world import (
     fill_storage,
 )
 
-TAB_SCORES, TAB_ENTITIES, TAB_STORAGE, TAB_BLOCKS = range(4)
+TAB_SCORES, TAB_ENTITIES, TAB_STORAGE, TAB_BLOCKS, TAB_SNAPSHOTS = range(5)
 
 
 class WorldController(Controller):
@@ -121,8 +121,10 @@ class WorldController(Controller):
             fill_entities(window.tree_entities, world, text, emulator.version)
         elif tab == TAB_BLOCKS:
             fill_blocks(window.tree_blocks, world, text, emulator.version)
-        else:
+        elif tab == TAB_STORAGE:
             fill_storage(window.tree_storage, world.storage, text)
+        else:  # the snapshots tab has nothing of the world now to fill
+            return
         self._fill_seconds = time.monotonic() - started
         self._last_refresh = time.monotonic()
 

@@ -69,10 +69,88 @@ def test_comparing_two_snapshots(emulator):
     assert "~ score #t n: 1 -> 2" in shown
     assert any(line.startswith("+ entity ") and "minecraft:pig" in line for line in shown)
     assert "+ storage test:s x: 5" in shown
-    assert "+ block minecraft:overworld 0 1 0: minecraft:chest[facing=north] +nbt" in shown
+    assert "+ block minecraft:overworld 0 1 0: minecraft:chest[facing=north] {Items: []}" in shown
     assert "+ objective other: dummy" in shown
     assert any("gamerule doDaylightCycle" in line for line in shown)
     assert compare(first, first, emulator.version) == []
     # the other way round reads as removals
     back = [change.format() for change in compare(second, first, emulator.version)]
     assert "- storage test:s x: 5" in back
+
+
+def test_a_snapshot_does_not_drag_the_emulator_in(emulator):
+    """The advancement callback is a bound method: copying it would copy the
+    whole emulator (and its pack) with every snapshot."""
+    import gc
+
+    def emulators() -> int:
+        gc.collect()
+        return sum(1 for obj in gc.get_objects() if isinstance(obj, Emulator))
+
+    before = emulators()
+    saved = capture(emulator, "start")
+    assert emulators() == before  # no second emulator was copied
+    assert saved.world.advancements.on_complete is None
+    restore(emulator, saved)
+    assert emulators() == before
+
+
+def test_an_absent_value_is_not_an_empty_one(emulator):
+    emulator.run_typed('data modify storage test:s name set value ""')
+    first = capture(emulator, "with")
+    emulator.run_typed("data remove storage test:s name")
+    second = capture(emulator, "without")
+    shown = [change.format() for change in compare(first, second, emulator.version)]
+    assert "- storage test:s name: " in shown  # removed, not added
+    back = [change.format() for change in compare(second, first, emulator.version)]
+    assert "+ storage test:s name: " in back
+
+
+def test_comparing_sees_block_nbt_and_flattens_the_state(emulator):
+    emulator.run_typed("setblock 0 1 0 chest")
+    emulator.run_typed("team add red")
+    first = capture(emulator, "first")
+    emulator.run_typed("item replace block 0 1 0 container.0 with minecraft:diamond 5")
+    emulator.run_typed("defaultgamemode creative")
+    emulator.run_typed("team join red Player1")
+    second = capture(emulator, "second")
+    shown = [change.format() for change in compare(first, second, emulator.version)]
+    assert any("block minecraft:overworld 0 1 0" in line and "diamond" in line for line in shown)
+    assert "~ state default_game_mode: survival -> creative" in shown
+    assert "~ state teams.red.members: [] -> ['Player1']" in shown
+
+
+def test_a_rewind_puts_back_the_notes_and_the_profiler(emulator):
+    saved = capture(emulator, "start")
+    ticks, noted = emulator.profiler.ticks, set(emulator.noted)
+    emulator.noted.add("test:something")
+    for _ in range(3):
+        emulator.run_tick()
+    assert emulator.profiler.ticks == ticks + 3
+    restore(emulator, saved)
+    assert emulator.profiler.ticks == ticks  # the undone ticks are not counted
+    assert emulator.noted == noted  # a diagnostic printed after it is said again
+
+
+def test_comparing_with_a_live_world_does_not_copy_it(emulator):
+    first = capture(emulator, "start")
+    emulator.run_typed("scoreboard players set #x n 7")
+    changes = compare(first, emulator.world, emulator.version)
+    assert "+ score #x n: 7" in [change.format() for change in changes]
+
+
+def test_a_rewind_and_a_replay_reproduce_the_run(emulator):
+    saved = capture(emulator, "start")
+    for _ in range(3):
+        emulator.run_typed("summon pig ~ ~ ~")
+        emulator.run_typed("execute store result score #r n run random value 1..1000")
+        emulator.run_tick()
+    first = capture(emulator, "after")
+
+    restore(emulator, saved)
+    for _ in range(3):
+        emulator.run_typed("summon pig ~ ~ ~")
+        emulator.run_typed("execute store result score #r n run random value 1..1000")
+        emulator.run_tick()
+    # the same uuids and the same random values: nothing comes from the process
+    assert compare(first, emulator.world, emulator.version) == []

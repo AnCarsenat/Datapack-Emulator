@@ -356,12 +356,23 @@ class World:
         }
         self.tick: int = 0
         self.random = random.Random(seed)
+        #: uuids come from the world, not the process, so a run (and a rewind
+        #: and replay) gives the same ones again; its own generator keeps the
+        #: draws of `self.random` where they were
+        self._uuids = random.Random(seed ^ 0x5D9E)
         #: time of day, weather, difficulty, world border, teams, …
         self.state = ServerState(seed=seed)
         #: each player's advancement progress (the emulator sets the tree)
         self.advancements = Progress()
         for index in range(players):
-            self.spawn(Entity(type="minecraft:player", name=f"Player{index + 1}", is_player=True))
+            self.spawn(
+                Entity(
+                    type="minecraft:player",
+                    uuid=self.new_uuid(),
+                    name=f"Player{index + 1}",
+                    is_player=True,
+                )
+            )
 
     def rule_enabled(self, names: tuple[str, ...], default: bool = True) -> bool:
         """A boolean gamerule under any of its spellings."""
@@ -371,6 +382,10 @@ class World:
         return default
 
     # -- entities ---------------------------------------------------------
+
+    def new_uuid(self) -> str:
+        """A uuid of this world: the same run gives the same ones."""
+        return str(_uuid.UUID(int=self._uuids.getrandbits(128), version=4))
 
     def spawn(self, entity: Entity) -> Entity:
         entity.born = self.tick
