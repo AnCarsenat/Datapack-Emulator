@@ -36,6 +36,9 @@ src/datapack_emulator/     the package (standard src layout)
       profiler.py          Profiler: per function and per call path, HTML report
       graph.py             CallGraph
       explain.py           explain_line: what one command line does (analyze line)
+      inspector.py         rows for the inspector / info, version_note
+      search.py            quick open and text search in a pack view
+      world_view.py        score holders, histories, entity summaries, world dumps
     engine.py              TestEngine, VersionRun
     testing.py             CommandTest, TestSchedule, run_tests (the environment tab's tests)
     __main__.py            python -m datapack_emulator.emulator (the CLI below)
@@ -43,6 +46,9 @@ src/datapack_emulator/     the package (standard src layout)
     __init__.py            main(), the argument parser
     common.py              reading packs/projects, client jars, version selection
     runs.py                run, matrix, test
+    world.py               world, shell (Session: one open world)
+    inspect.py             info, explain, search, graph
+    projects.py            project new/show/set/packs/tests/note/list
     junit.py               JUnit XML reports
     jars.py                versions, vanilla
   window/                  Qt only
@@ -67,7 +73,7 @@ src/datapack_emulator/     the package (standard src layout)
     search_dialog.py       SearchDialog: quick open and search in pack
     score_graph.py         ScoreGraphDialog: a score over time
     panels/                models and widgets the controllers fill
-      uiloader.py, explorer.py, inspector.py, logs.py, results.py, graph.py, highlight.py,
+      uiloader.py, explorer.py, logs.py, results.py, graph.py, highlight.py,
       world.py, profile.py
 tools/generate_version_data.py
 tests/       pytest suite; conftest.py builds synthetic packs and client jars

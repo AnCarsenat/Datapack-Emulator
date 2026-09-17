@@ -1,5 +1,9 @@
 # The window
 
+Everything here, except what needs a screen, can also be done from the
+[command line](cli.md): each command there names the window feature it
+matches.
+
 Every widget, dock, menu, action and shortcut is declared in
 `src/datapack_emulator/window/window.ui` (main window), `src/datapack_emulator/window/engine.ui` (engine
 window) and `src/datapack_emulator/window/download.ui` (client-jar download popup). The Python side only loads those files and wires behaviour, so

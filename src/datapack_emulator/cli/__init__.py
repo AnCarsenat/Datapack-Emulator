@@ -1,7 +1,7 @@
 """The command line: ``datapack-emulator-cli``.
 
-The window's features have subcommands here, so packs can be checked from a
-terminal or CI::
+Everything the window does has a subcommand here (only what needs a screen
+does not), so packs can be checked from a terminal or CI::
 
     datapack-emulator-cli run    samples/hat --ticks 20 --version 1.21.4
     datapack-emulator-cli matrix samples/hat --from 1.20.4 --to 1.21.6
