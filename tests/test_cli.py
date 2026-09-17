@@ -1400,3 +1400,19 @@ def test_complete_and_rename_from_the_command_line(make_pack, tmp_path, capsys):
     )
     assert main(["rename", str(pack), "test:helper", "test:other"]) == 2
     assert "is not a function" in capsys.readouterr().err
+
+
+def test_project_samples_lists_the_packs_to_start_from(capsys, monkeypatch):
+    from datapack_emulator.settings import PATHS
+
+    assert main(["project", "samples"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out and all(Path(line).is_dir() for line in out)
+
+    monkeypatch.setattr(PATHS, "SAMPLES", Path("/no/such/folder"))
+    assert main(["project", "samples"]) == 0  # the packaged starter pack
+    assert capsys.readouterr().out.strip().endswith("starter")
+
+    monkeypatch.setattr(PATHS, "PACKAGED_SAMPLES", Path("/no/such/folder"))
+    assert main(["project", "samples"]) == 1
+    assert "no sample pack found" in capsys.readouterr().out

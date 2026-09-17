@@ -63,6 +63,9 @@ class EMULATION:
 class PATHS:
     ROOT = ROOT
     SAMPLES = ROOT / "samples"
+    #: the pack shipped inside the package, for an installed copy that has no
+    #: samples/ folder of its own
+    PACKAGED_SAMPLES = Path(__file__).resolve().parent.parent / "samples"
     PROJECTS = ROOT / "projects"
     GENERATED = ROOT / "generated"
     CACHE = _CACHE

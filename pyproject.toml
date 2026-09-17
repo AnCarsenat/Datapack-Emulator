@@ -13,7 +13,14 @@ authors = [{ name = "Ancar" }]
 keywords = ["minecraft", "datapack", "mcfunction", "emulator", "profiler"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
     "Environment :: X11 Applications :: Qt",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
     "Topic :: Games/Entertainment",
     "Topic :: Software Development :: Testing",
 ]
@@ -23,6 +30,8 @@ dependencies = []
 [project.optional-dependencies]
 gui = ["PySide6>=6.6", "pyqtgraph>=0.13", "numpy>=1.26"]
 dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.12", "coverage[toml]>=7"]
+# what a release is built and published with (see docs/releases.md)
+release = ["build>=1.2", "twine>=5", "pyinstaller>=6.6"]
 
 [project.scripts]
 datapack-emulator = "datapack_emulator.app:main"
@@ -31,6 +40,7 @@ datapack-emulator-cli = "datapack_emulator.cli:main"
 [project.urls]
 Repository = "https://github.com/AnCarsenat/Datapack-Emulator"
 Issues = "https://github.com/AnCarsenat/Datapack-Emulator/issues"
+Documentation = "https://github.com/AnCarsenat/Datapack-Emulator/blob/main/docs/README.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -38,6 +48,8 @@ include = ["datapack_emulator*"]
 
 [tool.setuptools.package-data]
 "datapack_emulator.window" = ["*.ui"]
+# the starter pack an installed copy opens with (there is no samples/ folder)
+"datapack_emulator" = ["samples/**/*.mcmeta", "samples/**/*.mcfunction", "samples/**/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

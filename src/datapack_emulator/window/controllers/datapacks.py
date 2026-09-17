@@ -45,7 +45,14 @@ class DatapackController(Controller):
 
     def import_(self) -> None:
         """file › add datapack: another pack analyzed alongside the others."""
-        start = PATHS.SAMPLES if PATHS.SAMPLES.is_dir() else Path.home()
+        sample = default_sample()
+        start = (
+            PATHS.SAMPLES
+            if PATHS.SAMPLES.is_dir()
+            else sample.parent
+            if sample is not None
+            else Path.home()
+        )
         chosen = QFileDialog.getExistingDirectory(
             self.window, "select a datapack folder (the one holding pack.mcmeta)", str(start)
         )

@@ -415,11 +415,23 @@ def set_opens_last_project(wanted: bool) -> None:
     state_file().write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def samples() -> list[Path]:
+    """The packs to start from: the checkout's ``samples/`` when there is one,
+    else the starter pack shipped inside the package."""
+    for folder in (PATHS.SAMPLES, PATHS.PACKAGED_SAMPLES):
+        if not folder.is_dir():
+            continue
+        found = [
+            candidate
+            for candidate in sorted(folder.iterdir())
+            if candidate.is_dir() and (candidate / "pack.mcmeta").is_file()
+        ]
+        if found:
+            return found
+    return []
+
+
 def default_sample() -> Path | None:
-    """The datapack to open on a cold start: the first one in ``samples/``."""
-    if not PATHS.SAMPLES.is_dir():
-        return None
-    for candidate in sorted(PATHS.SAMPLES.iterdir()):
-        if candidate.is_dir() and (candidate / "pack.mcmeta").is_file():
-            return candidate
-    return None
+    """The datapack to open on a cold start (the first of :func:`samples`)."""
+    found = samples()
+    return found[0] if found else None

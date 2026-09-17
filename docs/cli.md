@@ -571,6 +571,7 @@ datapack-emulator-cli project list
 | `debug FILE` | list the debugger's breakpoints and watches; `--break FUNC:LINE[ if COND]`, `--unbreak FUNC:LINE\|all`, `--enable FUNC:LINE`, `--disable FUNC:LINE`, `--watch EXPR`, `--unwatch N\|all` (the debugger dock's lists) |
 | `list` | the projects in the projects folder the window saves to (`projects/` of the checkout, or the per-user data folder) |
 | `recent` | the window's recent projects and datapacks, and what it will start on; `--on-launch on\|off` changes *open the last project on launch* |
+| `samples` | the sample packs to start from: the checkout's `samples/`, else the starter pack inside the package ([releases](releases.md)); exit `1` when there is none |
 
 `packs` and `tests` options can be repeated and mixed; they apply in the
 order given, and every number refers to the list **as it was before the

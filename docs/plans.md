@@ -41,9 +41,6 @@ Nothing reported is waiting right now.
   (conditions, item functions, loot entries, advancement criteria); validating
   recipes, loot tables, predicates, item modifiers and worldgen against the
   version's schemas (Spyglass mcdoc) would catch every field.
-* **Installed copies** — ship a default pack inside the package (today the
-  sample only exists in a source checkout), Windows/macOS builds (PyInstaller),
-  and a PyPI release.
 
 ## Code health
 

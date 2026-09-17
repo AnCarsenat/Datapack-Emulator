@@ -203,3 +203,29 @@ def test_a_project_archive_that_unpacks_to_far_more_is_refused(tmp_path):
         Project.load(path, unpack_to=tmp_path / "unpacked")
     assert "refusing to unpack it" in str(error.value)
     assert not (tmp_path / "unpacked").exists()
+
+
+def test_the_packaged_starter_pack_is_used_when_there_is_no_samples_folder(tmp_path, monkeypatch):
+    from datapack_emulator.emulator import Datapack, Emulator
+    from datapack_emulator.project import samples
+
+    # a checkout: its own samples/ wins
+    monkeypatch.setattr(PATHS, "SAMPLES", tmp_path / "samples")
+    (tmp_path / "samples" / "mine").mkdir(parents=True)
+    (tmp_path / "samples" / "mine" / "pack.mcmeta").write_text(
+        '{"pack": {"pack_format": 61, "description": "x"}}', encoding="utf-8"
+    )
+    assert [path.name for path in samples()] == ["mine"]
+
+    # an installed copy: the pack inside the package
+    monkeypatch.setattr(PATHS, "SAMPLES", tmp_path / "nothing")
+    packaged = samples()
+    assert [path.name for path in packaged] == ["starter"]
+    assert packaged[0] == PATHS.PACKAGED_SAMPLES / "starter"
+    assert default_sample() == packaged[0]
+
+    # and it is a pack the emulator actually runs
+    emulator = Emulator(Datapack.load(packaged[0]), version="1.21.4")
+    emulator.run(ticks=100)
+    assert emulator.world.scoreboard.get("#ticks", "ticks") == 0  # reset after five seconds
+    assert any("five seconds" in record.message for record in emulator.output.records)
