@@ -219,6 +219,21 @@ class VanillaAssets:
                 return data
         return None
 
+    def advancements(self) -> dict[str, dict[str, Any]]:
+        """Every vanilla advancement by id (``advancement/`` or ``advancements/``)."""
+        found: dict[str, dict[str, Any]] = {}
+        try:
+            with zipfile.ZipFile(self.jar_path) as archive:
+                for name in archive.namelist():
+                    for folder in ("data/minecraft/advancement/", "data/minecraft/advancements/"):
+                        if name.startswith(folder) and name.endswith(".json"):
+                            data = _read_json(archive, name)
+                            if isinstance(data, dict):
+                                found[f"minecraft:{name[len(folder) : -5]}"] = data
+        except (OSError, zipfile.BadZipFile):
+            return {}
+        return found
+
     def block_properties(self, block_id: str) -> dict[str, set[str]] | None:
         """The block-state properties a block has and their values, read from its
         ``assets/minecraft/blockstates`` file; None when the jar has none."""
