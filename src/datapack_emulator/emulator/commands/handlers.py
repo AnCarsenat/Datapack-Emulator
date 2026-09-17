@@ -21,6 +21,7 @@ The handlers live in one module per command group:
 * :mod:`.players` — gamemode, defaultgamemode, experience, team, teammsg
 * :mod:`.living` — effect, attribute, damage, ride
 * :mod:`.bossbar` — bossbar
+* :mod:`.conditions` — advancement, predicates in execute and selectors
 * :mod:`.misc` — commands that only check their ids
 """
 
@@ -35,6 +36,7 @@ from datapack_emulator.emulator.commands.chat import (
     cmd_tellraw,
     cmd_title,
 )
+from datapack_emulator.emulator.commands.conditions import CONDITION_HANDLERS
 from datapack_emulator.emulator.commands.control import cmd_function, cmd_return, cmd_schedule
 from datapack_emulator.emulator.commands.data import cmd_data, cmd_gamerule
 from datapack_emulator.emulator.commands.entities import (
@@ -59,7 +61,6 @@ from datapack_emulator.emulator.commands.state import STATE_HANDLERS
 #: commands that run without changing the emulated world, and why — for the
 #: once-per-run emulator note and the line analysis
 UNMODELLED: dict[str, str] = {
-    "advancement": "advancements are not modelled",
     "fillbiome": "biomes are not modelled",
     "particle": "particles have no effect on the world",
     "place": "features and structures are not modelled",
@@ -98,7 +99,6 @@ HANDLERS: dict[str, Handler] = {
     "data": cmd_data,
     "gamerule": cmd_gamerule,
     # dispatched and costed, but no state change is modelled
-    "advancement": cmd_noop,
     "clone": cmd_clone,
     "fill": cmd_fill,
     "fillbiome": cmd_noop,
@@ -117,6 +117,7 @@ HANDLERS.update(STATE_HANDLERS)
 HANDLERS.update(PLAYER_HANDLERS)
 HANDLERS.update(LIVING_HANDLERS)
 HANDLERS.update(BOSSBAR_HANDLERS)
+HANDLERS.update(CONDITION_HANDLERS)
 
 __all__ = [
     "COSMETIC",

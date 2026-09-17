@@ -295,6 +295,11 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
     if kind == "block":
         return block_condition(arguments, context)
 
+    if kind == "predicate" and len(arguments) >= 2:
+        from datapack_emulator.emulator.commands.conditions import predicate_condition
+
+        return predicate_condition(arguments[1], context)
+
     if kind == "blocks":
         return bool(blocks_condition_count(arguments, context))
 

@@ -404,21 +404,19 @@ def _modifier(context: ExecutionContext, modifier_id: str) -> Any:
 
 
 def _modify(context: ExecutionContext, stack: ItemStack, modifier_id: str) -> ItemStack | None:
-    """Apply an item modifier from the pack (set_count, set_components, set_nbt);
-    None, with the error reported, when the pack has no such modifier."""
-    from datapack_emulator.emulator.runtime.loot import LootResult, _apply
+    """Apply an item modifier from the pack; None, with the error reported, when
+    the pack has no such modifier."""
+    from datapack_emulator.emulator.commands.conditions import (
+        predicate_context,
+        report_unchecked,
+    )
+    from datapack_emulator.emulator.runtime.loot import modify
 
     content = _modifier(context, modifier_id)
     if content is None:
         return None
-    result = LootResult()
-    for function in content if isinstance(content, list) else [content]:
-        stack = _apply(function, stack, context.world.random, result, cap=True)
-    if result.skipped:
-        context.note_once(
-            "item modifier parts not evaluated by the emulator: "
-            + ", ".join(sorted(result.skipped))
-        )
+    stack, result = modify(content, stack, predicate_context(context))
+    report_unchecked(context, f"item modifier {modifier_id}", result.skipped)
     return stack
 
 
@@ -553,6 +551,8 @@ def _loot_source(
             return None
         entity_type = victims[0].type.split(":", 1)
         table_id = f"{entity_type[0]}:entities/{entity_type[-1]}"
+        loot.entity = victims[0]
+        loot.position = list(victims[0].position)
     elif kind == "mine" and len(source) >= 4:
         from datapack_emulator.emulator.commands.blocks import position_at
 
@@ -561,13 +561,15 @@ def _loot_source(
             return None
         block = context.world.blocks.get(context.dimension, position)
         loot.block = block
+        loot.block_position = position
+        loot.position = [value + 0.5 for value in position]
         if len(source) > 4 and source[4] not in ("mainhand", "offhand"):
             loot.tool = parse_item(source[4])
+        elif len(source) > 4 and context.executor is not None:
+            keys = context.executor.inventory.keys_for(f"weapon.{source[4]}") or []
+            loot.tool = context.executor.inventory.get(keys[0]) if keys else None
         namespace, _, path = block.id.partition(":")
         table_id = f"{namespace}:blocks/{path}"
-        context.note_once(
-            "loot … mine: the tool is not modelled; conditions like match_tool are not checked"
-        )
     else:
         _usage(context)
         return None
@@ -599,7 +601,9 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
         width = head + 1 + (1 if len(arguments) > count_at and _is_int(arguments[count_at]) else 0)
     if width is None or len(arguments) <= width + 1:
         return _usage(context)
-    loot = LootContext()
+    from datapack_emulator.emulator.commands.conditions import predicate_context
+
+    loot = predicate_context(context)
     found = _loot_source(context, arguments[1 + width :], loot)
     if found is None:
         return CommandResult.failure()
@@ -609,8 +613,8 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
     )
     if result.skipped:
         context.note_once(
-            "loot table parts not evaluated by the emulator (conditions pass, functions are "
-            "skipped): " + ", ".join(sorted(result.skipped))
+            "loot table parts the emulator cannot evaluate (such conditions fail, such "
+            "functions change nothing): " + ", ".join(sorted(result.skipped))
         )
     items = split_stacks(result.items)
     if target == "give":

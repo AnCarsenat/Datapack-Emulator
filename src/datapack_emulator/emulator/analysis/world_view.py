@@ -211,6 +211,10 @@ def state_rows(world: World) -> list[tuple[str, str]]:
     for team in state.teams.values():
         members = ", ".join(team.members) or "no members"
         rows.append((f"team {team.name}", f"{team.color} · {members}"))
+    for player in world.players:
+        done = world.advancements.completed(player.id)
+        if done:
+            rows.append((f"{player.id} advancements", ", ".join(done)))
     return rows
 
 
@@ -261,6 +265,14 @@ def world_to_dict(world: World, version=None) -> dict[str, Any]:
             "forced_chunks": {
                 dimension: sorted(map(list, chunks))
                 for dimension, chunks in world.state.forced_chunks.items()
+            },
+            "advancements": {
+                holder: {
+                    advancement: sorted(criteria)
+                    for advancement, criteria in progress.items()
+                    if criteria
+                }
+                for holder, progress in world.advancements.granted.items()
             },
             "teams": {
                 team.name: {
