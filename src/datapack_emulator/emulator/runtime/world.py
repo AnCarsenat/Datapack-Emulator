@@ -28,6 +28,7 @@ from datapack_emulator.emulator.common import (
 )
 from datapack_emulator.emulator.runtime.blocks import Blocks
 from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory, has_equipment
+from datapack_emulator.emulator.runtime.living import LIVING_KEYS, Living, is_living
 from datapack_emulator.emulator.runtime.state import GAME_MODES, ServerState
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -46,14 +47,56 @@ ENTITY_DEFAULTS: dict[str, Any] = {
 }
 #: what a player adds (abilities are not modelled; the inventory has its own model)
 PLAYER_DEFAULTS: dict[str, Any] = {
-    "Health": 20.0,
     "foodLevel": 20,
     "XpLevel": 0,
     "XpP": 0.0,
     "playerGameType": 0,
 }
+#: what every living entity reports (Health is its maximum health until changed)
+LIVING_DEFAULTS: dict[str, Any] = {
+    "AbsorptionAmount": 0.0,
+    "HurtTime": 0,
+    "HurtByTimestamp": 0,
+    "DeathTime": 0,
+    "FallFlying": 0,
+}
+#: what mobs (living, not players or armor stands) add
+MOB_DEFAULTS: dict[str, Any] = {
+    "CanPickUpLoot": 0,
+    "PersistenceRequired": 0,
+    "LeftHanded": 0,
+    "NoAI": 0,
+}
 #: kept in the entity's own fields, not in ``nbt``
-SYNCED_KEYS = ("Pos", "Rotation", "UUID", "Tags", *INVENTORY_KEYS)
+SYNCED_KEYS = (
+    "Pos",
+    "Rotation",
+    "UUID",
+    "Tags",
+    "Passengers",
+    *INVENTORY_KEYS,
+    *LIVING_KEYS,
+)
+
+
+def dismount(entity: Entity) -> None:
+    vehicle = entity.vehicle
+    if vehicle is not None and entity in vehicle.passengers:
+        vehicle.passengers.remove(entity)
+    entity.vehicle = None
+
+
+def mount(entity: Entity, vehicle: Entity) -> None:
+    dismount(entity)
+    entity.vehicle = vehicle
+    vehicle.passengers.append(entity)
+    entity.position = list(vehicle.position)
+
+
+def root_vehicle(entity: Entity) -> Entity:
+    while entity.vehicle is not None:
+        entity = entity.vehicle
+    return entity
 
 
 def normalise_rotation(rotation: list[float]) -> list[float]:
@@ -104,10 +147,28 @@ class Entity:
     #: the game time it was summoned at
     born: int = 0
     inventory: Inventory = field(default=None)  # type: ignore[assignment]
+    #: attributes and effects, for living entities
+    living: Living | None = field(default=None, repr=False)
+    vehicle: Entity | None = field(default=None, repr=False, compare=False)
+    passengers: list[Entity] = field(default_factory=list, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.inventory is None:
             self.inventory = Inventory(player=self.is_player, equipment=has_equipment(self.type))
+        if self.living is None and (self.is_player or is_living(self.type)):
+            self.living = Living(self.type)
+
+    def defaults(self) -> dict[str, Any]:
+        """The NBT an entity of this kind reports before anything was set."""
+        defaults = dict(ENTITY_DEFAULTS)
+        if self.living is not None:
+            defaults.update(LIVING_DEFAULTS)
+            defaults["Health"] = self.living.max_health()
+            if not self.is_player and self.type != "minecraft:armor_stand":
+                defaults.update(MOB_DEFAULTS)
+        if self.is_player:
+            defaults.update(PLAYER_DEFAULTS)
+        return defaults
 
     @property
     def id(self) -> str:
@@ -139,13 +200,17 @@ class Entity:
             "Rotation": [float(value) for value in self.rotation],
             "UUID": uuid_to_ints(self.uuid),
         }
+        data.update(copy.deepcopy(self.defaults()))
         if self.is_player:
-            data.update(copy.deepcopy(PLAYER_DEFAULTS))
             data["Dimension"] = self.dimension
         else:
             data["id"] = self.type
         data.update(copy.deepcopy(self.nbt))
         data.update(self.inventory.to_nbt(version))
+        if self.living is not None:
+            data.update(self.living.to_nbt(version))
+        if self.passengers:
+            data["Passengers"] = [passenger.data(version) for passenger in self.passengers]
         if self.tags:
             data["Tags"] = sorted(self.tags)
         return data
@@ -163,7 +228,9 @@ class Entity:
         if isinstance(tags, list):  # without the key, Entity.load keeps the tags
             self.tags = {str(tag) for tag in tags}
         self.inventory.load_nbt(data)
-        defaults = {**ENTITY_DEFAULTS, **(PLAYER_DEFAULTS if self.is_player else {})}
+        if self.living is not None:
+            self.living.load_nbt(data)
+        defaults = self.defaults()
         self.nbt = {
             key: copy.deepcopy(value)
             for key, value in data.items()
@@ -305,10 +372,16 @@ class World:
         return None
 
     def kill(self, entity: Entity) -> None:
-        """Killed players respawn (nothing about them is modelled to reset);
-        any other entity is removed."""
+        """Killed players respawn with full health; any other entity is removed,
+        and its riders get off."""
         if entity.is_player:
+            entity.nbt.pop("Health", None)
+            if entity.living is not None:
+                entity.living.effects.clear()
             return
+        dismount(entity)
+        for passenger in list(entity.passengers):
+            dismount(passenger)
         if entity in self.entities:
             self.entities.remove(entity)
             # vanilla drops the scores of an entity that is removed for good

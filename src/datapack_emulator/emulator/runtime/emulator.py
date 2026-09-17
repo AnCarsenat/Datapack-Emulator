@@ -23,6 +23,7 @@ from datapack_emulator.emulator.common import normalise_id
 from datapack_emulator.emulator.datapack import Datapack, PackView
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.library import FunctionLibrary
+from datapack_emulator.emulator.runtime.living import tick_entities
 from datapack_emulator.emulator.runtime.messages import MessageCatalogue, unknown_command
 from datapack_emulator.emulator.runtime.output import LogLevel, LogSource, OutputBus
 from datapack_emulator.emulator.runtime.world import World
@@ -158,6 +159,7 @@ class Emulator:
             self.schedules = [entry for entry in self.schedules if entry[0] > game_time]
             for _, target in due:
                 self.run_scheduled(target)
+            tick_entities(self.world, self.version)
 
         elapsed = self.profiler.total_us - start
         self.profiler.record_tick(elapsed)
