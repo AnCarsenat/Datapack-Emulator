@@ -112,18 +112,7 @@ class LogController(Controller):
         self.window.navigation.copy_text(record.message, what="the message")
 
     def copy_details(self, record: LogRecord) -> None:
-        lines = [record.format()]
-        if record.command:
-            lines.append(f"command: {record.command}")
-        if record.key:
-            lines.append(f"key: {record.key}")
-        if record.version:
-            lines.append(f"version: {record.version}")
-        if record.recipient:
-            lines.append(
-                "seen by: " + ("everyone" if record.recipient == "*" else record.recipient)
-            )
-        self.window.navigation.copy_text("\n".join(lines), what="the record")
+        self.window.navigation.copy_text(record.details(), what="the record")
 
     def command_of(self, record: LogRecord) -> str | None:
         """The command a record is about: typed on the command line, or the

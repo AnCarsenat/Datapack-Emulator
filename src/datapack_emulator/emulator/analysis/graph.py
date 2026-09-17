@@ -92,7 +92,7 @@ class CallGraph:
         callers = self.predecessors(node_id)
         calls = self.successors(node_id)
         rows = [
-            ("function", node_id),
+            ("tag" if node_id.startswith("#") else "function", node_id),
             ("called by", ", ".join(callers) or "nothing (only #minecraft:load/tick or commands)"),
             ("calls", ", ".join(calls) or "nothing"),
         ]

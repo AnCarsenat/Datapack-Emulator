@@ -412,7 +412,8 @@ def test_project_new_show_set_packs_tests_and_notes(make_pack, tmp_path, capsys)
     assert main(["project", "new", str(path), str(first), "--test", "3:say hi"]) == 0
     path = tmp_path / "made.dpemu"
     assert main(["project", "new", str(path), str(first)]) == 2  # exists
-    assert main(["project", "packs", str(path), "--add", str(second), "--move", "2", "up"]) == 0
+    # numbers refer to the list before the edits: pack 1 moves below the new one
+    assert main(["project", "packs", str(path), "--add", str(second), "--move", "1", "down"]) == 0
     assert main(["project", "set", str(path), "--version", "1.20.4", "--ticks", "-1"]) == 0
     assert main(["project", "set", str(path), "--tests-during-runs", "on", "--notes", "n"]) == 0
     assert (
@@ -426,9 +427,9 @@ def test_project_new_show_set_packs_tests_and_notes(make_pack, tmp_path, capsys)
                 "--expect",
                 "1",
                 "hi",
-                "--disable",
-                "2",
                 "--duplicate",
+                "1",
+                "--disable",
                 "1",
             ]
         )
@@ -445,10 +446,11 @@ def test_project_new_show_set_packs_tests_and_notes(make_pack, tmp_path, capsys)
     assert [pack.name for pack in project.datapacks] == ["extra", "pack1"]
     assert project.version == "1.20.4" and project.ticks == -1 and project.tests_during_runs
     assert project.notes == "n" and project.function_notes == {"test:tick": "a note"}
+    # the duplicate is made before --disable 1, so only the original is disabled
     assert [(t["command"], t["expect"], t["enabled"]) for t in project.tests] == [
+        ("say hi", "hi", False),
         ("say hi", "hi", True),
-        ("say hi", "hi", True),
-        ("say b", "", False),
+        ("say b", "", True),
     ]
     assert main(["project", "show", str(path)]) == 0
     out = capsys.readouterr().out
@@ -465,3 +467,249 @@ def test_run_can_tick_in_real_time(make_pack, monkeypatch, capsys):
     monkeypatch.setattr(runs.time, "sleep", slept.append)
     assert main(["run", str(_pack(make_pack)), "--ticks", "3", "--realtime"]) == 0
     assert len(slept) == 3 and all(0 <= value <= runs.TICK_SECONDS for value in slept)
+
+
+# -- review fixes and the remaining window features
+
+
+def test_project_edits_number_the_list_as_it_was(make_pack, tmp_path, capsys):
+    path = _project(tmp_path, make_pack, [{"command": "say a"}, {"command": "say b"}])
+    args = ["project", "tests", str(path)]
+    assert main([*args, "--duplicate", "1", "--remove", "2"]) == 0
+    assert [t["command"] for t in Project.load(path).tests] == ["say a", "say a"]
+    assert main([*args, "--move", "1", "down", "--expect", "1", "first", "--remove", "2"]) == 0
+    assert [(t["command"], t["expect"]) for t in Project.load(path).tests] == [("say a", "first")]
+    assert main([*args, "--disable", "1", "--enable", "1"]) == 0
+    assert Project.load(path).tests[0]["enabled"] is True
+    assert main([*args, "--remove", "1", "--expect", "1", "x"]) == 2
+    assert main([*args, "--tick", "1", "x"]) == 2
+    assert main(["project", "packs", str(path), "--remove", "1"]) == 2  # the last one
+    capsys.readouterr()
+
+
+def test_project_notes_use_normalised_ids(make_pack, tmp_path, capsys):
+    path = _project(tmp_path, make_pack, [])
+    assert main(["project", "note", str(path), "test:tick ", "counts"]) == 0
+    assert main(["project", "note", str(path), "TEST:TICK", "invalid"]) == 2
+    assert main(["project", "note", str(path), "tick", "vanilla"]) == 0
+    notes = Project.load(path).function_notes
+    assert notes == {"test:tick": "counts", "minecraft:tick": "vanilla"}
+    assert "not in the project's datapacks" in capsys.readouterr().err
+    assert main(["project", "note", str(path), "test:other", ""]) == 0
+    assert "no note on test:other" in capsys.readouterr().out
+
+
+def test_notes_and_notes_file_are_exclusive(make_pack, tmp_path):
+    path = _project(tmp_path, make_pack, [])
+    with pytest.raises(SystemExit):
+        main(["project", "set", str(path), "--notes", "a", "--notes-file", "b"])
+
+
+def test_shell_mistakes_never_end_the_session(make_pack, tmp_path, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    lines = [
+        ".seed abc",
+        '.explain say "hi',
+        ".scores it's",
+        '.history "a',
+        ".save " + str(tmp_path / "missing" / "dir" / "x.dpemu"),
+        ".save",
+        ".test say hi",
+        ".expect-value 1 abc",
+        ".expect-value 1 5..1",
+        ".at 1 x",
+        ".records 1",
+        "say still here",
+    ]
+    (tmp_path / "missing").write_text("a file, not a folder")
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(lines) + "\n"))
+    assert main(["shell", pack, "--strict"]) == 1
+    out = capsys.readouterr().out
+    assert "not a whole number: 'abc'" in out
+    assert out.count("cannot read the arguments") == 1
+    assert "cannot save" in out and "no project open" in out
+    assert "invalid expected value 'abc'" in out and "invalid expected value '5..1'" in out
+    assert "has no result yet" in out
+    assert "[Server] still here" in out
+
+
+def test_shell_save_keeps_settings_it_did_not_change(make_pack, tmp_path, capsys, monkeypatch):
+    import io
+
+    path = _project(tmp_path, make_pack, [], ticks=-1, speed="fast")
+    monkeypatch.setattr("sys.stdin", io.StringIO(".test say x\n.save\n"))
+    assert main(["shell", str(path)]) == 0
+    saved = Project.load(path)
+    assert saved.version == "" and saved.ticks == -1 and len(saved.tests) == 1
+    monkeypatch.setattr("sys.stdin", io.StringIO(".realtime on\n.seed -4\n.save\n"))
+    assert main(["shell", str(path)]) == 0
+    saved = Project.load(path)
+    assert saved.speed == "realtime" and saved.seed == -4 and saved.version == ""
+
+
+def test_shell_tests_packs_jars_and_reports(make_pack, tmp_path, fake_jar, capsys, monkeypatch):
+    import io
+
+    pack = _pack(make_pack)
+    extra = make_pack(
+        {"data/test/function/tick.mcfunction": "scoreboard players add #ticks t 10\n"},
+        name="extra",
+    )
+    lines = [
+        ".test 1:scoreboard players get #ticks t",
+        ".expect-value 1 2",
+        ".duplicate 1",
+        ".at 2 3",
+        ".expect-value 2 4",
+        ".disable 1 2",
+        ".enable 1 2",
+        ".runtests",
+        ".records 2",
+        ".tests",
+        ".add-pack " + str(extra),
+        ".packs",
+        ".runtests 1",
+        ".move-pack 2 up",
+        ".remove-pack 1",
+        ".reload",
+        ".jar " + str(fake_jar),
+        ".jar none",
+        ".jar 0.0.1",
+        ".report " + str(tmp_path / "r.html"),
+        ".dot " + str(tmp_path / "g.dot"),
+        ".run 2",
+        ".profile",
+        ".quit",
+    ]
+    monkeypatch.setattr("sys.stdin", io.StringIO("\n".join(lines) + "\n"))
+    assert main(["shell", str(pack), "--version", "1.21.4"]) == 0
+    out = capsys.readouterr().out
+    assert "2/2 passed" in out and "→ PASS" in out
+    assert "test: scoreboard players get #ticks t (tick 3)" in out
+    assert "2. extra" in out and "FAIL" in out  # the extra pack's tick adds 10
+    assert "client jar: 9.9" in out and "client jar: none" in out
+    assert "error: unknown Minecraft version" in out
+    assert (tmp_path / "r.html").is_file() and (tmp_path / "g.dot").is_file()
+    assert "#minecraft:tick" in out  # the profile tree
+
+
+def test_shell_reports_tests_a_run_does_not_reach(make_pack, tmp_path, capsys, monkeypatch):
+    import io
+
+    tests = [{"command": "say late", "at_tick": 9}, {"command": "say early", "at_tick": 0}]
+    path = _project(tmp_path, make_pack, tests, tests_during_runs=True)
+    monkeypatch.setattr("sys.stdin", io.StringIO(".run 3\n.quit\n"))
+    assert main(["shell", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "PASS" in out and "not reached: the run ended before tick 9" in out
+
+
+def test_shell_quit_stops_every_script(make_pack, tmp_path, capsys):
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.write_text(".quit\n")
+    second.write_text("say never\n")
+    pack = str(_pack(make_pack))
+    assert main(["shell", pack, "--script", str(first), "--script", str(second)]) == 0
+    assert "never" not in capsys.readouterr().out
+    assert main(["shell", pack, "--script", str(tmp_path / "none.txt")]) == 2
+
+
+def test_world_json_is_clean_and_filtered(make_pack, capsys):
+    import json
+
+    pack = str(_pack(make_pack))
+    args = ["world", pack, "--json", "-c", "say hi", "-c", "data merge storage a:b {x:1}"]
+    assert main([*args, "--scores", "--holder", "#ti", "--level", "debug"]) == 0
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert set(data) == {"tick", "version", "objectives", "scores", "enabled_triggers", "gamerules"}
+    assert list(data["scores"]) == ["#ticks"]
+    assert "> say hi" in captured.err and "[Server] hi" in captured.err
+    assert main(["world", pack, "--json", "--history", "#ticks", "t", "-c", "say x"]) == 0
+    assert json.loads(capsys.readouterr().out)[0] == {"tick": 0, "value": 1}
+
+
+def test_record_filters_seen_by_grep_and_details(make_pack, capsys):
+    pack = make_pack({"data/test/function/tick.mcfunction": 'tellraw Player2 "psst"\nsay loud\n'})
+    args = ["run", str(pack), "--ticks", "1", "--players", "2", "--version", "1.21.4"]
+    assert main([*args, "--seen-by", "Player1", "--sources", "game"]) == 0
+    out = capsys.readouterr().out
+    assert "[Server] loud" in out and "psst" not in out
+    assert main([*args, "--grep", "PSST", "--details"]) == 0
+    out = capsys.readouterr().out
+    assert "to Player2: psst" in out and "loud" not in out
+    assert "seen by: Player2" in out
+    assert "version: 1.21.4" in out
+
+
+def test_matrix_prints_records_when_verbose(make_pack, capsys):
+    pack = str(_pack(make_pack))
+    args = ["matrix", pack, "--versions", "1.21.4", "--html", "m.html", "--verbose"]
+    assert main([*args, "--level", "debug", "--sources", "app"]) == 0
+    assert "running pack1 against 1.21.4" in capsys.readouterr().out
+
+
+def test_run_until_interrupted_keeps_the_report(make_pack, monkeypatch, capsys):
+    from datapack_emulator.emulator.runtime.emulator import Emulator
+
+    calls = {"n": 0}
+    original = Emulator.run_tick
+
+    def ticking(self):
+        calls["n"] += 1
+        if calls["n"] > 4:
+            raise KeyboardInterrupt
+        return original(self)
+
+    monkeypatch.setattr(Emulator, "run_tick", ticking)
+    assert main(["run", str(_pack(make_pack)), "--ticks", "-1"]) == 0
+    captured = capsys.readouterr()
+    assert "stopped after 4 tick(s)" in captured.err and "4 tick(s)" in captured.out
+    with pytest.raises(SystemExit):
+        main(["world", str(_pack(make_pack)), "--ticks", "-1"])
+
+
+def test_show_records_of_every_test(make_pack, capsys):
+    pack = str(_pack(make_pack))
+    assert main(["test", pack, "--test", "say hi", "--show-records", "all"]) == 0
+    assert "[Server] hi" in capsys.readouterr().out
+    assert main(["test", pack, "--test", "say hi", "--show-records"]) == 0
+    assert "[Server] hi" not in capsys.readouterr().out
+
+
+def test_last_project_and_recent_lists(make_pack, tmp_path, capsys):
+    import json
+
+    path = _project(tmp_path, make_pack, [], version="1.20.4")
+    assert main(["run", "@last"]) == 2
+    state = PATHS.CACHE / "window-state.json"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(
+        json.dumps({"recent_projects": [str(tmp_path / "gone.dpemu"), str(path)]}),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    assert main(["run", "@last", "--ticks", "1"]) == 0
+    assert "1.20.4: 1 tick(s)" in capsys.readouterr().out
+    assert main(["project", "recent"]) == 0
+    out = capsys.readouterr().out
+    assert "gone.dpemu  (missing)" in out and "recent datapacks:\n  none" in out
+
+
+def test_info_graph_and_search_details(make_pack, capsys):
+    pack = make_pack(
+        {
+            "data/test/tags/block/stones.json": {"values": ["minecraft:stone"]},
+            "data/test/function/tick.mcfunction": "say x\n",
+        }
+    )
+    assert main(["info", str(pack), "-r", "#test:stones"]) == 0
+    assert "tags/block" in capsys.readouterr().out
+    assert main(["info", str(pack), "-r", "minecraft:tick"]) == 2  # a tag needs its #
+    assert main(["graph", str(pack), "-f", "#minecraft:tick", "--dot"]) == 0
+    out = capsys.readouterr().out
+    assert "\ntag " in out and "\nfunction " not in out
+    assert list(Path("generated").glob("pack1-*.dot"))
+    assert main(["search", str(pack), " "]) == 2

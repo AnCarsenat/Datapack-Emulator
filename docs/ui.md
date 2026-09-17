@@ -1,6 +1,7 @@
 # The window
 
-Everything here, except what needs a screen, can also be done from the
+Everything here, except what needs a screen (opening files elsewhere, the
+graph's drawing, the layout), can also be done from the
 [command line](cli.md): each command there names the window feature it
 matches.
 

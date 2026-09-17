@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 from datapack_emulator.cli.common import (
     FAILED,
@@ -67,12 +66,22 @@ def find_resource(view, resource_id: str):
     """A function, a function tag (``#ns:id``) or any other resource by id."""
     wanted = normalise_tagged_id(resource_id)
     if wanted.startswith("#"):
-        return view.function_tags.get(wanted)
+        tag = view.function_tags.get(wanted)
+        if tag is not None:
+            return tag
+        return next(
+            (
+                resource
+                for resource in view.resources()
+                if resource.registry.startswith("tags/") and f"#{resource.id}" == wanted
+            ),
+            None,
+        )
     function = view.functions.get(wanted)
     if function is not None:
         return function
     for resource in view.resources():
-        if resource.id == wanted:
+        if resource.id == wanted and not resource.registry.startswith("tags/"):
             return resource
     return None
 
@@ -95,7 +104,11 @@ def command_info(arguments: argparse.Namespace) -> int:
             rows += describe_resource(resource, version)
             key = normalise_tagged_id(resource_id)
             if key in graph.nodes:
-                rows += [row for row in graph.relations(key) if row[0] not in ("function", "calls")]
+                rows += [
+                    row
+                    for row in graph.relations(key)
+                    if row[0] not in ("function", "tag", "calls")
+                ]
             rows += note_rows(inputs, key)
         print_rows(rows, arguments.json)
         if missing:
@@ -229,6 +242,8 @@ def command_search(arguments: argparse.Namespace) -> int:
     inputs = load_inputs(arguments.source)
     version = inputs.version(arguments)
     view = inputs.datapack.view_for(version)
+    if not arguments.text.strip():
+        raise CliError("give some text to look for")
     hits = id_hits(view, arguments.text) if arguments.ids else text_hits(view, arguments.text)
     if arguments.json:
         print(
@@ -270,8 +285,13 @@ def command_graph(arguments: argparse.Namespace) -> int:
     inputs = load_inputs(arguments.source)
     version = inputs.version(arguments)
     graph = CallGraph.from_pack(inputs.datapack.view_for(version))
-    if arguments.dot:
-        print(f"dot: {graph.write_dot(arguments.dot)}")
+    if arguments.dot is not None:
+        name = inputs.datapack.name.replace(" + ", "+")
+        path = arguments.dot if arguments.dot != "" else f"generated/{name}-{version.id}.dot"
+        try:
+            print(f"dot: {graph.write_dot(path)}")
+        except OSError as exc:
+            raise CliError(f"cannot write {path}: {exc}") from exc
     if arguments.function:
         rows: Rows = []
         for function_id in arguments.function:
@@ -338,7 +358,14 @@ def register_graph(subparsers) -> None:
     graph.add_argument(
         "--function", "-f", action="append", metavar="ID", help="show callers and calls of ID"
     )
-    graph.add_argument("--dot", type=Path, default=None, help="also write Graphviz to this file")
+    graph.add_argument(
+        "--dot",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="FILE",
+        help="also write Graphviz (default file: generated/<pack>-<version>.dot)",
+    )
     add_json_argument(graph)
     graph.set_defaults(handler=command_graph)
 

@@ -181,7 +181,7 @@ class LogTableModel(QAbstractTableModel):
             record.source in self._sources
             and record.level >= self._level
             and (not self._text or self._text in record.message.lower())
-            and (not self._reader or record.recipient in ("*", self._reader))
+            and record.seen_by(self._reader)
         )
 
     # -- summary ----------------------------------------------------------

@@ -69,7 +69,8 @@ class ConsoleController(Controller):
             window.output.app("started the world (ran the first tick) to run the command")
         window.output.app(f"> {line}")
         result, _ = emulator.run_typed(line)
-        assert result is not None
+        if result is None:  # checked above; kept for safety
+            return None
         self._remember(line)
         if text is None:
             window.edit_console.clear()

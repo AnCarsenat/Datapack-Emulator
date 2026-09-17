@@ -74,6 +74,23 @@ class LogRecord:
         where = f" {self.origin}" if self.origin else ""
         return f"{head} {self.source}/{self.level.label}{where}: {self.message}"
 
+    def details(self) -> str:
+        """:meth:`format` plus the command, translation key, version and reader."""
+        lines = [self.format()]
+        if self.command:
+            lines.append(f"command: {self.command}")
+        if self.key:
+            lines.append(f"key: {self.key}")
+        if self.version:
+            lines.append(f"version: {self.version}")
+        if self.recipient:
+            lines.append("seen by: " + ("everyone" if self.recipient == "*" else self.recipient))
+        return "\n".join(lines)
+
+    def seen_by(self, reader: str) -> bool:
+        """Whether ``reader`` (a player name; "" for everyone) reads this record."""
+        return not reader or self.recipient in ("*", reader)
+
 
 def trim_records(records: list[LogRecord], keep: int) -> list[LogRecord]:
     """Drop records until ``keep`` remain: the oldest of the lowest level first.

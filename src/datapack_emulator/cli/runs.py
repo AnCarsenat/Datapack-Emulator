@@ -43,9 +43,20 @@ TICK_SECONDS = 0.05
 # ---------------------------------------------------------------------------
 
 
-def add_world_arguments(parser: argparse.ArgumentParser) -> None:
+def endless_count(text: str) -> int:
+    """An argparse type: 0 or more, or -1 for "until Ctrl+C"."""
+    value = count(text) if text != "-1" else -1
+    return value
+
+
+def add_world_arguments(parser: argparse.ArgumentParser, endless: bool = False) -> None:
     """Ticks, players and seed; a project's values are the defaults."""
-    parser.add_argument("--ticks", type=count, default=None, help="default: 20, or the project's")
+    parser.add_argument(
+        "--ticks",
+        type=endless_count if endless else count,
+        default=None,
+        help="default: 20, or the project's" + ("; -1 runs until Ctrl+C" if endless else ""),
+    )
     parser.add_argument("--players", type=count, default=None, help="default: 1, or the project's")
     parser.add_argument("--seed", type=int, default=None, help="default: 0, or the project's")
 
@@ -55,21 +66,39 @@ def ticks_setting(arguments: argparse.Namespace, inputs: Inputs) -> int:
     if arguments.ticks is not None:
         return arguments.ticks
     ticks = inputs.setting(arguments, "ticks", EMULATION.DEFAULT_TICKS)
-    return ticks if ticks >= 0 else EMULATION.DEFAULT_TICKS
+    if ticks < 0:
+        err(f"note: the project runs until stopped; running {EMULATION.DEFAULT_TICKS} ticks")
+        return EMULATION.DEFAULT_TICKS
+    return ticks
 
 
-def print_result(version: Version, result: TestResult, show_records: bool) -> None:
+def print_result(version: Version, result: TestResult, show_records: bool | str) -> None:
+    """One PASS/FAIL line; ``show_records`` "failed" (or True) or "all" adds the
+    test's records."""
     mark = "PASS" if result.passed else "FAIL"
     print(
         f"{mark} {version.id:10} tick {result.test.at_tick:<4} "
         f"{result.test.command}  — {result.reason}"
     )
-    if show_records and not result.passed:
+    if show_records == "all" or (show_records and not result.passed):
         for record in result.records:
             print(f"       {record.format()}")
 
 
+def add_show_records(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--show-records",
+        nargs="?",
+        const="failed",
+        default=None,
+        choices=["failed", "all"],
+        help="print the records of failed tests (or of all tests)",
+    )
+
+
 def warn_unreached(tests: list[CommandTest], ticks: int) -> None:
+    if ticks < 0:
+        return
     late = [test for test in tests if test.enabled and test.at_tick >= ticks]
     if late:
         last = max(test.at_tick for test in late)
@@ -117,16 +146,22 @@ def command_run(arguments: argparse.Namespace) -> int:
         arguments.realtime is None and inputs.project and inputs.project.speed == "realtime"
     )
     emulator.start()
-    if ticks <= 0:
+    if ticks == 0:
         emulator.run(ticks=0)
-    for _ in range(ticks):
-        started = time.perf_counter()
-        tick = emulator.world.tick
-        emulator.run_tick()
-        if schedule is not None:
-            schedule.after_tick(emulator, tick)
-        if realtime:
-            time.sleep(max(0.0, TICK_SECONDS - (time.perf_counter() - started)))
+    done = 0
+    try:
+        while ticks < 0 or done < ticks:
+            started = time.perf_counter()
+            tick = emulator.world.tick
+            emulator.run_tick()
+            done += 1
+            if schedule is not None:
+                schedule.after_tick(emulator, tick)
+            if realtime:
+                time.sleep(max(0.0, TICK_SECONDS - (time.perf_counter() - started)))
+    except KeyboardInterrupt:
+        err(f"stopped after {done} tick(s)")
+    ticks = done
     results = schedule.results() if schedule is not None else []
     profiler = emulator.profiler
     datapack = inputs.datapack
@@ -189,7 +224,7 @@ def register_run(subparsers) -> None:
     run.add_argument(
         "--version", default=None, help="default: the project's, else the pack's newest"
     )
-    add_world_arguments(run)
+    add_world_arguments(run, endless=True)
     run.add_argument(
         "--tests",
         action=argparse.BooleanOptionalAction,
@@ -197,9 +232,7 @@ def register_run(subparsers) -> None:
         help="run the project's tests during the run (default: the project's "
         "'run tests during runs')",
     )
-    run.add_argument(
-        "--show-records", action="store_true", help="print the records of failed tests"
-    )
+    add_show_records(run)
     run.add_argument(
         "--realtime",
         action=argparse.BooleanOptionalAction,
@@ -258,7 +291,8 @@ def command_matrix(arguments: argparse.Namespace) -> int:
     ticks = ticks_setting(arguments, inputs)
     warn_unreached(tests, ticks)
     engine = engine_for(arguments, inputs, tests, ticks)
-    results = engine.run(chosen, progress=progress)
+    bus = printing_bus(arguments) if arguments.verbose else None
+    results = engine.run(chosen, progress=progress, output=bus)
 
     print(
         f"\n{'version':10} {'format':7} {'status':12} {'cmds':>6} {'total ms':>9} "
@@ -308,6 +342,12 @@ def register_matrix(subparsers) -> None:
         help="exit with 1 when a version has errors or failed tests",
     )
     matrix.add_argument("--html", type=Path, default=None, help="default: generated/matrix.html")
+    matrix.add_argument(
+        "--verbose",
+        action="store_true",
+        help="print every version's records (the engine window's lower pane)",
+    )
+    add_output_filter(matrix)
     add_vanilla_arguments(matrix, per_version=True)
     matrix.set_defaults(handler=command_matrix)
 
@@ -426,9 +466,7 @@ def register_test(subparsers) -> None:
         "--include-disabled", action="store_true", help="also run tests unticked in the project"
     )
     test.add_argument("--junit", type=Path, default=None, help="write a JUnit XML report")
-    test.add_argument(
-        "--show-records", action="store_true", help="print the records of failed tests"
-    )
+    add_show_records(test)
     test.add_argument(
         "--verbose", action="store_true", help="print every record while the tests run"
     )
