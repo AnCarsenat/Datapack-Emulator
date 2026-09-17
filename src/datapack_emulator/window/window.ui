@@ -481,6 +481,14 @@ QMenuBar::item:selected {
                  </column>
                  <column>
                   <property name="text">
+                   <string>checks</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>what must hold in the world afterwards (score, storage, entity, block, entity count, if/unless); double-click to edit, one per line</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
                    <string>result</string>
                   </property>
                   <property name="toolTip">

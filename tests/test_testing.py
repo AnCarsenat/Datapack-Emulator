@@ -131,3 +131,74 @@ def test_expected_values_are_ranges(make_pack):
     assert (
         CommandTest.from_dict(CommandTest("a", expect_value="1..").to_dict()).expect_value == "1.."
     )
+
+
+def test_checks_look_at_the_world_and_explain_failures(make_pack):
+    from datapack_emulator.emulator.testing import valid_check
+
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/function/tick.mcfunction": "scoreboard players add #t n 1\n",
+                "data/test/function/load.mcfunction": (
+                    "scoreboard objectives add n dummy\n"
+                    'summon pig 0 0 0 {Tags:["a"]}\n'
+                    "data modify storage test:mem x set value 1b\n"
+                    "data modify storage test:mem obj set value {a:1,b:{c:2}}\n"
+                    "setblock 0 1 0 minecraft:oak_log[axis=x]\n"
+                ),
+                "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+                "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            }
+        )
+    )
+    passing = CommandTest(
+        "",
+        at_tick=2,
+        checks=[
+            "score #t n = 3",
+            "score #t n != 0",
+            "storage test:mem x = 1",
+            "storage test:mem obj = {a:1b,b:{c:2}}",
+            'entity @e[type=pig,limit=1] Tags = ["a"]',
+            "@e[type=pig] = 1",
+            "@e[type=cow] = 0",
+            "block 0 1 0 = oak_log[axis=x]",
+            "block 0 2 0 != oak_log",
+            "if entity @e[type=pig]",
+            "unless entity @e[type=cow]",
+            "entity @e[type=cow] Tags != 1",
+        ],
+    )
+    failing = [
+        CommandTest("", checks=["score #t n = 5"]),
+        CommandTest("", checks=["storage test:mem obj = {a:2,b:{c:3},d:1}"]),
+        CommandTest("", checks=["block 0 1 0 = oak_log[axis=y]"]),
+        CommandTest("", checks=["@e[type=pig] = 2.."]),
+        CommandTest("", checks=["if entity @e[type=cow]"]),
+        CommandTest("", checks=["score #nobody n = 1"]),
+        CommandTest("", checks=["nonsense"]),
+        CommandTest("say hi", checks=["score #t n != 1"]),
+    ]
+    results = run_tests(pack, [passing, *failing], version="1.21.4")
+    assert results[0].passed, results[0].reason
+    assert results[0].reason == "passed (checks only), 12 check(s) held"
+    reasons = [result.reason for result in results[1:]]
+    assert not any(result.passed for result in results[1:])
+    assert reasons[0] == "score #t n: expected exactly 5, got 1"
+    assert reasons[1] == (
+        "storage test:mem obj: expected {a: 2, b: {c: 3}, d: 1}, got {a: 1, b: {c: 2}} "
+        "(a is 1; b.c is 2; missing d)"
+    )
+    assert reasons[2] == "block 0 1 0: expected oak_log[axis=y], got minecraft:oak_log[axis=x]"
+    assert reasons[3] == "@e[type=pig] count: expected 2 or more, got 1"
+    assert reasons[4] == "check failed: if entity @e[type=cow]"
+    assert reasons[5] == "score #nobody n: expected exactly 1, but it is not set"
+    assert reasons[6].startswith("check 'nonsense': a check needs ' = ' or ' != '")
+    assert reasons[7] == "score #t n: expected not exactly 1, got 1"
+    assert valid_check("score a = 1") == "score HOLDER OBJECTIVE = RANGE"
+    assert valid_check("score a b = x").startswith("not a range")
+    assert valid_check("if entity @s") == ""
+    round_trip = CommandTest.from_dict(passing.to_dict())
+    assert round_trip.checks == passing.checks
+    assert CommandTest.from_dict({"command": "x", "checks": "nope"}).checks == []

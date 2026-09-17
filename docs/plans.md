@@ -47,10 +47,6 @@ Nothing is queued here right now; take the next item from the lists below.
 
 ## Tooling
 
-* **Richer test expectations** — besides a command and its output, check a
-  score (`#global counter = 3`), an NBT path (`storage ns:mem x = 1b`), or an
-  entity count (`@e[type=pig] = 2`) without writing a command; show a diff when
-  it fails.
 * **Problems panel** — static diagnostics for the whole pack in one dock:
   selector arguments that do not exist, invalid NBT, ids the version does not
   have, missing functions, unused functions, recursion; validate recipes, loot

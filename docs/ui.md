@@ -84,8 +84,12 @@ current version.
       skip the test.
     * *command*; *expect output*, text the game output must contain; *expect
       value*, a range the command's result must be in (`5`, `1..`, `..3`,
-      `1..4` — e.g. `scoreboard players get` returns the score); and the
-      *result*: hover it for the records it produced, double-click it to
+      `1..4` — e.g. `scoreboard players get` returns the score); *checks*,
+      what must hold in the world afterwards, one per line (double-click to
+      edit: `score #global counter = 3`, `storage ns:mem x = 1b`,
+      `@e[type=pig] = 2`, `block 0 64 0 = stone`, `if entity @a[tag=won]`,
+      `!=` to invert — see [checks](cli.md#checks); with checks the command
+      may be empty); and the *result*: hover it for the records it produced, double-click it to
       select them in the logs.
 
     A test passes when the command succeeds without a visible error and the

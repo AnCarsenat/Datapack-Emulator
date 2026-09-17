@@ -913,3 +913,56 @@ def test_ctrl_c_stops_a_matrix_after_the_current_tick(make_pack, capsys, monkeyp
     assert code == 1
     assert "stopped: 1.20.4 after 3 tick(s); 1 version(s) not run" in captured.err
     assert "cancelled" in captured.out and "1.21.4" not in captured.out.split("matrix report")[0]
+
+
+def test_checks_from_the_command_line(make_pack, tmp_path, capsys):
+    pack = str(_pack(make_pack))
+    code = main(
+        ["test", pack, "--test", "2:", "--check", "score #ticks t = 3", "--check", "@e = 1.."]
+    )
+    out = capsys.readouterr().out
+    assert code == 0 and "(checks only)  — passed (checks only), 2 check(s) held" in out
+    code = main(["test", pack, "--test", "2:", "--check", "score #ticks t = 9"])
+    assert code == 1
+    assert "score #ticks t: expected exactly 9, got 3" in capsys.readouterr().out
+    assert main(["test", pack, "--test", "x", "--check", "nonsense"]) == 2
+    assert main(["test", pack, "--check", "score a b = 1"]) == 2
+
+    path = str(_project(tmp_path, make_pack, [{"command": "say hi", "at_tick": 1}]))
+    code = main(
+        [
+            "project",
+            "tests",
+            path,
+            "--check",
+            "1",
+            "score #ticks t = 2",
+            "--check",
+            "1",
+            "@e[type=pig] = 0",
+            "--uncheck",
+            "1",
+            "2",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0 and "say hi  (check score #ticks t = 2)" in out
+    assert Project.load(Path(path)).tests[0]["checks"] == ["score #ticks t = 2"]
+    assert main(["test", path]) == 0
+    capsys.readouterr()
+
+    import io
+    import sys
+
+    sys.stdin = io.StringIO(
+        ".check 1 storage test:mem x = 5\n.check 1 bad\n.runtests\n.uncheck 1 all\n.tests\n"
+    )
+    try:
+        assert main(["shell", path]) == 0
+    finally:
+        sys.stdin = sys.__stdin__
+    out = capsys.readouterr().out
+    assert "check storage test:mem x = 5" in out
+    assert "error: a check needs ' = ' or ' != '" in out
+    assert "storage test:mem x: expected 5, got nothing" in out
+    assert "  1. [x] tick 1    say hi\n" in out
