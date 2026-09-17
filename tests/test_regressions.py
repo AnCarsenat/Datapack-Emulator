@@ -353,11 +353,11 @@ def test_selector_nbt_and_volume_arguments(make_pack):
 def test_unmodelled_selector_arguments_are_reported_once(make_pack):
     from datapack_emulator.emulator.runtime.output import LogSource
 
-    emulator = run(make_pack, "execute if entity @a[gamemode=creative] run say creative\n", ticks=3)
+    emulator = run(make_pack, "execute if entity @a[predicate=test:p] run say p\n", ticks=3)
     notes = [
         r.message
         for r in emulator.output.records
-        if r.source is LogSource.EMULATOR and "gamemode" in r.message
+        if r.source is LogSource.EMULATOR and "predicate" in r.message
     ]
     assert len(notes) == 1
 

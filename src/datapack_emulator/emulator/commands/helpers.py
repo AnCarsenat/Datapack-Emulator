@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from datapack_emulator.emulator.commands.parser import Command, Selector
 from datapack_emulator.emulator.commands.result import CommandResult
+from datapack_emulator.emulator.common import flatten_text_component, load_text_component
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.world import Entity
 
@@ -98,3 +99,9 @@ def checking(registry: str, index: int, key: str) -> Handler:
         return CommandResult(success=True, value=1)
 
     return handler
+
+
+def text_argument(payload: str) -> str:
+    """A text component argument as plain text (a bare word is kept as it is)."""
+    component = load_text_component(payload)
+    return payload.strip('"') if component is None else flatten_text_component(component)
