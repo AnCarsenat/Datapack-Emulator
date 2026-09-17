@@ -146,3 +146,42 @@ def test_locations_and_toggling():
     assert debugger.lines_of("test:a") == {2}
     assert debugger.toggle("test:a", 2) is False
     assert debugger.lines_of("test:a") == set()
+
+
+def test_conditions_only_read_and_steps_end_with_tests(emulator):
+    from datapack_emulator.emulator.runtime.debugger import condition_problem, split_breakpoint
+    from datapack_emulator.emulator.testing import CommandTest, TestSchedule
+
+    debugger = Debugger()
+    context = emulator.root_context()
+    records = len(emulator.output.records)
+    assert debugger.test("score #nobody n matches 1", context) == (False, "")
+    assert len(emulator.output.records) == records  # nothing reaches the run's output
+    assert debugger.test("if function test:inner", context)[1].startswith("if function")
+    assert emulator.world.scoreboard.get("#i", "n") == 1
+    assert condition_problem("if entity @s run say x") == "a condition cannot run a command"
+    assert split_breakpoint("t:f:3\tscore @s x matches 1") == ("t:f:3", "if score @s x matches 1")
+
+    seen: list = []
+    debugger.on_pause = scripted([Action.STEP_INTO], seen)
+    debugger.add("test:inner", 3)
+    emulator.debugger = debugger
+    schedule = TestSchedule([CommandTest("function test:inner", at_tick=1)])
+    tick = emulator.world.tick
+    debugger.remove("test:tick", 2)
+    emulator.run_tick()
+    seen.clear()
+    schedule.after_tick(emulator, tick)
+    assert seen == [("test:inner", 3, "breakpoint", 1)]
+    assert debugger.mode is Action.CONTINUE  # the step ended with the test
+
+
+def test_breakpoints_resolve_against_a_version(emulator):
+    debugger = Debugger()
+    debugger.load_strings(["test:inner:1", "!test:tick:9 if score @s n matches 1", "x:y:1"])
+    problems = debugger.resolve(emulator.library.function)
+    assert problems == [
+        "breakpoint test:tick:9 if score @s n matches 1 (disabled): no command on or after line 9",
+        "breakpoint x:y:1: no function x:y",
+    ]
+    assert ("test:inner", 2) in debugger.breakpoints

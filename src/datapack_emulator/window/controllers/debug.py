@@ -12,7 +12,7 @@ until the answer is given, and replacing the world answers ``stop`` first.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEventLoop, Qt
+from PySide6.QtCore import QEventLoop, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QLabel,
@@ -29,6 +29,8 @@ from datapack_emulator.emulator.runtime.debugger import (
     DebugStopped,
     Pause,
     command_line_at,
+    condition_problem,
+    split_breakpoint,
     watch_value,
 )
 from datapack_emulator.window.controllers.base import Controller
@@ -42,6 +44,7 @@ RUNNING_BUTTONS = (
     "buttonStep",
     "buttonRunTests",
     "buttonRunSelectedTest",
+    "buttonEngine",
 )
 RUNNING_ACTIONS = (
     "actionrun_all",
@@ -70,9 +73,12 @@ class DebugController(Controller):
     def __init__(self, window):
         super().__init__(window)
         self.debugger = Debugger(self.on_pause)
+        #: the stop being answered: its nested loop and its answer
         self._loop: QEventLoop | None = None
-        self._answer = Action.CONTINUE
+        self._answers: dict[int, Action] = {}
         self._filling = False
+        #: breakpoint problems already reported (see check_breakpoints)
+        self._reported: set[tuple] = set()
         find = window.findChild
         self.status_label: QLabel = find(QLabel, "labelDebugStatus")
         self.tabs: QTabWidget = find(QTabWidget, "tabsDebug")
@@ -139,35 +145,50 @@ class DebugController(Controller):
             self.answer(Action.STOP)
         self.debugger.reset()
         emulator.debugger = self.debugger
+        self.check_breakpoints(quiet_if_seen=True)
 
     def on_pause(self, pause: Pause) -> Action:
         window = self.window
+        if self._loop is not None:
+            # only reachable through a path that runs the world while stopped;
+            # never stack a second stop on the first
+            return Action.CONTINUE
         runs = window.runs
         resume = runs.timer.isActive()
         runs.timer.stop()  # the nested loop must not tick the world again
-        self._answer = Action.CONTINUE
-        self._loop = QEventLoop()
-        self._set_paused(True)
-        self.show_pause(pause)
-        window.log_view.flush()
-        runs.show_tick()
-        window.world_view.refresh()
+        loop = self._loop = QEventLoop()
+        self._answers[id(loop)] = Action.CONTINUE
         try:
-            self._loop.exec()
+            self._set_paused(True)
+            self.show_pause(pause)
+            window.log_view.flush()
+            runs.show_tick()
+            window.world_view.refresh()
+            loop.exec()
         finally:
+            answer = self._answers.pop(id(loop), Action.STOP)
             self._loop = None
             self._set_paused(False)
             self.show_pause(None)
-        if resume and runs.running and self._answer is not Action.STOP:
+        if resume and runs.running and answer is not Action.STOP:
             runs.timer.start(runs.interval_ms)
-        return self._answer
+        return answer
 
     def answer(self, action: Action) -> None:
-        if self._loop is None:
+        loop = self._loop
+        if loop is None:
             self.status("the debugger is not stopped")
             return
-        self._answer = action
-        self._loop.quit()
+        self._answers[id(loop)] = action
+        loop.quit()
+
+    def busy(self) -> bool:
+        """Stopped: say that the world has to go on first (for actions that
+        would run it again)."""
+        if self.paused:
+            self.status("stopped in the debugger: continue or stop first")
+            return True
+        return False
 
     def pause(self) -> None:
         if self.paused:
@@ -215,9 +236,14 @@ class DebugController(Controller):
             action = window._action(name)
             if action is not None and paused:
                 action.setEnabled(False)
+        if paused:  # the toolbar's stop abandons the stopped tick too
+            window.stop_button.setEnabled(True)
+            stop = window._action("actionstop")
+            if stop is not None:
+                stop.setEnabled(True)
         if not paused:
             window.runs._set_running(window.runs.running)
-            for name in ("buttonRunTests", "buttonRunSelectedTest"):
+            for name in ("buttonRunTests", "buttonRunSelectedTest", "buttonEngine"):
                 button = find(QPushButton, name)
                 if button is not None:
                     button.setEnabled(True)
@@ -300,6 +326,9 @@ class DebugController(Controller):
         if not text:
             self.status("type a watch expression first")
             return
+        if text.split(None, 1)[0] in ("if", "unless") and condition_problem(text):
+            self.status(condition_problem(text))
+            return
         self.debugger.watches.append(text)
         self.edit_watch.clear()
         self.refresh_values()
@@ -324,11 +353,14 @@ class DebugController(Controller):
             return
         row = self.tree_watches.indexOfTopLevelItem(item)
         text = item.text(0).strip()
-        if text:
+        if text and text.split(None, 1)[0] in ("if", "unless") and condition_problem(text):
+            self.status(condition_problem(text))
+        elif text:
             self.debugger.watches[row] = text
         else:
             del self.debugger.watches[row]
-        self.refresh_values()
+        # never rebuild a view from inside its own itemChanged
+        QTimer.singleShot(0, self.refresh_values)
         self._changed()
 
     # -- breakpoints -------------------------------------------------------
@@ -428,11 +460,14 @@ class DebugController(Controller):
         if column == 0:
             point.enabled = item.checkState(0) == Qt.Checked
         elif column == 1:
-            condition = item.text(1).strip()
-            if condition and not condition.startswith(("if ", "unless ")):
-                condition = "if " + condition
-            point.condition = condition
-        self.fill_breakpoints()
+            _, condition = split_breakpoint("_ " + item.text(1))
+            problem = condition_problem(condition) if condition else ""
+            if problem:
+                self.status(problem)
+            else:
+                point.condition = condition
+        # never rebuild a view from inside its own itemChanged
+        QTimer.singleShot(0, self.fill_breakpoints)
         self._changed()
 
     def _open_item(self, item: QTreeWidgetItem, _column: int) -> None:
@@ -444,11 +479,33 @@ class DebugController(Controller):
     # -- the project -------------------------------------------------------
 
     def load(self, breakpoints: list[str], watches: list[str]) -> None:
+        from datapack_emulator.emulator.runtime.output import LogLevel
+
+        output = self.window.output
         for entry in self.debugger.load_strings(breakpoints):
-            self.window.output.app(f"cannot read the project's breakpoint {entry!r}")
+            output.app(f"cannot read the project's breakpoint {entry!r}", level=LogLevel.WARNING)
         self.debugger.watches = list(watches)
+        self.check_breakpoints()
         self.fill_breakpoints()
         self.refresh_values()
+
+    def check_breakpoints(self, quiet_if_seen: bool = False) -> None:
+        """Move breakpoints to command lines of the emulated version; say
+        which ones it does not have (once per pack, version and problem when
+        ``quiet_if_seen``)."""
+        from datapack_emulator.emulator.runtime.output import LogLevel
+
+        window = self.window
+        if window.datapack is None:
+            return
+        view = window.datapack.view_for(window.version)
+        for problem in self.debugger.resolve(view.function):
+            key = (id(window.datapack), window.version.id, problem)
+            if quiet_if_seen and key in self._reported:
+                continue
+            self._reported.add(key)
+            window.output.app(problem, level=LogLevel.WARNING)
+        self.fill_breakpoints()
 
     def capture(self, project) -> None:
         project.breakpoints = self.debugger.to_strings()

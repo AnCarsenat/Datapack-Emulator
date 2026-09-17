@@ -48,7 +48,7 @@ console with a debugger and project editing — on packs or saved projects:
 .venv/bin/datapack-emulator-cli matrix samples/hat_v2 --declared --boundaries
 .venv/bin/datapack-emulator-cli test   projects/hat.dpemu --junit generated/tests.xml
 .venv/bin/datapack-emulator-cli shell  samples/hat          # type commands, .step, .scores, .help
-.venv/bin/datapack-emulator-cli shell  samples/hat --break hat:tick:2 --watch "score @s hat"   # debug
+.venv/bin/datapack-emulator-cli shell  samples/hat --break hat:tick:2 --watch "score Player1 hat"   # debug
 .venv/bin/datapack-emulator-cli world  samples/hat --ticks 5 --scores
 src/main.sh --cli run samples/hat_v2 --version 26.3      # same runner through the script
 ```

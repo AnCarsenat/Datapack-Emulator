@@ -30,7 +30,7 @@ from datapack_emulator.emulator.runtime.advancements import (
     AdvancementTree,
 )
 from datapack_emulator.emulator.runtime.context import ExecutionContext
-from datapack_emulator.emulator.runtime.debugger import Debugger
+from datapack_emulator.emulator.runtime.debugger import Debugger, DebugStopped
 from datapack_emulator.emulator.runtime.library import FunctionLibrary
 from datapack_emulator.emulator.runtime.living import tick_entities
 from datapack_emulator.emulator.runtime.messages import MessageCatalogue, unknown_command
@@ -258,27 +258,17 @@ class Emulator:
         self.commands_run = 0
         self.output.set_tick(self.world.tick)
         start = self.profiler.total_us
-
-        with self._stack_headroom():
-            if self._pending_load and self.version >= versions.parse(self.LOAD_BEFORE_TICK_SINCE):
-                self._pending_load = False
-                self.run_load()
-            self._run_tag("#minecraft:tick")
-            if self._pending_load:  # 1.16.1–1.19.2: load after the first tick
-                self._pending_load = False
-                self.run_load()
-            game_time = self.world.tick + 1
-            self.world.tick = game_time  # schedules made from here on count from here
-            if self.world.rule_enabled(DAYLIGHT_RULES):
-                self.world.state.day_time += 1
-            due = [entry for entry in self.schedules if entry[0] <= game_time]
-            self.schedules = [entry for entry in self.schedules if entry[0] > game_time]
-            for _, target in due:
-                self.run_scheduled(target)
-            tick_entities(self.world, self.version, self._instant_effect)
-            self._advancement_triggers()
-        if self.debugger is not None:
-            self.debugger.finished()
+        game_time = self.world.tick + 1
+        try:
+            self._tick_body(game_time)
+        except DebugStopped:
+            # the debugger abandoned the tick: it still happened, so the next
+            # one does not run the same game time again
+            if self.world.tick < game_time:
+                self.world.tick = game_time
+            if self.debugger is not None:
+                self.debugger.finished()
+            raise
 
         elapsed = self.profiler.total_us - start
         self.profiler.record_tick(elapsed)
@@ -290,6 +280,27 @@ class Emulator:
                 version=self.version.id,
             )
         return elapsed
+
+    def _tick_body(self, game_time: int) -> None:
+        with self._stack_headroom():
+            if self._pending_load and self.version >= versions.parse(self.LOAD_BEFORE_TICK_SINCE):
+                self._pending_load = False
+                self.run_load()
+            self._run_tag("#minecraft:tick")
+            if self._pending_load:  # 1.16.1–1.19.2: load after the first tick
+                self._pending_load = False
+                self.run_load()
+            self.world.tick = game_time  # schedules made from here on count from here
+            if self.world.rule_enabled(DAYLIGHT_RULES):
+                self.world.state.day_time += 1
+            due = [entry for entry in self.schedules if entry[0] <= game_time]
+            self.schedules = [entry for entry in self.schedules if entry[0] > game_time]
+            for _, target in due:
+                self.run_scheduled(target)
+            tick_entities(self.world, self.version, self._instant_effect)
+            self._advancement_triggers()
+        if self.debugger is not None:
+            self.debugger.finished()
 
     def _instant_effect(self, entity, effect) -> None:
         from datapack_emulator.emulator.commands.living import apply_instant
@@ -386,10 +397,12 @@ class Emulator:
             self.start()
             self.run_tick()
             started = True
-        with self._stack_headroom():
-            result = self.run_command(command, self.root_context())
-        if self.debugger is not None:
-            self.debugger.finished()
+        try:
+            with self._stack_headroom():
+                result = self.run_command(command, self.root_context())
+        finally:
+            if self.debugger is not None:
+                self.debugger.finished()
         return (result, started)
 
     def run_command(self, command: Command, context: ExecutionContext) -> CommandResult:

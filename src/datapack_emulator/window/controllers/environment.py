@@ -151,7 +151,7 @@ class EnvironmentController(Controller):
     def run(self, rows: list[int] | None = None) -> list[TestResult]:
         """Run the enabled tests, or only ``rows`` of them, in a fresh world."""
         window = self.window
-        if not self.need_datapack():
+        if not self.need_datapack() or window.debug.busy():
             return []
         tests = self.tests()
         if rows is not None:
