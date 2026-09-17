@@ -508,6 +508,7 @@ VANILLA: dict[str, str] = {
     "argument.time.tick_count_too_low": "The tick count must not be less than %s: found %s",
     # advancements (from the 26.2 en_us.json)
     "advancement.advancementNotFound": "Unknown advancement: %s",
+    "predicate.unknown": "Unknown predicate: %s",
     "commands.advancement.criterionNotFound": "The advancement %1$s does not contain the criterion '%2$s'",
     "commands.advancement.grant.criterion.to.many.failure": "Couldn't grant criterion '%s' of advancement %s to %s players as they already have it",
     "commands.advancement.grant.criterion.to.many.success": "Granted criterion '%s' of advancement %s to %s players",

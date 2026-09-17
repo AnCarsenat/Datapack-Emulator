@@ -498,6 +498,7 @@ def test_inline_predicates_are_version_gated(world):
         'execute if predicate {condition:"minecraft:random_chance",chance:1.0f} run say hi'
     )
     assert chat(records) == []
+    assert visible_errors(records)[0].startswith("Unknown predicate: ")
 
 
 def test_loot_rewards_are_silent_and_tag_loops_end(make_pack):
