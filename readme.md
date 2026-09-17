@@ -32,6 +32,8 @@ checked against the real base game read out of a `client.jar`.
   storage and NBT — in the window and in the command-line shell
 * profiler with per-function estimated cost, dearest lines, a flame graph and
   before/after comparison of two runs, call-graph DAG, version matrix
+* edits functions in the window: lines checked as you type, completion
+  (Ctrl+Space) and renaming a function across the pack (F2)
 * reads registries, tags and message strings straight from a `client.jar`
 
 ## Quick start
@@ -47,9 +49,10 @@ python -m venv .venv
 Or, from a checkout, `src/main.sh` (uses `.venv/` or `src/.venv/` if present,
 no install needed beyond the requirements).
 
-The first pack in `samples/` opens on startup. The [command line](docs/cli.md) does what the window does — run, test,
-profile, inspect, explain, search, the call graph, the world, an interactive
-console with a debugger and project editing — on packs or saved projects:
+The project opened most recently comes back on startup (the first pack in
+`samples/` when there is none). The [command line](docs/cli.md) does what the window does — run, test,
+profile, inspect, explain, search, complete, rename, the call graph, the
+world, an interactive console with a debugger and project editing — on packs or saved projects:
 
 ```sh
 .venv/bin/datapack-emulator-cli run    samples/hat_v2 --version 1.21.4 --vanilla

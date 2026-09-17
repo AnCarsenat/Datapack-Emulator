@@ -20,6 +20,8 @@ logger (records from the emulator still print).
 | [`info`](#info--the-inspector) | what a pack or a resource is | inspector dock, version note |
 | [`explain`](#explain--analyze-a-line) | what a command line does | analyze line (Ctrl+I) |
 | [`search`](#search) | text in functions, or ids | search in pack (Ctrl+Shift+F), quick open (Ctrl+P) |
+| [`complete`](#complete--what-can-be-typed-next) | what can be typed at a point in a line | the source view's popup (Ctrl+Space) |
+| [`rename`](#rename--a-function-and-its-references) | rename a function and every reference | source view *rename function…* (F2) |
 | [`check`](#check--problems) | what a version refuses or cannot run, without running (exit 1 on an error) | problems dock, *run › check pack* (Ctrl+Shift+K) |
 | [`graph`](#graph--the-call-graph) | the call graph, callers and calls | call graph tab, *show callers and calls*, *show in call graph*, export .dot |
 | [`project`](#project--dpemu-files) | create, show and edit projects | *file › new / save project*, environment tab, notes |
@@ -442,6 +444,50 @@ datapack-emulator-cli search samples/hat tick --ids         # functions and tags
 Searches the emulated version's view (base pack and active overlays),
 case-insensitively; the text cannot be empty. `--paths` adds file paths,
 `--json` prints JSON; the exit status is `1` when nothing matched.
+
+## `complete` — what can be typed next
+
+```sh
+datapack-emulator-cli complete "execute if " --version 1.21.4
+datapack-emulator-cli complete "function " --pack samples/hat --details
+datapack-emulator-cli complete "execute as @e[" --json
+```
+
+The source view's completion popup (Ctrl+Space), on the command line: the
+commands, `execute` subcommands and conditions, `execute store` targets and
+selector options the version knows, and — with `--pack` — the pack's function
+and tag ids, and the client jar's ids after `summon`, `setblock`, `give`,
+`clear`, `playsound`, `particle`, `effect` and `enchant`. Without `--pack`,
+only what the version itself knows (nothing is claimed about ids).
+
+| option | |
+| --- | --- |
+| `--pack SOURCE` | a datapack folder or a project, for its ids (repeatable) |
+| `--cursor N` | where the cursor is in the line (default: its end) |
+| `--version` | which version's commands (default: the pack's, else the newest) |
+| `--vanilla`, `--no-vanilla`, `--download` | the client jar the ids come from |
+| `--limit N` | how many candidates (default: 50) |
+| `--details` | also print each candidate's kind and hint |
+| `--json` | the candidates as JSON |
+
+Exit `1` when nothing fits there, `2` when the cursor is outside the line.
+
+## `rename` — a function and its references
+
+```sh
+datapack-emulator-cli rename samples/hat hat:tick hat:tick/main          # what would change
+datapack-emulator-cli rename samples/hat hat:tick hat:tick/main --apply  # do it
+```
+
+The source view's *rename function…* (F2): the function's file moves to the
+new id's path, and every reference to the id in the pack's functions, function
+tags and JSON (advancement rewards, enchantment effects…) follows. Ids inside
+longer ids are left alone, so renaming `test:helper` does not touch
+`test:helper_two`.
+
+Nothing is written without `--apply`; the rename is refused (exit `2`) when
+the function is not in the pack in that version, the new id is not a resource
+location (`namespace:path`, lowercase), or something already uses it.
 
 ## `check` — problems
 

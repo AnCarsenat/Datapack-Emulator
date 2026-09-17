@@ -1339,7 +1339,7 @@ def test_project_recent_says_what_the_window_starts_on(make_pack, tmp_path, caps
     path = _project(tmp_path, make_pack, [])
     state_file().parent.mkdir(parents=True, exist_ok=True)
     state_file().write_text(
-        '{"recent_projects": ["%s"], "open_last_on_launch": true}' % path, encoding="utf-8"
+        f'{{"recent_projects": ["{path}"], "open_last_on_launch": true}}', encoding="utf-8"
     )
     assert main(["project", "recent"]) == 0
     out = capsys.readouterr().out
@@ -1347,3 +1347,42 @@ def test_project_recent_says_what_the_window_starts_on(make_pack, tmp_path, caps
     state_file().write_text('{"open_last_on_launch": false}', encoding="utf-8")
     assert main(["project", "recent"]) == 0
     assert "the window starts on the sample datapack" in capsys.readouterr().out
+
+
+def test_complete_and_rename_from_the_command_line(make_pack, tmp_path, capsys):
+    import json
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "function test:helper\n",
+            "data/test/function/helper.mcfunction": "say hi\n",
+        }
+    )
+    # without a pack, what the version itself knows
+    assert main(["complete", "execute if ", "--version", "1.21.4"]) == 0
+    assert "biome" in capsys.readouterr().out
+    assert main(["complete", "execute if ", "--version", "1.20", "--json"]) == 0
+    kinds = {row["kind"] for row in json.loads(capsys.readouterr().out)}
+    assert kinds == {"condition"}
+    assert main(["complete", "say hello ", "--version", "1.21.4"]) == 1
+    assert "nothing to complete here" in capsys.readouterr().out
+    assert main(["complete", "function ", "--pack", str(pack), "--details"]) == 0
+    out = capsys.readouterr().out
+    assert "test:helper  (function)" in out and "#minecraft:tick  (tag)" in out
+    assert main(["complete", "function ", "--cursor", "99"]) == 2
+    assert "--cursor" in capsys.readouterr().err
+
+    # rename prints what it would do, then does it
+    assert main(["rename", str(pack), "test:helper", "test:deep/worker"]) == 0
+    out = capsys.readouterr().out
+    assert "move " in out and "would rename" in out
+    assert (pack / "data/test/function/helper.mcfunction").exists()
+    assert main(["rename", str(pack), "test:helper", "test:deep/worker", "--apply"]) == 0
+    assert "renamed test:helper -> test:deep/worker: 1 file, 1 line(s)" in capsys.readouterr().out
+    assert (pack / "data/test/function/deep/worker.mcfunction").is_file()
+    assert (pack / "data/test/function/tick.mcfunction").read_text() == (
+        "function test:deep/worker\n"
+    )
+    assert main(["rename", str(pack), "test:helper", "test:other"]) == 2
+    assert "is not a function" in capsys.readouterr().err

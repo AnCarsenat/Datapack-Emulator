@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from datapack_emulator.cli.common import (
     FAILED,
@@ -16,6 +17,8 @@ from datapack_emulator.cli.common import (
     load_inputs,
     vanilla_for,
 )
+from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.analysis.completion import complete
 from datapack_emulator.emulator.analysis.explain import explain_line
 from datapack_emulator.emulator.analysis.graph import CallGraph
 from datapack_emulator.emulator.analysis.inspector import (
@@ -24,6 +27,7 @@ from datapack_emulator.emulator.analysis.inspector import (
     describe_version,
     version_note,
 )
+from datapack_emulator.emulator.analysis.rename import RenameError, rename_function
 from datapack_emulator.emulator.analysis.search import id_hits, text_hits
 from datapack_emulator.emulator.common import normalise_tagged_id
 
@@ -370,8 +374,106 @@ def register_graph(subparsers) -> None:
     graph.set_defaults(handler=command_graph)
 
 
+# ---------------------------------------------------------------------------
+# complete / rename (the source view's completion popup and rename function…)
+# ---------------------------------------------------------------------------
+
+
+def command_complete(arguments: argparse.Namespace) -> int:
+    inputs = load_inputs(arguments.pack) if arguments.pack else None
+    version = (
+        inputs.version(arguments)
+        if inputs
+        else versions.parse(arguments.version or versions.LATEST)
+    )
+    view = inputs.datapack.view_for(version) if inputs else None
+    vanilla = vanilla_for(arguments, version, inputs) if inputs else None
+    line = arguments.line
+    cursor = arguments.cursor
+    if cursor is not None and not 0 <= cursor <= len(line):
+        raise CliError(f"--cursor must be between 0 and {len(line)}")
+    found = complete(line, cursor, version, view=view, vanilla=vanilla, limit=arguments.limit)
+    if arguments.json:
+        print(
+            json.dumps(
+                [{"text": c.text, "kind": c.kind, "detail": c.detail} for c in found], indent=2
+            )
+        )
+    else:
+        for candidate in found:
+            print(candidate.label if arguments.details else candidate.text)
+        if not found:
+            print("nothing to complete here")
+    return OK if found else FAILED
+
+
+def register_complete(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "complete",
+        help="what can be typed next on a command line (the source view's popup)",
+        description="Print the commands, execute subcommands and conditions, selector options "
+        "and ids that could come next. Without a pack, only what the version itself knows. "
+        "Exit 1 when nothing fits.",
+    )
+    parser.add_argument("line", help="the line as typed so far, e.g. 'execute if '")
+    parser.add_argument(
+        "--pack",
+        type=Path,
+        action="append",
+        default=None,
+        metavar="SOURCE",
+        help="a datapack folder or a project, for its function and tag ids (repeatable)",
+    )
+    parser.add_argument(
+        "--cursor", type=int, default=None, metavar="N", help="where the cursor is (default: end)"
+    )
+    add_version_argument(parser)
+    add_vanilla_arguments(parser)
+    parser.add_argument("--limit", type=int, default=50, help="how many candidates (default: 50)")
+    parser.add_argument("--details", action="store_true", help="also print the kind and the hint")
+    add_json_argument(parser)
+    parser.set_defaults(handler=command_complete)
+
+
+def command_rename(arguments: argparse.Namespace) -> int:
+    inputs = load_inputs(arguments.source)
+    version = inputs.version(arguments)
+    try:
+        edits = rename_function(
+            inputs.datapack, arguments.function, arguments.new_id, version, apply=arguments.apply
+        )
+    except RenameError as exc:
+        raise CliError(str(exc)) from exc
+    for edit in edits:
+        print(edit.format())
+    moves = sum(edit.kind == "move" for edit in edits)
+    lines = len(edits) - moves
+    done = "renamed" if arguments.apply else "would rename"
+    print(f"{done} {arguments.function} -> {arguments.new_id}: {moves} file, {lines} line(s)")
+    if not arguments.apply:
+        print("nothing was written: --apply does it")
+    return OK
+
+
+def register_rename(subparsers) -> None:
+    parser = subparsers.add_parser(
+        "rename",
+        help="rename a function and every reference to it (the source view's rename function…)",
+        description="Move a function's file and follow its id through the pack's functions, "
+        "function tags and JSON. Prints what would change; --apply writes it.",
+    )
+    add_source_arguments(parser)
+    parser.add_argument("function", help="the function id to rename, e.g. hat:tick")
+    parser.add_argument("new_id", metavar="NEW", help="its new id, e.g. hat:tick/main")
+    add_version_argument(parser)
+    parser.add_argument("--apply", action="store_true", help="write the changes")
+    parser.set_defaults(handler=command_rename)
+
+
 def register(subparsers) -> None:
     register_info(subparsers)
     register_explain(subparsers)
     register_search(subparsers)
     register_graph(subparsers)
+    register_complete(subparsers)
+    register_rename(subparsers)

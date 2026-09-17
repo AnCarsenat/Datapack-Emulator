@@ -1027,6 +1027,8 @@ QMenuBar::item:selected {
     <addaction name="actionsave_project_as"/>
     <addaction name="actionsave_file"/>
     <addaction name="actionrevert_file"/>
+    <addaction name="actionrename_function"/>
+    <addaction name="actioncomplete"/>
     <addaction name="separator"/>
     <addaction name="actionimport_datapack"/>
     <addaction name="menurecent_datapacks"/>
@@ -2287,6 +2289,28 @@ QMenuBar::item:selected {
    </property>
    <property name="shortcut">
     <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="actionrename_function">
+   <property name="text">
+    <string>rename function…</string>
+   </property>
+   <property name="shortcut">
+    <string>F2</string>
+   </property>
+   <property name="statusTip">
+    <string>rename the function in the source view and every reference to its id (the command line: rename)</string>
+   </property>
+  </action>
+  <action name="actioncomplete">
+   <property name="text">
+    <string>complete here</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Space</string>
+   </property>
+   <property name="statusTip">
+    <string>what can be typed at the cursor: commands, execute subcommands and conditions, selector options, function ids</string>
    </property>
   </action>
   <action name="actionopen_last_on_launch">

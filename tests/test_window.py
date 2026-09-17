@@ -1871,3 +1871,68 @@ def test_the_window_entry_point_reads_its_arguments():
     assert parse_arguments(["--no-last-project"]).open_last is False
     assert parse_arguments(["--last-project"]).open_last is True
     assert parse_arguments(["some/project.dpemu"]).path.name == "project.dpemu"
+
+
+def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "function test:helper\n",
+            "data/test/function/helper.mcfunction": "say hi\n",
+        }
+    )
+    window.datapacks.load(pack)
+    edit = window.source_edit
+    window.navigation.open_function("test:tick")
+
+    # Ctrl+Space on a half-typed command offers what fits, and inserting it works
+    edit.setPlainText("function test:hel")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    assert edit.completer.popup().isVisible()
+    assert edit.completer.completionPrefix() == "test:hel"
+    edit.insert_completion("test:helper")
+    assert edit.toPlainText() == "function test:helper"
+    edit.completer.popup().hide()
+
+    # nothing to offer: no popup
+    edit.setPlainText("say hello ")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    app.processEvents()
+    assert not edit.completer.popup().isVisible()
+
+    # Ctrl+Space is the shortcut of the menu entry too
+    assert window._action("actioncomplete").shortcut() == "Ctrl+Space"
+    assert window._action("actionrename_function").shortcut() == "F2"
+
+    # rename: the dialog asks, the file moves and the references follow
+    edit.document().setModified(False)
+    window.navigation.open_function("test:helper")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **kw: ("test:deep/worker", True))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.Yes)
+    assert window.editor.rename_function()
+    assert (pack / "data/test/function/deep/worker.mcfunction").is_file()
+    assert window.navigation.source_path.name == "worker.mcfunction"
+    assert window.datapack.view_for(window.version).function("test:deep/worker") is not None
+    assert not (pack / "data/test/function/helper.mcfunction").exists()
+    assert (pack / "data/test/function/tick.mcfunction").read_text() == (
+        "function test:deep/worker\n"
+    )
+
+    # a name that cannot be used says so and changes nothing
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **kw: ("NOT AN ID", True))
+    warned = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *a, **kw: warned.append(a[2]) or QMessageBox.Ok
+    )
+    assert not window.editor.rename_function()
+    assert warned and "resource location" in warned[0]
+    assert Qt.Key_Space  # the popup's keys are handled in SourceEdit.keyPressEvent
