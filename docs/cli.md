@@ -6,20 +6,24 @@ src/main.sh --cli     [--quiet] COMMAND ...   # from a checkout
 # same as: python -m datapack_emulator.cli ...  (or python -m datapack_emulator.emulator ...)
 ```
 
-Everything the window does can be done from here, so a pack can be checked
-from a terminal or in CI. `--quiet` goes *before* the command and silences the
-Python logger (records from the emulator still print).
+The command line is meant to do what the window does, so a pack can be
+checked from a terminal or in CI. `--quiet` goes *before* the command and
+silences the Python logger (records from the emulator still print).
 
 | command | does | window equivalent |
 | --- | --- | --- |
-| [`run`](#run--one-version) | emulate one version, profile it | run all (F5) |
+| [`run`](#run--one-version) | emulate one version, profile it (and run the tests during the run) | run all (F5) |
 | [`matrix`](#matrix--many-versions) | run across versions | engine window |
 | [`test`](#test--a-projects-tests) | run a project's tests, exit 1 on failure | run tests (F8), engine *run tests* |
 | [`versions`](#versions) | list known versions | the version combo |
 | [`vanilla`](#vanilla--client-jars) | list, download, inspect client jars | *file › load / download client jar* |
 
 Exit status: `0` success, `1` something failed (a test, or `matrix --strict`),
-`2` a usage problem (missing pack, unknown version, no tests).
+`2` a usage problem (missing pack, unknown version, unreadable jar, report
+that cannot be written, nothing to test), `3` an internal error (a bug —
+please report it with the traceback).
+
+Reports (`--html`) default to `generated/` in the working directory.
 
 ## Packs or a project
 
@@ -32,6 +36,20 @@ Options given on the command line win over the project's.
 
 Without a version, a pack runs in the newest release it declares whose server
 reads its `pack.mcmeta` cleanly — the same default the window picks.
+
+## Client jars
+
+As in the window, the client jar of the emulated version is used when one is
+installed (in the jar cache or a launcher's folder, see
+[vanilla-assets.md](vanilla-assets.md)); otherwise a project's saved jar. The
+multi-version commands use each version's installed jar, like the engine
+window.
+
+| option | |
+| --- | --- |
+| `--vanilla VERSION\|JAR` | (`run`, `test`) use that jar instead |
+| `--no-vanilla` | use no jar at all |
+| `--download` | fetch the jar from Mojang when it is not installed |
 
 ## `run` — one version
 
@@ -47,10 +65,11 @@ datapack-emulator-cli run projects/hat.dpemu --level debug
 | `--ticks` | 20 (project's) | a project's endless `-1` runs 20 |
 | `--players` | 1 (project's) | fake players `Player1…` |
 | `--seed` | 0 (project's) | for `@r`, `sort=random` and loot |
+| `--tests` / `--no-tests` | project's *run tests during runs* | run the project's enabled tests, each in its tick, and print their results; exit `1` when one fails |
+| `--show-records` | off | with tests: print the records of failed tests |
 | `--level` | info | `debug`, `info`, `warn`, `error` — lowest level printed |
 | `--sources` | all | any of `app emulator game` |
-| `--vanilla [VERSION\|JAR]` | project's jar, else off | check ids and message wording against a client jar; no value = the emulated version |
-| `--download` | off | fetch the jar from Mojang if it is not installed |
+| `--vanilla`, `--no-vanilla`, `--download` | installed jar | see [client jars](#client-jars) |
 | `--html` | `generated/index.html` | profiler report |
 | `--dot` | off | also write the call graph as Graphviz, next to the report |
 
@@ -75,11 +94,10 @@ a project ticked in the engine window, otherwise every known version.
 | option | |
 | --- | --- |
 | `--ticks`, `--players`, `--seed` | as for `run` |
-| `--tests` | also run the project's enabled tests in every version, each in its tick |
-| `--junit PATH` | with `--tests`: a JUnit XML report |
+| `--tests` | also run the project's enabled tests in every version, each in its tick (a note says when some come after the last tick) |
+| `--junit PATH` | a JUnit XML report of the tests; implies `--tests` |
 | `--strict` | exit with `1` when a version has errors or failed tests |
-| `--vanilla` | use each version's client jar when installed |
-| `--download` | fetch missing jars (with `--vanilla`) |
+| `--no-vanilla`, `--download` | see [client jars](#client-jars) (`--vanilla` is accepted and is the default) |
 | `--html` | matrix report, default `generated/matrix.html` |
 
 Output is one row per version: format, status, commands, total ms, worst ms,
@@ -106,28 +124,30 @@ FAIL 1.21.4     tick 3    scoreboard players get #x nope  — Unknown scoreboard
 1/2 passed in 1.21.4
 ```
 
-Timing and pass rules are the window's: a test at tick N runs after that
-tick's functions, and passes when the command succeeds without a visible error
-and its expectations hold.
+Timing and pass rules are the window's *run tests*: the world ticks until the
+last test has run, a test at tick N runs after that tick's functions, and it
+passes when the command succeeds without a visible error and its expectations
+hold.
 
 | option | |
 | --- | --- |
 | `--version` | one version (default: the project's, else the pack's newest) |
-| `--versions`, `--from/--to`, `--declared`, `--all`, `--boundaries` | several versions, as for `matrix` |
-| `--engine` | the versions the project ticked in the engine window |
-| `--ticks` | default: one past the last test's tick |
+| `--versions`, `--from/--to`, `--declared`, `--all`, `--boundaries` | several versions, as for `matrix` (not together with `--version`) |
+| `--engine` | the versions the project ticked in the engine window (needs a project) |
+| `--ticks` | default: one past the last test's tick; fewer ticks leave later tests *not reached* |
 | `--players`, `--seed` | as for `run` |
 | `--test [TICK:]COMMAND` | add a test (repeatable): `5:function hat:tick` runs in tick 5 |
 | `--expect TEXT`, `--expect-value RANGE` | with exactly one `--test`: its expected output / value range (`5`, `1..`, `..3`, `1..4`) |
-| `--only` | run only the `--test` tests |
+| `--only` | run only the `--test` tests (needs at least one) |
 | `--include-disabled` | also run tests unticked in the project |
 | `--junit PATH` | write a JUnit XML report: one test suite per version, the records of each test in its `system-out` |
 | `--show-records` | print the records of failed tests |
 | `--verbose` | print every record while the tests run (filtered by `--level`, `--sources`) |
-| `--vanilla`, `--download` | as for `matrix` |
+| `--vanilla`, `--no-vanilla`, `--download` | see [client jars](#client-jars) |
 
 Exit status `0` when every test passed, `1` when one failed, `2` when there
-was nothing to run.
+was nothing to run or an option was wrong (an `--expect-value` that is not a
+range, `--only` without `--test`, …).
 
 ### In CI
 
@@ -135,12 +155,12 @@ A datapack's own repository can check every commit. With the project saved
 next to the pack (GitHub Actions):
 
 ```yaml
-- uses: actions/setup-python@v6
+- uses: actions/setup-python@v7
   with:
     python-version: "3.13"
 - run: pip install "datapack-emulator @ git+https://github.com/AnCarsenat/Datapack-Emulator"
 - run: datapack-emulator-cli --quiet test my-pack.dpemu --declared --boundaries --junit tests.xml
-- uses: actions/upload-artifact@v6
+- uses: actions/upload-artifact@v7
   if: always()
   with:
     name: datapack-tests

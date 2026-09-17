@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from datapack_emulator.emulator.datapack import DatapackSet, preferred_version
 from datapack_emulator.emulator.engine import TestEngine
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
 from datapack_emulator.emulator.testing import CommandTest
-from datapack_emulator.emulator.vanilla import VanillaAssets, default_library
+from datapack_emulator.emulator.vanilla import VanillaAssets, VanillaLibrary, default_library
 from datapack_emulator.emulator.versions import Version
 from datapack_emulator.project import SUFFIXES, Project
 
@@ -28,6 +29,7 @@ LEVELS = {
 OK = 0
 FAILED = 1
 USAGE = 2
+CRASHED = 3
 
 
 class CliError(Exception):
@@ -53,7 +55,7 @@ class Inputs:
         if value is not None:
             return value
         if self.project is not None:
-            return getattr(self.project, name)
+            return getattr(self.project, name, fallback)
         return fallback
 
     def version(self, arguments: argparse.Namespace) -> Version:
@@ -112,48 +114,82 @@ def load_inputs(paths: list[Path]) -> Inputs:
 
 
 def add_vanilla_arguments(parser: argparse.ArgumentParser, per_version: bool = False) -> None:
+    """Client jars: like the window, the installed jar of the emulated version is
+    used when there is one."""
+    group = parser.add_argument_group("client jars")
     if per_version:
-        parser.add_argument(
-            "--vanilla", action="store_true", help="use each version's client jar when installed"
+        group.add_argument(
+            "--vanilla",
+            action="store_true",
+            help="use each version's installed client jar (the default)",
         )
     else:
-        parser.add_argument(
+        group.add_argument(
             "--vanilla",
             nargs="?",
             const="",
             default=None,
             metavar="VERSION|JAR",
-            help="check ids and message wording against a client jar (no value: the "
-            "emulated version's)",
+            help="the client jar to check ids and message wording against (default: the "
+            "emulated version's, if installed, else the project's)",
         )
-    parser.add_argument("--download", action="store_true", help="fetch missing jars from Mojang")
+    group.add_argument("--no-vanilla", action="store_true", help="use no client jar")
+    group.add_argument("--download", action="store_true", help="fetch missing jars from Mojang")
+
+
+def _read_jar(library: VanillaLibrary, path: Path) -> VanillaAssets:
+    try:
+        return library.load_jar(path)
+    except (OSError, zipfile.BadZipFile, ValueError, KeyError) as exc:
+        raise CliError(f"cannot read client jar {path}: {exc}") from exc
+
+
+def _project_jar(inputs: Inputs | None) -> Path | None:
+    saved = inputs.project.vanilla_jar if inputs and inputs.project else ""
+    return Path(saved) if saved and Path(saved).is_file() else None
 
 
 def vanilla_for(
     arguments: argparse.Namespace, version: Version, inputs: Inputs | None = None
 ) -> VanillaAssets | None:
-    """The client jar for a one-version command.
+    """The client jar for a one-version command, picked like the window does.
 
-    ``--vanilla`` picks it (a version or a jar path; no value = the emulated
-    version); without the option, a project's saved jar is used when it exists.
+    ``--vanilla`` names one (a version or a jar path; no value = the emulated
+    version, downloaded with ``--download``). Otherwise the emulated version's
+    installed jar, else the jar a project was saved with. ``--no-vanilla``: none.
     """
+    if getattr(arguments, "no_vanilla", False):
+        return None
     requested = getattr(arguments, "vanilla", None)
     download = getattr(arguments, "download", False)
     library = default_library()
-    if requested is None:
-        saved = inputs.project.vanilla_jar if inputs and inputs.project else ""
-        if saved and Path(saved).is_file():
-            return library.load_jar(Path(saved))
-        if not download:
-            return None
-        requested = ""
-    if requested and Path(requested).is_file():
-        return library.load_jar(Path(requested))
+    if isinstance(requested, str) and requested and Path(requested).is_file():
+        return _read_jar(library, Path(requested))
     target = parse_version(requested).id if requested else version.id
-    assets = library.load(target, allow_download=download, progress=err)
-    if assets is None:
+    try:
+        assets = library.load(target, allow_download=download, progress=err)
+    except (OSError, zipfile.BadZipFile, ValueError, KeyError) as exc:
+        raise CliError(f"cannot get the client jar for {target}: {exc}") from exc
+    if assets is not None:
+        return assets
+    saved = _project_jar(inputs)
+    if not requested and saved is not None:
+        return _read_jar(library, saved)
+    if requested is not None:
         err(f"no client jar for {target}; pass --download to fetch it")
-    return assets
+    return None
+
+
+def library_for(arguments: argparse.Namespace, inputs: Inputs) -> VanillaLibrary | None:
+    """Installed jars, one per version, for the multi-version commands; a
+    project's saved jar serves its own version."""
+    if getattr(arguments, "no_vanilla", False):
+        return None
+    library = default_library()
+    saved = _project_jar(inputs)
+    if saved is not None:
+        _read_jar(library, saved)  # cached under its own version id
+    return library
 
 
 def add_version_selection(parser: argparse.ArgumentParser) -> None:
@@ -167,6 +203,16 @@ def add_version_selection(parser: argparse.ArgumentParser) -> None:
     )
     group.add_argument(
         "--boundaries", action="store_true", help="then keep the first release of each pack format"
+    )
+
+
+def versions_given(arguments: argparse.Namespace) -> bool:
+    return bool(
+        arguments.versions
+        or arguments.start
+        or arguments.end
+        or arguments.declared
+        or arguments.all_versions
     )
 
 
@@ -225,7 +271,17 @@ def printing_bus(arguments: argparse.Namespace, bus: OutputBus | None = None) ->
 
 
 def report_path(arguments: argparse.Namespace, name: str) -> Path:
-    from datapack_emulator.settings import PATHS
-
+    """``--html``, else ``generated/<name>`` in the working directory."""
     given = getattr(arguments, "html", None)
-    return Path(given) if given else PATHS.GENERATED / name
+    return Path(given) if given else Path("generated") / name
+
+
+def count(text: str) -> int:
+    """An argparse type: a whole number, 0 or more."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a whole number: {text!r}") from None
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be 0 or more: {text}")
+    return value

@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from xml.etree import ElementTree
 
 from datapack_emulator.emulator.engine import VersionRun
+
+#: characters XML 1.0 cannot hold, even escaped
+_INVALID_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
+def _text(value: str) -> str:
+    return _INVALID_XML.sub("\N{REPLACEMENT CHARACTER}", value)
 
 
 def junit_tree(results: list[VersionRun], name: str = "") -> ElementTree.ElementTree:
@@ -35,17 +43,18 @@ def junit_tree(results: list[VersionRun], name: str = "") -> ElementTree.Element
             case = ElementTree.SubElement(
                 suite,
                 "testcase",
-                name=f"tick {result.test.at_tick}: {result.test.command}",
+                name=_text(f"tick {result.test.at_tick}: {result.test.command}"),
                 classname=run.version.id,
                 time="0",
             )
             if not result.passed:
                 failures += 1
-                failure = ElementTree.SubElement(case, "failure", message=result.reason)
-                failure.text = result.reason
+                reason = _text(result.reason)
+                failure = ElementTree.SubElement(case, "failure", message=reason)
+                failure.text = reason
             if result.records:
                 output = ElementTree.SubElement(case, "system-out")
-                output.text = "\n".join(record.format() for record in result.records)
+                output.text = _text("\n".join(record.format() for record in result.records))
     root.set("tests", str(total))
     root.set("failures", str(failures))
     root.set("errors", "0")

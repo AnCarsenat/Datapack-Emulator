@@ -146,3 +146,17 @@ def test_set_compatibility_keeps_every_packs_server_log(make_pack):
     alone = Datapack.load(warn).compatibility(version).server_log
     together = DatapackSet.load([ok, warn]).compatibility(version).server_log
     assert alone and together == [f"warn: {line}" for line in alone]
+
+
+def test_preferred_version_is_the_newest_cleanly_read_declared_release(make_pack):
+    from pathlib import Path
+
+    from datapack_emulator.emulator import versions
+    from datapack_emulator.emulator.datapack import Datapack, preferred_version
+
+    samples = Path(__file__).resolve().parents[1] / "samples"
+    # hat_v2 declares up to format 121 but its pack.mcmeta is only read cleanly up to 1.21.8
+    assert preferred_version(Datapack.load(samples / "hat_v2")).id == "1.21.8"
+    # nothing declared beyond pack_format: the newest release at or below it
+    plain = Datapack.load(make_pack({}, mcmeta={"pack": {"pack_format": 48, "description": ""}}))
+    assert preferred_version(plain) == versions.closest_to_pack_format(48)

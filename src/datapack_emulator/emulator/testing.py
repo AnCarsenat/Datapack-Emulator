@@ -187,7 +187,7 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
     if not result.success:
         return TestResult(test, False, "the command did not succeed", result.value, records)
     if test.expect_value:
-        if not _valid_range(test.expect_value):
+        if not valid_range(test.expect_value):
             return TestResult(
                 test, False, f"invalid expected value {test.expect_value!r}", result.value, records
             )
@@ -207,7 +207,7 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
     return TestResult(test, True, detail, result.value, records)
 
 
-def _valid_range(expression: str) -> bool:
+def valid_range(expression: str) -> bool:
     """``5``, ``1..``, ``..3`` or ``1..4``: numbers on at least one side."""
     parts = expression.split("..") if ".." in expression else [expression]
     if len(parts) > 2 or not any(parts):

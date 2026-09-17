@@ -32,8 +32,8 @@ python -m venv .venv
 Or, from a checkout, `src/main.sh` (uses `.venv/` or `src/.venv/` if present,
 no install needed beyond the requirements).
 
-The first pack in `samples/` opens on startup. The [command line](docs/cli.md) does everything the window does, on packs or
-saved projects:
+The first pack in `samples/` opens on startup. The [command line](docs/cli.md) runs, tests and profiles packs or saved
+projects, like the window:
 
 ```sh
 .venv/bin/datapack-emulator-cli run    samples/hat_v2 --version 1.21.4 --vanilla

@@ -1,7 +1,7 @@
 """The command line: ``datapack-emulator-cli``.
 
-Everything the window does has a subcommand here, so packs can be checked
-from a terminal or CI::
+The window's features have subcommands here, so packs can be checked from a
+terminal or CI::
 
     datapack-emulator-cli run    samples/hat --ticks 20 --version 1.21.4
     datapack-emulator-cli matrix samples/hat --from 1.20.4 --to 1.21.6
@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import traceback
 
 from datapack_emulator.cli import jars, runs
-from datapack_emulator.cli.common import USAGE, CliError, err
+from datapack_emulator.cli.common import CRASHED, USAGE, CliError, err
 
 PROG = "datapack-emulator-cli"
 
@@ -50,9 +51,16 @@ def main(argv: list[str] | None = None) -> int:
     except CliError as exc:
         err(f"{PROG}: {exc}")
         return USAGE
+    except OSError as exc:  # a report or file that cannot be written or read
+        err(f"{PROG}: {exc}")
+        return USAGE
     except KeyboardInterrupt:
         err("interrupted")
         return 130
+    except Exception:  # a bug: never mistaken for a failed test
+        traceback.print_exc()
+        err(f"{PROG}: internal error, please report it")
+        return CRASHED
 
 
 __all__ = ["build_parser", "main"]
