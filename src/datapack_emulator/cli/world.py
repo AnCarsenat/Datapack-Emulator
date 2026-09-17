@@ -46,6 +46,7 @@ from datapack_emulator.emulator.analysis.world_view import (
     entities_text,
     history_text,
     scoreboard_text,
+    state_text,
     storage_text,
     world_to_dict,
 )
@@ -65,7 +66,7 @@ from datapack_emulator.project import Project
 from datapack_emulator.settings import EMULATION
 
 #: the parts of the world ``world`` and the shell print
-PARTS = ("scores", "entities", "storage", "blocks")
+PARTS = ("scores", "entities", "storage", "blocks", "state")
 
 
 class Session:
@@ -322,6 +323,8 @@ def world_json(session: Session, arguments: argparse.Namespace) -> dict:
             or holder in block["block"]
             or holder in " ".join(str(value) for value in block["pos"])
         ]
+    if "state" in parts:
+        out["state"] = data["state"]
     out["gamerules"] = data["gamerules"]
     return out
 
@@ -346,6 +349,9 @@ def print_world(session: Session, arguments: argparse.Namespace) -> None:
     if "blocks" in parts:
         print("\n# blocks")
         print(blocks_text(world, arguments.holder or "", version))
+    if "state" in parts:
+        print("\n# server")
+        print(state_text(world))
 
 
 def command_world(arguments: argparse.Namespace) -> int:
@@ -373,11 +379,14 @@ def command_world(arguments: argparse.Namespace) -> int:
 
 
 def add_view_arguments(parser: argparse.ArgumentParser) -> None:
-    group = parser.add_argument_group("what to print (default: all four)")
+    group = parser.add_argument_group("what to print (default: everything)")
     group.add_argument("--scores", action="store_true", help="the scoreboard grid")
     group.add_argument("--entities", action="store_true", help="the entities")
     group.add_argument("--storage", action="store_true", help="command storage")
     group.add_argument("--blocks", action="store_true", help="the blocks commands placed")
+    group.add_argument(
+        "--state", action="store_true", help="time, weather, difficulty, border, teams"
+    )
     group.add_argument("--nbt", action="store_true", help="with the entities' full NBT")
     group.add_argument(
         "--holder", default=None, help="filter holders / entities / storage / blocks"
@@ -439,7 +448,8 @@ Lines starting with a dot control the session:
            .entities [FILTER]    entities; .nbt [FILTER] with their NBT
            .storage [FILTER]     command storage
            .blocks [FILTER]      the blocks commands placed
-           .world / .json        all four, as text or JSON
+           .state                time, weather, difficulty, border, teams
+           .world / .json        everything, as text or JSON
            .history HOLDER OBJ   the values a score took and when
   analyze  .explain COMMAND      analyze a command line
            .profile              the per-tick call tree
@@ -573,6 +583,9 @@ class Shell:
 
     def do_blocks(self, session: Session, rest: str) -> None:
         print(blocks_text(session.emulator.world, rest, session.version))
+
+    def do_state(self, session: Session, rest: str) -> None:
+        print(state_text(session.emulator.world))
 
     def do_world(self, session: Session, rest: str) -> None:
         print_world(session, self.view_arguments(holder=rest))

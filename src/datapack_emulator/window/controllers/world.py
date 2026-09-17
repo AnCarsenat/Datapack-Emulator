@@ -100,7 +100,8 @@ class WorldController(Controller):
         window.world_label.setText(
             f"game time {world.tick} · {len(world.entities)} entities · "
             f"{len(world.scoreboard.objectives)} objectives · {len(world.storage)} storages · "
-            f"{len(world.blocks)} blocks"
+            f"{len(world.blocks)} blocks · time {world.state.day_time % 24000} · "
+            f"{world.state.weather}"
         )
         if window.dock_world.isHidden():
             return

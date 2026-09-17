@@ -732,3 +732,18 @@ def test_world_and_shell_show_blocks(make_pack, capsys, monkeypatch):
     monkeypatch.setattr("sys.stdin", io.StringIO("fill 0 0 0 1 0 0 glass\n.blocks glass\n"))
     assert main(["shell", pack]) == 0
     assert "1 0 0  minecraft:glass" in capsys.readouterr().out
+
+
+def test_world_and_shell_show_the_server_state(make_pack, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    assert (
+        main(["world", pack, "--ticks", "3", "-c", "weather rain", "-c", "team add red", "--state"])
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "# server" in out and "rain" in out and "team red" in out and "# scoreboard" not in out
+    monkeypatch.setattr("sys.stdin", io.StringIO("time set noon\n.state\n"))
+    assert main(["shell", pack]) == 0
+    assert "6000 (day 0)" in capsys.readouterr().out
