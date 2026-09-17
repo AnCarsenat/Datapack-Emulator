@@ -235,6 +235,14 @@ def supports_min_max_format(version: Version) -> bool:
 WEATHER_TIME_SINCE = "1.19.3"
 
 
+#: worldborder times became time arguments (26.1)
+BORDER_TIME_SINCE = "26.1"
+
+
+def border_takes_time(version: Version) -> bool:
+    return version >= parse(BORDER_TIME_SINCE)
+
+
 def weather_takes_time(version: Version) -> bool:
     return version >= parse(WEATHER_TIME_SINCE)
 

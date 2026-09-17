@@ -53,9 +53,12 @@ def test_weather_and_difficulty(world):
     assert world("1.18.2").typed("weather rain 10")[0].value == 200  # seconds back then
     result, records = emulator.typed("difficulty")
     assert result.value == 1 and chat(records) == ["The difficulty is Easy"]
-    assert emulator.typed("difficulty hard")[0].value == 3
+    assert emulator.typed("difficulty hard")[0].value == 0
     result, records = emulator.typed("difficulty hard")
-    assert visible_errors(records) == ["The difficulty did not change; it is already set to hard"]
+    assert visible_errors(records) == ["The difficulty did not change; it is already set to Hard"]
+    assert emulator.typed("weather clear")[0].value == -1
+    _, records = emulator.typed("weather clear 0")
+    assert visible_errors(records) == ["The tick count must not be less than 1: found 0"]
 
 
 def test_world_border(world):
@@ -108,7 +111,7 @@ def test_teams_and_team_selectors(world):
     assert emulator.typed("execute if entity @e[team=]")[0].value == 1
     assert emulator.typed("execute if entity @e[team=!]")[0].value == 2
     _, records = emulator.typed("team list red")
-    assert chat(records)[0].startswith("Team [Red Team] has 2 member(s): Player1, Pig")
+    assert chat(records)[0].startswith("Team [Red Team] has 2 member(s): Player1, ")  # then a UUID
     assert emulator.typed("team modify red color red")[0].success
     _, records = emulator.typed("team modify red color red")
     assert visible_errors(records) == ["Nothing changed. That team already has that color"]
@@ -117,7 +120,7 @@ def test_teams_and_team_selectors(world):
     _, records = emulator.typed("team modify blue color red")
     assert visible_errors(records) == ["Unknown team 'blue'"]
     result, records = emulator.typed("execute as Player1 run teammsg hello")
-    assert chat(records) == ["[Red Team] <Player1> hello"] and result.value == 1
+    assert chat(records) == ["-> [Red Team] <Player1> hello"] and result.value == 1
     _, records = emulator.typed("execute as Player2 run tm hi")
     assert visible_errors(records) == ["You must be on a team to message your team"]
     assert emulator.typed("team leave Player1")[0].success
@@ -168,7 +171,9 @@ def test_rotation_selectors(world):
     emulator.typed("summon pig ~ ~ ~ {Rotation:[175f,-40f]}")
     assert emulator.typed("execute if entity @e[y_rotation=170..-170]")[0].value == 1
     assert emulator.typed("execute if entity @e[y_rotation=-10..10]")[0].value == 2
-    assert emulator.typed("execute if entity @e[x_rotation=..-30]")[0].value == 1
+    # an open end is 0 (or 359): ..-30 wraps around through the players' 0
+    assert emulator.typed("execute if entity @e[x_rotation=..-30]")[0].value == 3
+    assert emulator.typed("execute if entity @e[x_rotation=-50..-30]")[0].value == 1
 
 
 def test_forceload_seed_list_and_spawn(world):
@@ -202,3 +207,75 @@ def test_state_shows_in_the_world_dump(world):
     assert "weather     rain" in state_text(emulator.world).replace("  ", " ") or "rain" in (
         state_text(emulator.world)
     )
+
+
+def test_numbers_are_parsed_like_brigadier(world):
+    emulator = world()
+    for line in (
+        "time set inf",
+        "worldborder damage amount nan",
+        "worldborder set nan",
+        "worldborder set 1_000",
+        "worldborder damage amount -5",
+        "worldborder warning distance -5",
+        "tick rate 20000",
+        "random value 5..1",
+        "random reset foo 1 maybe",
+        "tick",
+        "tick step",
+        'team add t {"text":',
+        "team add bad/name",
+    ):
+        result, records = emulator.typed(line)
+        assert not result.success and visible_errors(records), line
+    assert emulator.typed("time add 1.5")[0].value == 3  # rounded, not truncated
+    _, records = emulator.typed("random value 5..1")
+    assert visible_errors(records) == ["Min cannot be bigger than max"]
+    _, records = emulator.typed("random value ..5")
+    assert visible_errors(records) == ["The range of the random value must be at most 2147483646"]
+
+
+def test_experience_follows_vanilla_totals(world):
+    emulator = world()
+    emulator.typed("xp set Player1 20 levels")
+    emulator.typed("xp add Player1 31 points")
+    player = emulator.world.players[0]
+    assert player.nbt["XpTotal"] == 31 and player.nbt["XpLevel"] == 20
+    emulator.typed("xp add Player1 -10 points")
+    assert player.nbt["XpTotal"] == 21
+    emulator.typed("xp add Player1 -15 levels")
+    assert player.nbt["XpLevel"] == 5
+    emulator.typed("xp add Player1 -100 levels")
+    assert player.nbt["XpLevel"] == 0 and player.nbt["XpTotal"] == 0
+
+
+def test_feedback_and_results_match_vanilla(world):
+    emulator = world()
+    assert emulator.typed("execute store success score #g x run gamemode survival Player1")[
+        0
+    ].success
+    emulator.typed("team add t")
+    _, records = emulator.typed('team modify t displayName "Blue"')
+    assert chat(records) == ["Updated the name of team [Blue]"]
+    _, records = emulator.typed("team modify t nametagVisibility never")
+    assert chat(records) == ['Nametag visibility for team [Blue] is now "Never"']
+    assert emulator.typed("team modify t prefix x")[0].value == 1
+    assert emulator.typed("team modify t color DARK_RED")[0].success
+    emulator.typed("team join t @a")
+    _, records = emulator.typed("execute as Player1 run teammsg hi")
+    assert chat(records) == ["-> [Blue] <Player1> hi", "[Blue] <Player1> hi"]
+    emulator.typed("forceload add -20 0 20 0")
+    _, records = emulator.typed("forceload query")
+    assert chat(records)[0].endswith("[0, 0], [1, 0], [-2, 0], [-1, 0]")
+    assert not emulator.typed("forceload add 30000000 0")[0].success
+    _, records = emulator.typed("worldborder center 10.25 0")
+    assert chat(records) == ["Set the center of the world border to 10.25, 0.50"]
+    assert emulator.typed("setworldspawn 0 0 0 270")[0].success
+    assert emulator.world.state.spawn_angle == -90.0
+    emulator.typed("summon pig")
+    _, records = emulator.typed("spawnpoint @e[type=pig]")
+    assert visible_errors(records)
+    emulator.typed("random value 1..6 a:b")
+    emulator.typed("random reset * 42")
+    assert emulator.world.state.sequence_defaults == (42, True, True)
+    assert emulator.typed("execute if entity @a[gamemode=foo]")[0].value == 0

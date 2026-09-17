@@ -8,6 +8,9 @@ them; ``level`` and ``xp`` scoreboard criteria follow.
 
 from __future__ import annotations
 
+import math
+import re
+
 from datapack_emulator.emulator.commands.helpers import (
     find_holders,
     integer,
@@ -16,6 +19,7 @@ from datapack_emulator.emulator.commands.helpers import (
 )
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
+from datapack_emulator.emulator.common import load_text_component
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.state import (
     COLLISION,
@@ -33,7 +37,7 @@ def _usage(context: ExecutionContext) -> CommandResult:
     return CommandResult.failure()
 
 
-def _players(context: ExecutionContext, token: str | None) -> list[Entity] | None:
+def player_targets(context: ExecutionContext, token: str | None) -> list[Entity] | None:
     """Player targets (the executor when omitted); None once an error was reported."""
     if token is None:
         if context.executor is None or not context.executor.is_player:
@@ -64,7 +68,7 @@ def cmd_gamemode(command: Command, context: ExecutionContext) -> CommandResult:
     if not arguments or arguments[0] not in GAME_MODES:
         return _usage(context)
     mode = arguments[0]
-    players = _players(context, arguments[1] if len(arguments) > 1 else None)
+    players = player_targets(context, arguments[1] if len(arguments) > 1 else None)
     if players is None:
         return CommandResult.failure()
     name = context.render(f"gameMode.{mode}")
@@ -79,7 +83,7 @@ def cmd_gamemode(command: Command, context: ExecutionContext) -> CommandResult:
             context.feedback("commands.gamemode.success.self", name)
         else:
             context.feedback("commands.gamemode.success.other", player.display, name)
-    return CommandResult(success=changed > 0, value=changed)
+    return CommandResult(success=True, value=changed)
 
 
 def cmd_defaultgamemode(command: Command, context: ExecutionContext) -> CommandResult:
@@ -101,36 +105,63 @@ def experience(player: Entity) -> tuple[int, int]:
     """``(level, points into that level)``"""
     level = int(player.nbt.get("XpLevel", 0) or 0)
     progress = float(player.nbt.get("XpP", 0.0) or 0.0)
-    return level, round(progress * xp_for_next_level(level))
+    return level, math.floor(progress * xp_for_next_level(level))
 
 
-def set_experience(context: ExecutionContext, player: Entity, level: int, points: int) -> None:
-    """Store level and points (points past the level carry over, like picking up
-    orbs), then update the ``level`` and ``xp`` scoreboard criteria."""
-    level = max(0, level)
-    while points >= xp_for_next_level(level):
-        points -= xp_for_next_level(level)
-        level += 1
-    while points < 0 and level > 0:
-        level -= 1
-        points += xp_for_next_level(level)
-    points = max(0, points)
-    previous_level, previous_points = experience(player)
-    total = int(player.nbt.get("XpTotal", 0) or 0)
-    gained = _total(level, points) - _total(previous_level, previous_points)
-    player.nbt["XpLevel"] = level
-    player.nbt["XpP"] = points / xp_for_next_level(level)
-    player.nbt["XpTotal"] = max(0, total + max(0, gained))
+def _sync_criteria(context: ExecutionContext, player: Entity) -> None:
     board = context.world.scoreboard
     for objective, criterion in board.objectives.items():
         if criterion == "level":
-            board.set(player.id, objective, level)
+            board.set(player.id, objective, int(player.nbt.get("XpLevel", 0)))
         elif criterion == "xp":
-            board.set(player.id, objective, player.nbt["XpTotal"])
+            board.set(player.id, objective, int(player.nbt.get("XpTotal", 0)))
 
 
-def _total(level: int, points: int) -> int:
-    return sum(xp_for_next_level(value) for value in range(level)) + points
+def give_points(context: ExecutionContext, player: Entity, amount: int) -> None:
+    """Player.giveExperiencePoints: progress moves, levels roll over both ways,
+    and the total changes by the amount (never below 0)."""
+    level = int(player.nbt.get("XpLevel", 0) or 0)
+    progress = float(player.nbt.get("XpP", 0.0) or 0.0)
+    total = int(player.nbt.get("XpTotal", 0) or 0)
+    progress += amount / xp_for_next_level(level)
+    player.nbt["XpTotal"] = max(0, min(total + amount, 2**31 - 1))
+    while progress < 0.0:
+        remainder = progress * xp_for_next_level(level)
+        if level > 0:
+            level -= 1
+            progress = 1.0 + remainder / xp_for_next_level(level)
+        else:
+            level, progress = 0, 0.0
+    while progress >= 1.0:
+        progress = (progress - 1.0) * xp_for_next_level(level)
+        level += 1
+        progress /= xp_for_next_level(level)
+    player.nbt["XpLevel"] = level
+    player.nbt["XpP"] = progress
+    _sync_criteria(context, player)
+
+
+def give_levels(context: ExecutionContext, player: Entity, amount: int) -> None:
+    """Player.giveExperienceLevels: the progress fraction is kept; below 0
+    everything resets."""
+    level = int(player.nbt.get("XpLevel", 0) or 0) + amount
+    if level < 0:
+        player.nbt.update(XpLevel=0, XpP=0.0, XpTotal=0)
+    else:
+        player.nbt["XpLevel"] = level
+    _sync_criteria(context, player)
+
+
+def set_points(context: ExecutionContext, player: Entity, points: int) -> None:
+    level = int(player.nbt.get("XpLevel", 0) or 0)
+    needed = xp_for_next_level(level)
+    player.nbt["XpP"] = min(points / needed, (needed - 1) / needed)
+    _sync_criteria(context, player)
+
+
+def set_levels(context: ExecutionContext, player: Entity, levels: int) -> None:
+    player.nbt["XpLevel"] = levels
+    _sync_criteria(context, player)
 
 
 def cmd_experience(command: Command, context: ExecutionContext) -> CommandResult:
@@ -141,7 +172,7 @@ def cmd_experience(command: Command, context: ExecutionContext) -> CommandResult
         return _usage(context)
     action = arguments[0]
     if action == "query":
-        players = _players(context, arguments[1])
+        players = player_targets(context, arguments[1])
         if players is None:
             return CommandResult.failure()
         if len(players) > 1:
@@ -165,23 +196,20 @@ def cmd_experience(command: Command, context: ExecutionContext) -> CommandResult
     if action == "set" and amount < 0:
         context.game_error("argument.integer.low", 0, amount)
         return CommandResult.failure()
-    players = _players(context, arguments[1])
+    players = player_targets(context, arguments[1])
     if players is None:
         return CommandResult.failure()
     changed = 0
     for player in players:
-        level, points = experience(player)
+        level, _ = experience(player)
         if action == "add":
-            if kind == "levels":
-                set_experience(context, player, level + amount, points)
-            else:
-                set_experience(context, player, level, points + amount)
+            (give_levels if kind == "levels" else give_points)(context, player, amount)
         elif kind == "levels":
-            set_experience(context, player, amount, points)
+            set_levels(context, player, amount)
         else:
-            if amount >= xp_for_next_level(level):
+            if amount > xp_for_next_level(level):
                 continue
-            set_experience(context, player, level, amount)
+            set_points(context, player, amount)
         changed += 1
     if action == "set" and kind == "points" and not changed:
         context.game_error("commands.experience.set.points.invalid")
@@ -195,6 +223,21 @@ def cmd_experience(command: Command, context: ExecutionContext) -> CommandResult
 # ---------------------------------------------------------------------------
 # teams
 # ---------------------------------------------------------------------------
+
+
+#: what a team name may contain (Brigadier's word)
+WORD = re.compile(r"[0-9A-Za-z_\-.+]+")
+#: color names without underscores -> the real ones
+COLOR_NAMES = {name.replace("_", ""): name for name in TEAM_COLORS}
+
+
+def _text(context: ExecutionContext, payload: str) -> str | None:
+    """A component argument: JSON or SNBT; a bare word is taken as plain text."""
+    stripped = payload.strip()
+    if stripped[:1] in ("{", "[") and load_text_component(stripped) is None:
+        context.game_error("command.unknown.argument")
+        return None
+    return text_argument(payload)
 
 
 def _team(context: ExecutionContext, name: str) -> Team | None:
@@ -234,7 +277,7 @@ def cmd_team(command: Command, context: ExecutionContext) -> CommandResult:
             if not team.members:
                 context.feedback("commands.team.list.members.empty", team.shown)
             else:
-                names = ", ".join(_holder_display(context, h) for h in team.members)
+                names = ", ".join(team.members)
                 context.feedback(
                     "commands.team.list.members.success", team.shown, len(team.members), names
                 )
@@ -247,10 +290,15 @@ def cmd_team(command: Command, context: ExecutionContext) -> CommandResult:
         return CommandResult(success=True, value=len(state.teams))
     if action == "add" and len(arguments) >= 2:
         name = arguments[1]
+        if not WORD.fullmatch(name):
+            context.game_error("command.unknown.argument")
+            return CommandResult.failure()
         if name in state.teams:
             context.game_error("commands.team.add.duplicate")
             return CommandResult.failure()
-        display = text_argument(" ".join(arguments[2:])) if len(arguments) > 2 else ""
+        display = _text(context, " ".join(arguments[2:])) if len(arguments) > 2 else ""
+        if display is None:
+            return CommandResult.failure()
         team = state.teams[name] = Team(name, display_name=display)
         context.feedback("commands.team.add.success", team.shown)
         return CommandResult(success=True, value=len(state.teams))
@@ -328,14 +376,18 @@ _CHOICES = {
 def _modify(context: ExecutionContext, team: Team, option: str, value: str) -> CommandResult:
     shown = team.shown
     if option == "displayName":
-        text = text_argument(value)
+        text = _text(context, value)
+        if text is None:
+            return CommandResult.failure()
         if text == team.display_name:
             context.game_error("commands.team.option.name.unchanged")
             return CommandResult.failure()
         team.display_name = text
-        context.feedback("commands.team.option.name.success", shown)
+        context.feedback("commands.team.option.name.success", team.shown)
         return CommandResult(success=True, value=0)
     if option == "color":
+        value = re.sub(r"[^a-z]", "", value.lower().replace("_", "")) if value else value
+        value = COLOR_NAMES.get(value, value)
         if value not in TEAM_COLORS:
             context.game_error("argument.color.invalid", value)
             return CommandResult.failure()
@@ -370,13 +422,18 @@ def _modify(context: ExecutionContext, team: Team, option: str, value: str) -> C
             context.game_error(f"commands.team.option.{option}.unchanged")
             return CommandResult.failure()
         setattr(team, attribute, value)
-        context.feedback(f"commands.team.option.{option}.success", shown, value)
+        kind = "collision" if option == "collisionRule" else "visibility"
+        context.feedback(
+            f"commands.team.option.{option}.success", shown, context.render(f"team.{kind}.{value}")
+        )
         return CommandResult(success=True, value=0)
     if option in ("prefix", "suffix"):
-        text = text_argument(value)
+        text = _text(context, value)
+        if text is None:
+            return CommandResult.failure()
         setattr(team, option, text)
         context.feedback(f"commands.team.option.{option}.success", text)
-        return CommandResult(success=True, value=0)
+        return CommandResult(success=True, value=1)
     return _usage(context)
 
 
@@ -392,7 +449,10 @@ def cmd_teammsg(command: Command, context: ExecutionContext) -> CommandResult:
     text = " ".join(command.arguments)
     readers = [entity for entity in context.world.players if entity.id in team.members]
     for reader in readers:
-        context.chat(f"{team.shown} <{executor.display}> {text}", recipient=reader.display)
+        key = "chat.type.team.sent" if reader is executor else "chat.type.team.text"
+        context.chat(
+            context.render(key, team.shown, executor.display, text), recipient=reader.display
+        )
     return CommandResult(success=True, value=len(readers))
 
 

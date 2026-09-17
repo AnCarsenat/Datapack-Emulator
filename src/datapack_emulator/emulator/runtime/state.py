@@ -106,10 +106,13 @@ class ServerState:
 
     # -- random sequences -------------------------------------------------
 
+    #: (seed, include the world seed, include the id) for new sequences
+    sequence_defaults: tuple[int, bool, bool] = (0, True, True)
+
     def sequence(self, name: str) -> random.Random:
         """A random sequence, seeded from the world seed and its id, like vanilla's."""
         if name not in self.sequences:
-            self.sequences[name] = random.Random(self.seed ^ zlib.crc32(name.encode()))
+            self.reset_sequence(name, *self.sequence_defaults)
         return self.sequences[name]
 
     def reset_sequence(

@@ -9,10 +9,10 @@ from __future__ import annotations
 import math
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.commands.helpers import integer, require_targets
-from datapack_emulator.emulator.commands.parser import Command, parse_duration, resolve_position
+from datapack_emulator.emulator.commands.helpers import integer
+from datapack_emulator.emulator.commands.parser import Command, parse_ticks, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
-from datapack_emulator.emulator.common import normalise_id
+from datapack_emulator.emulator.common import normalise_id, parse_number
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.state import (
     BORDER_CENTER_LIMIT,
@@ -30,27 +30,40 @@ def _usage(context: ExecutionContext) -> CommandResult:
     return CommandResult.failure()
 
 
-def _ticks(context: ExecutionContext, token: str) -> int | None:
-    """A time argument: ``5``, ``5t``, ``5s``, ``5d``; negative is an error."""
-    body = token[:-1] if token[-1:] in ("t", "s", "d") else token
-    try:
-        float(body)
-    except ValueError:
-        context.game_error("argument.time.invalid_unit")
+def _ticks(context: ExecutionContext, token: str, minimum: int = 0) -> int | None:
+    """A time argument: ``5``, ``5t``, ``2.5s``, ``5d``, at least ``minimum``."""
+    ticks = parse_ticks(token)
+    if ticks is None:
+        body = token[:-1] if token[-1:] in ("t", "s", "d") else token
+        key = (
+            "argument.time.invalid_unit"
+            if parse_number(body) is not None
+            else ("command.unknown.argument")
+        )
+        context.game_error(key)
         return None
-    ticks = parse_duration(token)
     if ticks < 0:
         context.game_error("argument.time.invalid_tick_count")
+        return None
+    if ticks < minimum:
+        context.game_error("argument.time.tick_count_too_low", minimum, ticks)
         return None
     return ticks
 
 
-def _number(context: ExecutionContext, token: str) -> float | None:
-    try:
-        return float(token)
-    except ValueError:
+def _number(context: ExecutionContext, token: str, minimum: float | None = None) -> float | None:
+    value = parse_number(token)
+    if value is None:
         context.game_error("parsing.float.invalid", token)
         return None
+    if minimum is not None and value < minimum:
+        context.game_error("argument.float.low", repr(float(minimum)), repr(value))
+        return None
+    return value
+
+
+def _int32(value: int) -> int:
+    return (value + 2**31) % 2**32 - 2**31
 
 
 # ---------------------------------------------------------------------------
@@ -93,18 +106,22 @@ def cmd_weather(command: Command, context: ExecutionContext) -> CommandResult:
     arguments = command.arguments
     if not arguments or arguments[0] not in ("clear", "rain", "thunder"):
         return _usage(context)
-    duration = 0
+    duration = -1  # vanilla picks a random length
     if len(arguments) > 1:
-        ticks = _ticks(context, arguments[1])
+        timed = versions.weather_takes_time(context.emulator.version)
+        if timed:
+            ticks = _ticks(context, arguments[1], minimum=1)
+        else:  # whole seconds before it became a time argument
+            seconds = integer(context, arguments[1])
+            ticks = seconds * 20 if seconds is not None else None
         if ticks is None:
             return CommandResult.failure()
-        # the duration was a number of seconds before it became a time argument
-        duration = ticks if versions.weather_takes_time(context.emulator.version) else ticks * 20
+        duration = ticks
     state = context.world.state
     state.weather = arguments[0]
-    state.weather_duration = duration
+    state.weather_duration = max(duration, 0)
     context.feedback(f"commands.weather.set.{arguments[0]}")
-    return CommandResult(success=True, value=duration or 1)
+    return CommandResult(success=True, value=duration)
 
 
 # ---------------------------------------------------------------------------
@@ -123,11 +140,11 @@ def cmd_difficulty(command: Command, context: ExecutionContext) -> CommandResult
         return _usage(context)
     name = context.render(f"options.difficulty.{wanted}")
     if state.difficulty == wanted:
-        context.game_error("commands.difficulty.failure", wanted)
+        context.game_error("commands.difficulty.failure", name)
         return CommandResult.failure()
     state.difficulty = wanted
     context.feedback("commands.difficulty.success", name)
-    return CommandResult(success=True, value=DIFFICULTIES.index(wanted))
+    return CommandResult(success=True, value=0)
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +154,35 @@ def cmd_difficulty(command: Command, context: ExecutionContext) -> CommandResult
 
 def _border_number(value: float) -> str:
     return f"{value:.1f}"
+
+
+def _border_time(context: ExecutionContext, token: str) -> int | None:
+    """Seconds: a whole number, or a time argument (converted) from 26.1."""
+    if versions.border_takes_time(context.emulator.version):
+        ticks = _ticks(context, token)
+        return None if ticks is None else ticks // 20
+    seconds = integer(context, token)
+    if seconds is not None and seconds < 0:
+        context.game_error("argument.integer.low", 0, seconds)
+        return None
+    return seconds
+
+
+def _column(context: ExecutionContext, tokens: list[str]) -> tuple[float, float] | None:
+    """A ``vec2`` argument, centered: whole absolute numbers get .5 added."""
+    values = []
+    for token, origin in zip(tokens, (context.position[0], context.position[2]), strict=True):
+        relative = token.startswith("~")
+        body = token[1:] if relative else token
+        number = parse_number(body) if body else 0.0
+        if number is None or token.startswith("^"):
+            context.game_error("command.unknown.argument")
+            return None
+        if relative:
+            values.append(origin + number)
+        else:
+            values.append(number + 0.5 if "." not in body else number)
+    return (values[0], values[1])
 
 
 def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResult:
@@ -150,8 +196,8 @@ def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResul
         context.feedback("commands.worldborder.get", f"{border.size:.0f}")
         return CommandResult(success=True, value=size)
     if action in ("set", "add") and len(arguments) >= 2:
-        amount = _number(context, arguments[1])
-        seconds = integer(context, arguments[2]) if len(arguments) > 2 else 0
+        amount = _number(context, arguments[1], minimum=None if action == "add" else -BORDER_MAX)
+        seconds = _border_time(context, arguments[2]) if len(arguments) > 2 else 0
         if amount is None or seconds is None:
             return CommandResult.failure()
         size = amount if action == "set" else border.size + amount
@@ -162,7 +208,7 @@ def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResul
             context.game_error("commands.worldborder.set.failed.small")
             return CommandResult.failure()
         if size > BORDER_MAX:
-            context.game_error("commands.worldborder.set.failed.big", f"{BORDER_MAX:.0f}")
+            context.game_error("commands.worldborder.set.failed.big", f"{BORDER_MAX:.1f}")
             return CommandResult.failure()
         grow = size > border.size
         change = int(size - border.size)
@@ -175,13 +221,14 @@ def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResul
             context.feedback("commands.worldborder.set.immediate", _border_number(size))
         return CommandResult(success=True, value=change)
     if action == "center" and len(arguments) >= 3:
-        x = resolve_position([arguments[1], "0", arguments[2]], context.position)
-        center = (math.floor(x[0]) + 0.5, math.floor(x[2]) + 0.5)
-        if max(abs(center[0]), abs(center[1])) > BORDER_CENTER_LIMIT:
-            context.game_error("commands.worldborder.set.failed.far", f"{BORDER_CENTER_LIMIT:.0f}")
+        center = _column(context, arguments[1:3])
+        if center is None:
             return CommandResult.failure()
         if center == border.center:
             context.game_error("commands.worldborder.center.failed")
+            return CommandResult.failure()
+        if max(abs(center[0]), abs(center[1])) > BORDER_CENTER_LIMIT:
+            context.game_error("commands.worldborder.set.failed.far", f"{BORDER_CENTER_LIMIT:.1f}")
             return CommandResult.failure()
         border.center = center
         context.feedback(
@@ -189,8 +236,10 @@ def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResul
         )
         return CommandResult(success=True, value=0)
     if action == "damage" and len(arguments) >= 3:
-        amount = _number(context, arguments[2])
-        if amount is None or arguments[1] not in ("amount", "buffer"):
+        if arguments[1] not in ("amount", "buffer"):
+            return _usage(context)
+        amount = _number(context, arguments[2], minimum=0)
+        if amount is None:
             return CommandResult.failure()
         attribute = "damage_amount" if arguments[1] == "amount" else "damage_buffer"
         if getattr(border, attribute) == amount:
@@ -200,7 +249,13 @@ def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResul
         context.feedback(f"commands.worldborder.damage.{arguments[1]}.success", f"{amount:.2f}")
         return CommandResult(success=True, value=int(amount))
     if action == "warning" and len(arguments) >= 3 and arguments[1] in ("distance", "time"):
-        amount = integer(context, arguments[2])
+        if arguments[1] == "time":
+            amount = _border_time(context, arguments[2])
+        else:
+            amount = integer(context, arguments[2])
+            if amount is not None and amount < 0:
+                context.game_error("argument.integer.low", 0, amount)
+                amount = None
         if amount is None:
             return CommandResult.failure()
         attribute = f"warning_{arguments[1]}"
@@ -221,9 +276,15 @@ def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResul
 def _range(context: ExecutionContext, token: str) -> tuple[int, int] | None:
     low, sep, high = token.partition("..")
     try:
-        bounds = (int(low), int(high)) if sep else (int(token), int(token))
+        if sep:
+            bounds = (int(low) if low else -INT_MAX - 1, int(high) if high else INT_MAX)
+        else:
+            bounds = (int(token), int(token))
     except ValueError:
-        context.game_error("command.unknown.argument")
+        context.game_error("argument.range.ints" if "." in token else "argument.range.empty")
+        return None
+    if bounds[0] > bounds[1]:
+        context.game_error("argument.range.swapped")
         return None
     size = bounds[1] - bounds[0] + 1
     if size < 2:
@@ -260,14 +321,20 @@ def cmd_random(command: Command, context: ExecutionContext) -> CommandResult:
         return CommandResult(success=True, value=value)
     if action == "reset":
         seed = integer(context, arguments[2]) if len(arguments) > 2 else 0
+        flags = []
+        for token in arguments[3:5]:
+            if token not in ("true", "false"):
+                context.game_error("parsing.bool.invalid", token)
+                return CommandResult.failure()
+            flags.append(token == "true")
         if seed is None:
             return CommandResult.failure()
-        world_seed = arguments[3] != "false" if len(arguments) > 3 else True
-        with_id = arguments[4] != "false" if len(arguments) > 4 else True
+        world_seed, with_id = (flags + [True, True])[:2]
         if arguments[1] == "*":
+            # new defaults for every sequence made from now on
             count = len(state.sequences)
-            for name in list(state.sequences):
-                state.reset_sequence(name, seed, world_seed, with_id)
+            state.sequence_defaults = (seed, world_seed, with_id)
+            state.sequences.clear()
             context.feedback("commands.random.reset.all.success", count)
             return CommandResult(success=True, value=count)
         name = normalise_id(arguments[1])
@@ -285,14 +352,14 @@ def cmd_random(command: Command, context: ExecutionContext) -> CommandResult:
 def cmd_seed(command: Command, context: ExecutionContext) -> CommandResult:
     seed = context.world.state.seed
     context.feedback("commands.seed.success", f"[{seed}]")
-    return CommandResult(success=True, value=seed & 0xFFFFFFFF if seed > INT_MAX else seed)
+    return CommandResult(success=True, value=_int32(seed))
 
 
 def cmd_list(command: Command, context: ExecutionContext) -> CommandResult:
     players = context.world.players
     uuids = bool(command.arguments and command.arguments[0] == "uuids")
     names = ", ".join(
-        context.render("commands.list.nameAndId", player.display, player.uuid)
+        context.render("commands.list.nameAndId", player.name or player.display, player.uuid)
         if uuids
         else player.display
         for player in players
@@ -308,11 +375,11 @@ def cmd_tick(command: Command, context: ExecutionContext) -> CommandResult:
     state = context.world.state
     action = arguments[0] if arguments else ""
     if action == "rate" and len(arguments) > 1:
-        rate = _number(context, arguments[1])
+        rate = _number(context, arguments[1], minimum=1.0)
         if rate is None:
             return CommandResult.failure()
-        if not 1.0 <= rate <= 10000.0:
-            context.game_error("argument.float.low" if rate < 1 else "argument.float.big", 1, rate)
+        if rate > 10000.0:
+            context.game_error("argument.float.big", "10000.0", repr(rate))
             return CommandResult.failure()
         state.tick_rate = rate
         context.feedback("commands.tick.rate.success", f"{rate:.1f}")
@@ -328,13 +395,27 @@ def cmd_tick(command: Command, context: ExecutionContext) -> CommandResult:
         key = "commands.tick.status.frozen" if state.frozen else "commands.tick.status.running"
         context.feedback(key)
         return CommandResult(success=True, value=int(state.tick_rate))
-    context.note_once(f"tick {action}: stepping and sprinting are not modelled")
-    return CommandResult(success=True, value=1)
+    if action == "step":
+        if not state.frozen:
+            context.game_error("commands.tick.step.fail")
+            return CommandResult.failure()
+        context.note_once("tick step: stepping is not modelled")
+        return CommandResult(success=True, value=1)
+    if action == "sprint":
+        context.note_once("tick sprint: sprinting is not modelled")
+        return CommandResult(success=True, value=1)
+    return _usage(context)
 
 
 # ---------------------------------------------------------------------------
 # chunks and spawn points
 # ---------------------------------------------------------------------------
+
+
+def _chunk_order(chunk: tuple[int, int]) -> int:
+    """Vanilla lists chunks by their packed long: z first, then x unsigned."""
+    x, z = chunk
+    return ((z & 0xFFFFFFFF) << 32 | (x & 0xFFFFFFFF)) - (1 << 64 if z < 0 else 0)
 
 
 def _chunk(value: float) -> int:
@@ -362,7 +443,7 @@ def cmd_forceload(command: Command, context: ExecutionContext) -> CommandResult:
                 "commands.forceload.query.success", f"[{chunk[0]}, {chunk[1]}]", dimension
             )
             return CommandResult(success=True, value=1)
-        listed = ", ".join(f"[{x}, {z}]" for x, z in sorted(chunks))
+        listed = ", ".join(f"[{x}, {z}]" for x, z in sorted(chunks, key=_chunk_order))
         if not chunks:
             context.feedback("commands.forceload.added.none", dimension)
         elif len(chunks) == 1:
@@ -382,6 +463,9 @@ def cmd_forceload(command: Command, context: ExecutionContext) -> CommandResult:
         if len(arguments) >= 5
         else start
     )
+    if any(abs(value) >= 30_000_000 for value in (start[0], start[2], end[0], end[2])):
+        context.game_error("argument.pos.outofworld")
+        return CommandResult.failure()
     xs = sorted((_chunk(start[0]), _chunk(end[0])))
     zs = sorted((_chunk(start[2]), _chunk(end[2])))
     area = (xs[1] - xs[0] + 1) * (zs[1] - zs[0] + 1)
@@ -416,45 +500,59 @@ def cmd_forceload(command: Command, context: ExecutionContext) -> CommandResult:
     return CommandResult(success=True, value=len(changed))
 
 
-def cmd_setworldspawn(command: Command, context: ExecutionContext) -> CommandResult:
-    arguments = command.arguments
-    position = (
-        resolve_position(arguments[:3], context.position)
-        if len(arguments) >= 3
-        else list(context.position)
-    )
-    angle = _number(context, arguments[3]) if len(arguments) > 3 else 0.0
+def _angle(context: ExecutionContext, token: str, origin: float) -> float | None:
+    """An angle argument (``~`` relative), wrapped to -180..180."""
+    relative = token.startswith("~")
+    body = token[1:] if relative else token
+    value = parse_number(body) if body else 0.0
+    if value is None:
+        context.game_error("parsing.float.invalid", token)
+        return None
+    angle = (origin if relative else 0.0) + value
+    return (angle + 180.0) % 360.0 - 180.0
+
+
+def _spawn(context: ExecutionContext, arguments: list[str]):
+    """``[<pos> [<angle>]]`` -> ``(block position, angle)``."""
+    if len(arguments) >= 3:
+        from datapack_emulator.emulator.commands.blocks import position_at
+
+        block = position_at(context, arguments[:3])
+        if block is None:
+            return None
+    else:
+        block = tuple(math.floor(value) for value in context.position)
+    angle = _angle(context, arguments[3], context.rotation[0]) if len(arguments) > 3 else 0.0
     if angle is None:
+        return None
+    return (block, angle)
+
+
+def cmd_setworldspawn(command: Command, context: ExecutionContext) -> CommandResult:
+    spawn = _spawn(context, command.arguments)
+    if spawn is None:
         return CommandResult.failure()
     state = context.world.state
-    state.spawn = (math.floor(position[0]), math.floor(position[1]), math.floor(position[2]))
-    state.spawn_angle = angle
-    context.feedback("commands.setworldspawn.success", *state.spawn, angle)
+    state.spawn, state.spawn_angle = spawn
+    context.feedback("commands.setworldspawn.success", *state.spawn, state.spawn_angle)
     return CommandResult(success=True, value=1)
 
 
 def cmd_spawnpoint(command: Command, context: ExecutionContext) -> CommandResult:
+    from datapack_emulator.emulator.commands.players import player_targets
+
     arguments = command.arguments
-    if arguments:
-        targets = require_targets(context, arguments[0])
-    else:
-        targets = [context.executor] if context.executor is not None else []
-    if not targets:
+    targets = player_targets(context, arguments[0] if arguments else None)
+    if targets is None:
         return CommandResult.failure()
-    position = (
-        resolve_position(arguments[1:4], context.position)
-        if len(arguments) >= 4
-        else list(context.position)
-    )
-    block = [math.floor(value) for value in position]
-    angle = _number(context, arguments[4]) if len(arguments) > 4 else 0.0
-    if angle is None:
+    spawn = _spawn(context, arguments[1:])
+    if spawn is None:
         return CommandResult.failure()
+    block, angle = spawn
     for entity in targets:
-        if entity.is_player:
-            entity.nbt["SpawnX"], entity.nbt["SpawnY"], entity.nbt["SpawnZ"] = block
-            entity.nbt["SpawnAngle"] = angle
-            entity.nbt["SpawnDimension"] = context.dimension
+        entity.nbt["SpawnX"], entity.nbt["SpawnY"], entity.nbt["SpawnZ"] = block
+        entity.nbt["SpawnAngle"] = angle
+        entity.nbt["SpawnDimension"] = context.dimension
     if len(targets) == 1:
         context.feedback(
             "commands.spawnpoint.success.single",

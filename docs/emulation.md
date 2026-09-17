@@ -131,18 +131,18 @@ setting through a filter with no match adds the element).
 | `say me msg tell w tellraw title teammsg` | logged as `game` output, one record per player who reads it: `[Player1] hi` / `* Player1 waves` for everyone (say, me), `to Player2: text` (tellraw), `to Player1 (actionbar): text` (title), `Server whispers to Player2: text` (msg). Each record names its reader (`recipient`). Text components in JSON or (1.21.5+) SNBT, with `score`, `selector`, `nbt` (storage, entity and block) and `translate` (with its `with` arguments, from the client jar's language file, else the fallback) resolved per reader |
 | `gamerule` | |
 | `time` | `set <time>\|day\|noon\|night\|midnight`, `add`, `query daytime\|gametime\|day`, with vanilla's return values (the 26.x clock subcommands are not modelled) |
-| `weather` | `clear\|rain\|thunder [duration]` (seconds before 1.19.3, a time argument after) |
-| `difficulty` | query (returns 0–3) and set ("did not change" when it is the same) |
-| `worldborder` | `get` (rounded size), `set`/`add` (return the change), `center`, `damage amount\|buffer`, `warning distance\|time`, with vanilla's limits and messages |
-| `random` | `value`/`roll <min..max> [sequence]` (roll is announced to everyone), `reset <*\|sequence> [seed] [includeWorldSeed] [includeSequenceId]`; ranges of at least 2 values |
+| `weather` | `clear\|rain\|thunder [duration]` (whole seconds before 1.19.3, a time argument of at least 1 tick after); returns the duration, -1 without one |
+| `difficulty` | query (returns 0–3) and set (returns 0; "did not change" when it is the same) |
+| `worldborder` | `get` (rounded size), `set`/`add` (return the change), `center` (whole numbers are centered on the block), `damage amount\|buffer`, `warning distance\|time`, with vanilla's limits and messages; times are whole seconds, time arguments from 26.1 |
+| `random` | `value`/`roll <min..max> [sequence]` (roll is announced to everyone; open ends are the int limits), `reset <sequence> [seed] [includeWorldSeed] [includeSequenceId]`, `reset * …` (forgets every sequence and sets the defaults of new ones); ranges of 2 to 2 147 483 646 values |
 | `team` | `add [display name]`, `remove`, `empty`, `join`, `leave`, `list [team]`, `modify` (`displayName`, `color`, `friendlyFire`, `seeFriendlyInvisibles`, `nametagVisibility`, `deathMessageVisibility`, `collisionRule`, `prefix`, `suffix`) with the "Nothing changed" errors |
-| `teammsg`, `tm` | to every player on the sender's team: `[Team] <Player1> text`; "You must be on a team" otherwise |
+| `teammsg`, `tm` | to every player on the sender's team: `-> [Team] <Player1> text` for the sender, `[Team] <Player1> text` for the others; "You must be on a team" otherwise |
 | `gamemode`, `defaultgamemode` | players only; returns how many changed |
-| `experience`, `xp` | `add\|set <targets> <amount> [levels\|points]`, `query <player> levels\|points`; points past a level carry over; `set … points` above the level's maximum fails |
+| `experience`, `xp` | `add\|set <targets> <amount> [levels\|points]`, `query <player> levels\|points`, following vanilla's arithmetic: points roll levels over both ways and change `XpTotal`; levels keep the progress and reset everything below 0; `set … points` above the level's maximum fails |
 | `seed`, `list [uuids]` | the world seed; the players online |
 | `forceload` | `add`/`remove <from> [to]` (at most 256 chunks), `remove all`, `query [pos]` |
-| `setworldspawn`, `spawnpoint` | stored (`SpawnX`… on players) |
-| `tick` | `rate`, `freeze`/`unfreeze`, `query` are kept; `step` and `sprint` are noted |
+| `setworldspawn`, `spawnpoint` | stored (`SpawnX`… on players; the angle wraps); `spawnpoint` takes players only |
+| `tick` | `rate` (1–10 000), `freeze`/`unfreeze`, `query` are kept; `step` needs a frozen game; stepping and sprinting are noted |
 
 **Checked, no state change:** `effect`, `particle` validate their id when a
 client jar is loaded ([vanilla-assets.md](vanilla-assets.md)); `give`,

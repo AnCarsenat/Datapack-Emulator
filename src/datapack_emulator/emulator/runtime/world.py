@@ -397,6 +397,9 @@ class World:
         for raw in arguments.get("gamemode", []):
             negated = raw.startswith("!")
             mode = raw.lstrip("!").strip()
+            if mode not in GAME_MODES:
+                context.note_once(f"selector gamemode={mode}: not a game mode, nothing matches")
+                return False
             if not entity.is_player:
                 return False
             if (_game_mode(entity) == mode) == negated:
@@ -474,8 +477,9 @@ def _in_wrapped_range(value: float, expression: str) -> bool:
         if not sep:
             return _wrap_degrees(float(expression)) == _wrap_degrees(value)
         angle = _wrap_degrees(value)
-        lower = _wrap_degrees(float(low)) if low else -180.0
-        upper = _wrap_degrees(float(high)) if high else 180.0
+        # vanilla's open ends: 0 and 359 (which wraps to -1)
+        lower = _wrap_degrees(float(low) if low else 0.0)
+        upper = _wrap_degrees(float(high) if high else 359.0)
     except ValueError:
         return False
     if lower > upper:
