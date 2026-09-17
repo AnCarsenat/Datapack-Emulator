@@ -127,6 +127,6 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
 * **Game output and our diagnostics stay separate.** A handler reports what
   Minecraft would say with `context.game_error(key, …)` using a real
   translation key; what *we* notice goes through `context.note(…)`.
-* **`runtime/__init__.py` re-exports nothing** — `handlers` imports
+* **`runtime/__init__.py` re-exports nothing** — the command modules import
   `runtime.context` while `commands` is initialising; re-exporting the
   emulator there would create an import cycle. Import from `datapack_emulator.emulator`.

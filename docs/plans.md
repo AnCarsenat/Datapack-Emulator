@@ -29,8 +29,9 @@ macros `with block` work. It is the largest gap left: `hat_v2`'s 1.16 path and
 many real packs move items through blocks.
 
 * **Touches:** a new `runtime/blocks.py` (a dict of `(dimension, x, y, z)` →
-  block state and block entity NBT), `commands/misc.py`, `commands/data.py`, `commands/execute.py` and
-  `commands/items.py`, `analysis/explain.py` (drop the "not modelled" notes),
+  block state and block entity NBT), `commands/misc.py`, `commands/data.py`,
+  `commands/execute.py` and `commands/items.py`, `analysis/explain.py` (drop
+  the "not modelled" notes),
   the world dock (a blocks tab), `docs/emulation.md`.
 * **How:** only positions a command touches are stored; everything else is
   air. Block states parsed from `stone[facing=up]{…}`; containers reuse
