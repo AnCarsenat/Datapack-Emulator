@@ -76,7 +76,10 @@ jobs:
       - run: pip install -e .
       - run: datapack-emulator-cli --quiet run samples/hat --ticks 5
       - run: datapack-emulator-cli --quiet matrix samples/hat_v2 --declared --boundaries --ticks 3
+      - run: datapack-emulator-cli --quiet test samples/hat --test "function hat:tick" --junit generated/tests.xml
       - uses: actions/upload-artifact@v4
         with:
           name: reports
-          path: generated/*.html
+          path: |
+            generated/*.html
+            generated/*.xml

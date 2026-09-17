@@ -30,7 +30,7 @@ from datapack_emulator.emulator.namespace import PLURAL_REGISTRIES
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
 from datapack_emulator.emulator.testing import CommandTest, TestResult, TestSchedule
-from datapack_emulator.emulator.vanilla import VanillaLibrary
+from datapack_emulator.emulator.vanilla import VanillaAssets, VanillaLibrary
 from datapack_emulator.emulator.versions import Version
 
 Progress = Callable[[int, int, Version], None]
@@ -129,8 +129,11 @@ class TestEngine:
         library: VanillaLibrary | None = None,
         allow_download: bool = False,
         tests: list[CommandTest] | None = None,
+        vanilla: VanillaAssets | None = None,
     ):
         self.datapack = datapack
+        #: one client jar for every version (the window's loaded jar); wins over ``library``
+        self.vanilla = vanilla
         #: command tests to run in every version, each in its tick
         self.tests = list(tests or [])
         self.ticks = ticks
@@ -175,8 +178,8 @@ class TestEngine:
         first_record = len(bus.records)
 
         view = self.datapack.view_for(version)
-        assets = None
-        if self.library is not None:
+        assets = self.vanilla
+        if assets is None and self.library is not None:
             try:
                 assets = self.library.load(version.id, allow_download=self.allow_download)
             except Exception as exc:  # a missing jar must not stop the matrix

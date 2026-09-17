@@ -73,6 +73,7 @@ and a copy of every datapack — see
 ```sh
 .venv/bin/datapack-emulator-cli run samples/hat --version 1.21.4
 .venv/bin/datapack-emulator-cli matrix samples/hat_v2 --declared --boundaries
+.venv/bin/datapack-emulator-cli test projects/hat.dpemu     # a saved project's tests
 ```
 
 See [cli.md](cli.md).

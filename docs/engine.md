@@ -72,10 +72,13 @@ for run in engine.run(chosen):
 at or below `pack_format` (`versions.closest_to_pack_format`) when nothing is
 declared.
 
+From a terminal: `datapack-emulator-cli matrix` (add `--tests` for a
+project's tests) and `datapack-emulator-cli test` — see [cli.md](cli.md).
+
 ## Reports
 
 `TestEngine.write_html(results, path, pack_name)` writes the matrix table.
-The engine window's *export html* and `python -m datapack_emulator.emulator matrix` both use
+The engine window's *export html* and `datapack-emulator-cli matrix` both use
 it.
 
 ## Performance note

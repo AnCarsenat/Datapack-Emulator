@@ -33,7 +33,10 @@ Read [docs/architecture.md](docs/architecture.md) first. In short:
 6. **Keep game output and diagnostics apart.** A handler reports what
    Minecraft would say with `context.game_error("<real.translation.key>", …)`;
    what the emulator notices goes through `context.note(…)`.
-7. **Say when something is a model.** Cost numbers and anything approximated
+7. **Keep the command line as capable as the window.** A window feature
+   comes with its `datapack-emulator-cli` subcommand or option; shared logic
+   goes in `emulator/` or `project.py`, not in a controller.
+8. **Say when something is a model.** Cost numbers and anything approximated
    must be labelled as such in code and docs.
 
 ## Adding a command
@@ -63,7 +66,8 @@ CI runs the same checks (plus a CLI smoke run) on every pull request.
   `tests/conftest.py` build synthetic datapacks and a synthetic client jar,
   so no test needs the network or a Minecraft install
 * if you touched the window, launch it and exercise what you changed
-* update `docs/` when behaviour or options change
+* update `docs/` and `readme.md` in the same pull request whenever behaviour,
+  options or commands change
 * one topic per pull request and per commit; commit messages follow
   [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat`, `fix`, `docs`, `refactor`, `test`, `ci`, `chore`)
@@ -74,4 +78,4 @@ CI runs the same checks (plus a CLI smoke run) on every pull request.
 Use the *Bug report* issue template. It asks for the Minecraft version
 selected, whether a client jar was loaded, the smallest datapack that
 reproduces it, and the output of
-`python -m datapack_emulator.emulator run <pack> --version <v> --level debug`.
+`datapack-emulator-cli run <pack> --version <v> --level debug`.
