@@ -35,7 +35,7 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
   "vanilla_jar": "",
   "speed": "fast",
   "tests": [
-    {"command": "scoreboard players get #global t", "at_tick": 5, "expect": "", "enabled": true, "expect_value": "1.."}
+    {"command": "scoreboard players get #global t", "at_tick": 5, "expect": "", "enabled": true, "expect_value": "1..", "checks": ["storage ns:mem x = 1b"]}
   ],
   "tests_during_runs": false,
   "notes": "check the armor stand",
@@ -53,7 +53,7 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 | `version` | the version selected in the environment tab |
 | `ticks`, `players`, `seed` | run settings |
 | `speed` | `fast` or `realtime` |
-| `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `expect_value`, `enabled` — results are not saved |
+| `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `expect_value`, `checks` (see [checks](cli.md#checks)), `enabled` — results are not saved |
 | `notes`, `function_notes` | your notes on the project, and per function id |
 | `breakpoints`, `watches` | the debugger's breakpoints (`function:line`, then an optional `if …`/`unless …` condition; `!` in front: disabled) and watch expressions |
 | `tests_during_runs` | whether runs and steps also run the tests |

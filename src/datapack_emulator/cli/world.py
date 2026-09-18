@@ -65,6 +65,7 @@ from datapack_emulator.emulator.testing import (
     TestResult,
     TestSchedule,
     run_tests,
+    valid_check,
     valid_range,
 )
 from datapack_emulator.emulator.vanilla import default_library
@@ -507,6 +508,8 @@ Lines starting with a dot control the session:
   tests    .tests                list the tests (with their last result)
            .test [TICK:]COMMAND  add a test
            .expect N TEXT / .expect-value N RANGE / .at N TICK
+           .check N CHECK        what must hold afterwards (score #g t = 3, …)
+           .uncheck N M|all      remove test N's check M
            .enable N… / .disable N… / .remove N… / .duplicate N / .move N up|down
            .runtests [N …]       run the enabled tests (or some) in a fresh world (F8)
            .records N            the records of test N's last run
@@ -776,18 +779,9 @@ class Shell(DebugCommands):
             print("no tests")
         for index, test in enumerate(session.tests):
             box = "x" if test.enabled else " "
-            expect = []
-            if test.expect:
-                expect.append(f"output ~ {test.expect!r}")
-            if test.expect_value:
-                expect.append(f"value {test.expect_value}")
             result = session.results.get(index)
             outcome = "" if result is None else f"  → {'PASS' if result.passed else 'FAIL'}"
-            print(
-                f"{index + 1:3}. [{box}] tick {test.at_tick:<4} {test.command}"
-                + (f"  ({'; '.join(expect)})" if expect else "")
-                + outcome
-            )
+            print(f"{index + 1:3}. [{box}] tick {test.at_tick:<4} {test.describe()}{outcome}")
 
     def _edited(self, session: Session) -> None:
         session.results = {}
@@ -806,6 +800,27 @@ class Shell(DebugCommands):
     def do_expect(self, session: Session, rest: str) -> None:
         test, value = self._test_and_value(session, rest)
         test.expect = value
+        self._edited(session)
+
+    def do_check(self, session: Session, rest: str) -> None:
+        test, value = self._test_and_value(session, rest)
+        if not value:
+            raise CliError("usage: .check N CHECK")
+        problem = valid_check(value)
+        if problem:
+            raise CliError(problem)
+        test.checks = [*test.checks, value]
+        self._edited(session)
+
+    def do_uncheck(self, session: Session, rest: str) -> None:
+        test, value = self._test_and_value(session, rest)
+        if not value:
+            raise CliError("usage: .uncheck N M|all")
+        if value == "all":
+            test.checks = []
+        else:
+            index = _position(test.checks, value, "check")
+            test.checks = [line for number, line in enumerate(test.checks) if number != index]
         self._edited(session)
 
     def do_expect_value(self, session: Session, rest: str) -> None:

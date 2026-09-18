@@ -47,7 +47,7 @@ def junit_tree(
             case = ElementTree.SubElement(
                 suite,
                 "testcase",
-                name=_text(f"{number}. tick {result.test.at_tick}: {result.test.command}"),
+                name=_text(f"{number}. tick {result.test.at_tick}: {result.test.describe()}"),
                 classname=run.version.id,
                 time="0",
             )

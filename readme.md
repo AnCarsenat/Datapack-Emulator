@@ -16,7 +16,8 @@ checked against the real base game read out of a `client.jar`.
 * shows the world as it runs — a scoreboard grid with each score's history,
   entities with their full NBT, command storage, placed blocks — and runs commands typed
   into it
-* command tests at any tick, in the window, during runs and across versions —
+* command tests at any tick, with checks on scores, storage, NBT, blocks and
+  entity counts, in the window, during runs and across versions —
   and in CI: `datapack-emulator-cli test` exits non-zero on a failure and
   writes JUnit XML
 * explains any command line: execute steps, selectors, references, version

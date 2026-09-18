@@ -34,7 +34,13 @@ from datapack_emulator.cli.junit import write_junit
 from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.engine import TestEngine, VersionRun
 from datapack_emulator.emulator.runtime.emulator import Emulator
-from datapack_emulator.emulator.testing import CommandTest, TestResult, TestSchedule, valid_range
+from datapack_emulator.emulator.testing import (
+    CommandTest,
+    TestResult,
+    TestSchedule,
+    valid_check,
+    valid_range,
+)
 from datapack_emulator.emulator.versions import Version
 from datapack_emulator.settings import EMULATION
 
@@ -81,7 +87,7 @@ def print_result(version: Version, result: TestResult, show_records: bool | str)
     mark = "PASS" if result.passed else "SKIP" if result.skipped else "FAIL"
     print(
         f"{mark} {version.id:10} tick {result.test.at_tick:<4} "
-        f"{result.test.command}  — {result.reason}"
+        f"{result.test.describe()}  — {result.reason}"
     )
     if show_records == "all" or (show_records and not result.passed):
         for record in result.records:
@@ -389,9 +395,17 @@ def command_test(arguments: argparse.Namespace) -> int:
     extra = [parse_test(text) for text in arguments.test or []]
     if arguments.only and not extra:
         raise CliError("--only needs at least one --test")
-    if arguments.expect is not None or arguments.expect_value is not None:
+    if arguments.expect is not None or arguments.expect_value is not None or arguments.check:
         if len(extra) != 1:
-            raise CliError("--expect and --expect-value go with exactly one --test")
+            raise CliError("--expect, --expect-value and --check go with exactly one --test")
+        for line in arguments.check or []:
+            problem = valid_check(line)
+            if problem:
+                raise CliError(problem)
+        extra[0].checks = list(arguments.check or [])
+    for test in extra:
+        if not test.command and not test.checks:
+            raise CliError(f"--test at tick {test.at_tick} has no command (give --check)")
         extra[0].expect = arguments.expect or ""
         extra[0].expect_value = (arguments.expect_value or "").strip()
         if extra[0].expect_value and not valid_range(extra[0].expect_value):
@@ -500,6 +514,14 @@ def register_test(subparsers) -> None:
     )
     test.add_argument(
         "--expect-value", default=None, help="with one --test: range the result must be in (1..)"
+    )
+    test.add_argument(
+        "--check",
+        action="append",
+        metavar="CHECK",
+        help="with one --test: what must hold afterwards (repeatable), e.g. "
+        "'score #g t = 3', 'storage ns:s x = 1b', '@e[type=pig] = 2', 'block 0 64 0 = stone', "
+        "'if entity @a[tag=won]'; the test's command may be empty ('5:')",
     )
     test.add_argument(
         "--only", action="store_true", help="run only the --test tests, not the project's"

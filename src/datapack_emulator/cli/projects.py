@@ -12,7 +12,7 @@ from datapack_emulator.cli.common import OK, CliError, count, err, parse_version
 from datapack_emulator.cli.runs import parse_test
 from datapack_emulator.emulator.common import normalise_tagged_id
 from datapack_emulator.emulator.datapack import DatapackSet
-from datapack_emulator.emulator.testing import CommandTest, valid_range
+from datapack_emulator.emulator.testing import CommandTest, valid_check, valid_range
 from datapack_emulator.project import (
     SUFFIX,
     Project,
@@ -102,16 +102,8 @@ def describe(project: Project) -> list[tuple[str, str]]:
     ]
     for number, data in enumerate(project.tests, start=1):
         test = CommandTest.from_dict(data)
-        expect = []
-        if test.expect:
-            expect.append(f"output ~ {test.expect!r}")
-        if test.expect_value:
-            expect.append(f"value {test.expect_value}")
         rows.append(
-            (
-                f"  {number}. [{'x' if test.enabled else ' '}] tick {test.at_tick}",
-                test.command + (f"  ({'; '.join(expect)})" if expect else ""),
-            )
+            (f"  {number}. [{'x' if test.enabled else ' '}] tick {test.at_tick}", test.describe())
         )
     if project.notes.strip():
         rows.append(("notes", project.notes.strip()))
@@ -309,9 +301,31 @@ def _set(key: str, value):
     return lambda entry: entry.__setitem__(key, value)
 
 
+class _CheckEdits:
+    """Every --check / --uncheck of one test, applied at once: check numbers
+    refer to the test's checks before the command, like test numbers do."""
+
+    def __init__(self) -> None:
+        self.added: list[str] = []
+        self.removed: list[str] = []
+
+    def __call__(self, entry: dict) -> None:
+        original = CommandTest.from_dict(entry).checks
+        gone: set[int] = set()
+        for which in self.removed:
+            if which == "all":
+                gone.update(range(len(original)))
+            else:
+                gone.add(_position(original, which, "check"))
+        entry["checks"] = [
+            line for index, line in enumerate(original) if index not in gone
+        ] + self.added
+
+
 def command_tests(arguments: argparse.Namespace) -> int:
     project = _load(arguments.project)
     operations = []
+    check_edits: dict[str, _CheckEdits] = {}
     for action, values in getattr(arguments, "operations", None) or []:
         if action == "add":
             operations.append(("add", [parse_test(values[0]).to_dict()]))
@@ -327,21 +341,24 @@ def command_tests(arguments: argparse.Namespace) -> int:
             operations.append(("set", [values[0], _set("at_tick", int(values[1]))]))
         elif action in ("enable", "disable"):
             operations.append(("set", [values[0], _set("enabled", action == "enable")]))
+        elif action in ("check", "uncheck"):
+            if action == "check":
+                problem = valid_check(values[1])
+                if problem:
+                    raise CliError(problem)
+            edits = check_edits.get(values[0])
+            if edits is None:
+                edits = check_edits[values[0]] = _CheckEdits()
+                operations.append(("set", [values[0], edits]))
+            (edits.added if action == "check" else edits.removed).append(values[1])
         else:
             operations.append((action, values))
     if _edit_list(project.tests, operations, "test"):
         _save(project, arguments.project)
     for number, data in enumerate(project.tests, start=1):
         test = CommandTest.from_dict(data)
-        extra = []
-        if test.expect:
-            extra.append(f"output ~ {test.expect!r}")
-        if test.expect_value:
-            extra.append(f"value {test.expect_value}")
-        print(
-            f"{number:3}. [{'x' if test.enabled else ' '}] tick {test.at_tick:<4} {test.command}"
-            + (f"  ({'; '.join(extra)})" if extra else "")
-        )
+        box = "x" if test.enabled else " "
+        print(f"{number:3}. [{box}] tick {test.at_tick:<4} {test.describe()}")
     if not project.tests:
         print("no tests")
     return OK
@@ -500,6 +517,20 @@ def register(subparsers) -> None:
     tests.add_argument("--expect", action=_Ordered, nargs=2, metavar=("N", "TEXT"))
     tests.add_argument("--expect-value", action=_Ordered, nargs=2, metavar=("N", "RANGE"))
     tests.add_argument("--tick", action=_Ordered, nargs=2, metavar=("N", "TICK"))
+    tests.add_argument(
+        "--check",
+        action=_Ordered,
+        nargs=2,
+        metavar=("N", "CHECK"),
+        help="add a check to test N ('score #g t = 3', 'storage ns:s x = 1b', …)",
+    )
+    tests.add_argument(
+        "--uncheck",
+        action=_Ordered,
+        nargs=2,
+        metavar=("N", "M|all"),
+        help="remove test N's check M (numbered as before the command)",
+    )
     tests.add_argument("--enable", action=_Ordered, metavar="N")
     tests.add_argument("--disable", action=_Ordered, metavar="N")
     tests.add_argument("--move", action=_Ordered, nargs=2, metavar=("N", "up|down"))

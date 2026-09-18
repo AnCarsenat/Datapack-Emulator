@@ -9,17 +9,26 @@ from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QHeaderView,
+    QInputDialog,
     QMenu,
     QTableWidgetItem,
     QWidget,
 )
 
 from datapack_emulator.emulator.runtime.debugger import DebugStopped
-from datapack_emulator.emulator.testing import CommandTest, TestResult, run_tests
+from datapack_emulator.emulator.testing import (
+    CHECK_HELP,
+    CommandTest,
+    TestResult,
+    run_tests,
+    valid_check,
+)
 from datapack_emulator.window.controllers.base import TAB_ENVIRONMENT, Controller
 
-COLUMN_TICK, COLUMN_COMMAND, COLUMN_EXPECT, COLUMN_VALUE, COLUMN_RESULT = range(5)
+COLUMN_TICK, COLUMN_COMMAND, COLUMN_EXPECT, COLUMN_VALUE, COLUMN_CHECKS, COLUMN_RESULT = range(6)
 EDITABLE_COLUMNS = (COLUMN_TICK, COLUMN_COMMAND, COLUMN_EXPECT, COLUMN_VALUE)
+FITTED_COLUMNS = (*EDITABLE_COLUMNS, COLUMN_CHECKS)
+CHECKS_ROLE = Qt.UserRole + 1
 PASS_COLOUR = QColor("#1e6f3d")
 FAIL_COLOUR = QColor("#c0392b")
 
@@ -29,6 +38,8 @@ class EnvironmentController(Controller):
         super().__init__(window)
         #: the last result of each row, to reveal its records
         self.results: dict[int, TestResult] = {}
+        #: the table is being filled from code (not edited by hand)
+        self._filling = False
 
     def connect(self) -> None:
         window = self.window
@@ -39,6 +50,7 @@ class EnvironmentController(Controller):
         table.verticalHeader().setVisible(False)
         table.customContextMenuRequested.connect(self.test_menu)
         table.cellDoubleClicked.connect(self._on_double_click)
+        table.itemChanged.connect(self._on_item_changed)
         window.add_test_button.clicked.connect(lambda: self.add_test())
         window.remove_test_button.clicked.connect(self.remove_selected)
         window.duplicate_test_button.clicked.connect(self.duplicate_selected)
@@ -51,6 +63,13 @@ class EnvironmentController(Controller):
     # -- the table ----------------------------------------------------------
 
     def add_test(self, test: CommandTest | None = None, row: int | None = None) -> int:
+        self._filling = True
+        try:
+            return self._add_test(test, row)
+        finally:
+            self._filling = False
+
+    def _add_test(self, test: CommandTest | None, row: int | None) -> int:
         test = test or CommandTest("say hello")
         table = self.window.table_tests
         row = table.rowCount() if row is None else row
@@ -65,6 +84,10 @@ class EnvironmentController(Controller):
         value = QTableWidgetItem(test.expect_value)
         value.setToolTip("the command's result must be in this range: 5, 1.., ..3 or 1..4")
         table.setItem(row, COLUMN_VALUE, value)
+        checks = QTableWidgetItem()
+        checks.setFlags(checks.flags() & ~Qt.ItemIsEditable)
+        table.setItem(row, COLUMN_CHECKS, checks)
+        self._show_checks(row, test.checks)
         result = QTableWidgetItem("")
         result.setFlags(result.flags() & ~Qt.ItemIsEditable)
         table.setItem(row, COLUMN_RESULT, result)
@@ -73,7 +96,7 @@ class EnvironmentController(Controller):
 
     def _fit_columns(self) -> None:
         table = self.window.table_tests
-        for column in EDITABLE_COLUMNS:
+        for column in FITTED_COLUMNS:
             table.resizeColumnToContents(column)
             table.setColumnWidth(column, min(max(table.columnWidth(column), 80), 360))
 
@@ -135,6 +158,7 @@ class EnvironmentController(Controller):
                     expect=_text(table.item(row, COLUMN_EXPECT)),
                     enabled=tick_item is None or tick_item.checkState() == Qt.Checked,
                     expect_value=_text(table.item(row, COLUMN_VALUE)),
+                    checks=list(self._checks(row)),
                 )
             )
         return tests
@@ -225,11 +249,86 @@ class EnvironmentController(Controller):
     def _on_double_click(self, row: int, column: int) -> None:
         if column == COLUMN_RESULT:
             self.reveal_records(row)
+        elif column == COLUMN_CHECKS:
+            self.edit_checks(row)
+
+    # -- checks ---------------------------------------------------------------
+
+    def _checks(self, row: int) -> list[str]:
+        item = self.window.table_tests.item(row, COLUMN_CHECKS)
+        value = item.data(CHECKS_ROLE) if item is not None else None
+        return list(value) if value else []
+
+    def _show_checks(self, row: int, checks: list[str]) -> None:
+        item = self.window.table_tests.item(row, COLUMN_CHECKS)
+        item.setData(CHECKS_ROLE, list(checks))
+        item.setText("; ".join(checks))
+        item.setToolTip(
+            ("\n".join(checks) + "\n\n" if checks else "")
+            + "double-click to edit, one check per line:\n"
+            + CHECK_HELP
+        )
+
+    def edit_checks(self, row: int, text: str | None = None) -> bool:
+        """Edit a test's checks (one per line); ``text`` skips the dialog. A
+        line that cannot be read reopens the dialog with what was typed."""
+        interactive = text is None
+        typed = "\n".join(self._checks(row))
+        problem = ""
+        while True:
+            if interactive:
+                prompt = "What must hold after the command, one per line:\n" + CHECK_HELP
+                if problem:
+                    prompt = f"{problem}\n\n{prompt}"
+                typed, accepted = QInputDialog.getMultiLineText(
+                    self.window, "checks", prompt, typed
+                )
+                if not accepted:
+                    return False
+            else:
+                typed = text
+            lines = [line.strip() for line in typed.splitlines() if line.strip()]
+            problem = next((p for p in map(valid_check, lines) if p), "")
+            if not problem:
+                break
+            if not interactive:
+                self.status(f"not saved: {problem}")
+                return False
+        if lines == self._checks(row):
+            return True
+        self._show_checks(row, lines)
+        self._fit_columns()
+        self.clear_result(row)
+        self.window.projects.mark_modified()
+        return True
+
+    def clear_result(self, row: int) -> None:
+        """A test was edited: its last result no longer says anything."""
+        table = self.window.table_tests
+        self.results.pop(row, None)
+        item = table.item(row, COLUMN_RESULT)
+        if item is not None and item.text():
+            self._filling = True
+            try:
+                item.setText("edited: run it again")
+                item.setToolTip("")
+                item.setForeground(QBrush(QColor("#7f8c8d")))
+            finally:
+                self._filling = False
+            self.window.test_summary.setText("tests edited since the last run")
+
+    def _on_item_changed(self, item: QTableWidgetItem) -> None:
+        if self._filling or item.column() == COLUMN_RESULT:
+            return
+        self.clear_result(item.row())
 
     def reveal_records(self, row: int) -> None:
         result = self.results.get(row)
-        if result is None or not result.records:
+        if result is None:
             self.status("run this test first")
+            return
+        if not result.records:
+            self.status("this test produced no records")
             return
         self.window.log_view.reveal(result.records[0])
 
@@ -251,6 +350,7 @@ class EnvironmentController(Controller):
             menu.addAction(
                 "analyze the command", lambda: window.navigation.analyze(command, "test")
             )
+            menu.addAction("edit checks…", lambda: self.edit_checks(row))
             menu.addSeparator()
             menu.addAction("duplicate", self.duplicate_selected)
             menu.addAction("move up", lambda: self.move_selected(-1))

@@ -131,3 +131,130 @@ def test_expected_values_are_ranges(make_pack):
     assert (
         CommandTest.from_dict(CommandTest("a", expect_value="1..").to_dict()).expect_value == "1.."
     )
+
+
+def test_checks_look_at_the_world_and_explain_failures(make_pack):
+    from datapack_emulator.emulator.testing import valid_check
+
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/function/tick.mcfunction": "scoreboard players add #t n 1\n",
+                "data/test/function/load.mcfunction": (
+                    "scoreboard objectives add n dummy\n"
+                    'summon pig 0 0 0 {Tags:["a"]}\n'
+                    "data modify storage test:mem x set value 1b\n"
+                    "data modify storage test:mem obj set value {a:1,b:{c:2}}\n"
+                    "setblock 0 1 0 minecraft:oak_log[axis=x]\n"
+                ),
+                "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+                "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            }
+        )
+    )
+    passing = CommandTest(
+        "",
+        at_tick=2,
+        checks=[
+            "score #t n = 3",
+            "score #t n != 0",
+            "storage test:mem x = 1",
+            "storage test:mem obj = {a:1b,b:{c:2}}",
+            'entity @e[type=pig,limit=1] Tags = ["a"]',
+            "@e[type=pig] = 1",
+            "@e[type=cow] = 0",
+            "block 0 1 0 = oak_log[axis=x]",
+            "block 0 2 0 != oak_log",
+            "if entity @e[type=pig]",
+            "unless entity @e[type=cow]",
+            "entity @e[type=cow] Tags != 1",
+        ],
+    )
+    failing = [
+        CommandTest("", checks=["score #t n = 5"]),
+        CommandTest("", checks=["storage test:mem obj = {a:2,b:{c:3},d:1}"]),
+        CommandTest("", checks=["block 0 1 0 = oak_log[axis=y]"]),
+        CommandTest("", checks=["@e[type=pig] = 2.."]),
+        CommandTest("", checks=["if entity @e[type=cow]"]),
+        CommandTest("", checks=["score #nobody n = 1"]),
+        CommandTest("", checks=["nonsense"]),
+        CommandTest("say hi", checks=["score #t n != 1"]),
+    ]
+    results = run_tests(pack, [passing, *failing], version="1.21.4")
+    assert results[0].passed, results[0].reason
+    assert results[0].reason == "passed (checks only), 12 check(s) held"
+    reasons = [result.reason for result in results[1:]]
+    assert not any(result.passed for result in results[1:])
+    assert reasons[0] == "score #t n: expected exactly 5, got 1"
+    assert reasons[1] == (
+        "storage test:mem obj: expected {a: 2, b: {c: 3}, d: 1}, got {a: 1, b: {c: 2}} "
+        "(a is 1; b.c is 2; missing d)"
+    )
+    assert reasons[2] == "block 0 1 0: expected oak_log[axis=y], got minecraft:oak_log[axis=x]"
+    assert reasons[3] == "@e[type=pig] count: expected 2 or more, got 1"
+    assert reasons[4] == "check failed: if entity @e[type=cow]"
+    assert reasons[5] == "score #nobody n: expected exactly 1, but it is not set"
+    assert reasons[6] == "check 'nonsense' needs ' = ' or ' != ' with spaces around it"
+    assert reasons[7] == "score #t n: expected not exactly 1, got 1"
+    assert valid_check("score a = 1") == "check 'score a = 1': score HOLDER OBJECTIVE = RANGE"
+    assert "not a whole-number range" in valid_check("score a b = x")
+    assert valid_check("if entity @a") == ""
+    assert "@s is nobody here" in valid_check("if entity @s")
+    round_trip = CommandTest.from_dict(passing.to_dict())
+    assert round_trip.checks == passing.checks
+    assert CommandTest.from_dict({"command": "x", "checks": "a = 1"}).checks == ["a = 1"]
+    assert CommandTest.from_dict({"command": "x", "checks": [None, 5, " b "]}).checks == ["b"]
+    assert CommandTest.from_dict({"command": "x", "checks": 3}).checks == []
+
+
+def test_check_parsing_edge_cases(make_pack):
+    from datapack_emulator.emulator import Emulator
+    from datapack_emulator.emulator.testing import check_world, snbt_value, valid_check
+
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/tags/block/mine.json": {"values": ["minecraft:stone"]},
+                "data/test/function/tick.mcfunction": "\n",
+                "data/test/function/side.mcfunction": "scoreboard players add #calls n 1\n",
+            }
+        )
+    )
+    emulator = Emulator(pack, version="1.21.4", players=2)
+    emulator.start()
+    emulator.run_tick()
+    for line in (
+        "scoreboard objectives add n dummy",
+        "scoreboard players set Player1 n 1",
+        "data modify storage test:m big set value 1000000",
+        'data modify storage test:m "k k" set value 7',
+        'data modify storage test:m items set value [{id:"a b",Count:1b}]',
+        "data modify storage test:m half set value -0.5d",
+        'summon pig 0 0 0 {Tags:["p"],CustomName:"a = b"}',
+        "setblock 0 5 0 stone",
+    ):
+        emulator.run_typed(line)
+
+    def holds(line):
+        return check_world(emulator, line)
+
+    assert holds("block 0 5 0 = #test:mine") == (True, "")
+    assert holds("block 0 6 0 = #test:mine")[0] is False
+    assert "block tag" in holds("block 0 5 0 = #test:nothing")[1]
+    assert holds("storage test:m big = 1000001")[0] is False
+    assert holds("storage test:m big == 1000000") == (True, "")
+    assert holds('storage test:m "k k" = 7') == (True, "")
+    assert holds('storage test:m items[{id:"a b"}].Count = 1b') == (True, "")
+    assert holds("storage test:m half = -.5") == (True, "")
+    assert holds('entity @e[type=pig, limit=1] Tags = ["p"]') == (True, "")
+    assert holds("@e[type=pig, tag=p] = 1") == (True, "")
+    assert valid_check('@e[type=pig,name="a = b"] = 0') == ""
+    assert "is 2 holders" in holds("score @a n = 1")[1]
+    assert "cannot be a condition" in holds("if function test:side")[1]
+    assert emulator.world.scoreboard.get("#calls", "n") is None
+    assert "not an NBT value" in valid_check("storage test:m obj = {a:1")
+    assert "whole-number range" in valid_check("score #x n = 1.5")
+    assert "@s is nobody" in valid_check("@s = 1")
+    assert "with spaces" in valid_check("score #x n=1")
+    assert valid_check("if\tentity @a") == ""
+    assert snbt_value("hello") == "hello" and snbt_value("[I;1,2]") == [1, 2]

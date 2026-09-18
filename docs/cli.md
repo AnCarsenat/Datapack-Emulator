@@ -172,6 +172,7 @@ hold.
 | `--players`, `--seed` | as for `run` |
 | `--test [TICK:]COMMAND` | add a test (repeatable): `5:function hat:tick` runs in tick 5 |
 | `--expect TEXT`, `--expect-value RANGE` | with exactly one `--test`: its expected output / value range (`5`, `1..`, `..3`, `1..4`) |
+| `--check CHECK` | with exactly one `--test`: something that must hold in the world afterwards (repeatable, see [checks](#checks)); the test's command may then be empty (`--test 5:`) |
 | `--only` | run only the `--test` tests (needs at least one) |
 | `--include-disabled` | also run tests unticked in the project |
 | `--junit PATH` | write a JUnit XML report: one test suite per version, the records of each test in its `system-out` |
@@ -183,6 +184,30 @@ Exit status `0` when every test passed, `1` when one failed, `2` when there
 was nothing to run or an option was wrong (an `--expect-value` that is not a
 range, `--only` without `--test`, …), `130` when Ctrl+C stopped it (see
 `matrix`).
+
+### Checks
+
+A test can also check the world after its command — or only the world, with
+an empty command:
+
+| check | holds when |
+| --- | --- |
+| `score HOLDER OBJECTIVE = RANGE` | the score is in the whole-number range (`#global counter = 3`, `@p points = 1..`); an unset score never matches, and a selector must find one holder |
+| `storage ID [PATH] = SNBT` | the value at the path equals the SNBT (`storage ns:mem x = 1b`); without a path, the whole storage |
+| `entity SELECTOR [PATH] = SNBT` | the same, on the first entity the selector finds |
+| `SELECTOR = RANGE` | that many entities match (`@e[type=pig] = 2`) |
+| `block X Y Z = BLOCK` | the block matches the block predicate (`block 0 64 0 = chest[facing=north]`); a `#tag` must be known (from the client jar or the pack) |
+| `if CONDITION`, `unless CONDITION` | the `execute` condition passes (`if entity @a[tag=won]`); `if function` is refused, since it would run the function |
+
+The operator is `=` (or `==`), or `!=` to invert a check, with spaces around
+it; selectors, paths and values may contain spaces (`@e[type=pig, tag=a]`,
+`storage ns:mem "a key" = 1`). Checks run as the server at 0 0 0, so `@s`
+is refused. NBT values compare without their number types (`1b` is `1`):
+whole numbers exactly, decimals within a float's precision; SNBT that does
+not parse is refused. A failed check says what it expected and what it
+found — for compounds, the keys that differ (`a is 1; b.c is 2; missing d`)
+— and is logged, so it is in the test's records. A `--test` with an empty
+command needs a `--check`.
 
 ### In CI
 
@@ -273,6 +298,7 @@ first tick first. Lines starting with a dot control the session:
 | `.tests` | list the tests, with their last result |
 | `.test [TICK:]COMMAND` | add a test |
 | `.expect N TEXT`, `.expect-value N RANGE`, `.at N TICK` | test N's expectations and tick |
+| `.check N CHECK`, `.uncheck N M\|all` | add a [check](#checks) to test N, or remove its check M |
 | `.enable N…`, `.disable N…`, `.remove N…`, `.duplicate N`, `.move N up\|down` | edit tests |
 | `.runtests [N …]` | the enabled tests, or those, in a fresh world (F8) |
 | `.records N` | the records test N produced in its last run (*show its records*) |
@@ -423,7 +449,7 @@ datapack-emulator-cli project list
 | `show FILE` | everything it holds; `--json` for `project.json` |
 | `set FILE` | settings: `--name`, `--version` (`''` = the pack's), `--ticks` (`-1` = until stopped), `--players`, `--seed`, `--speed fast\|realtime`, `--engine-versions V…`, `--vanilla-jar JAR` (`''` = none), `--tests-during-runs on\|off`, `--step-on-command on\|off`, `--notes TEXT` or `--notes-file FILE` |
 | `packs FILE` | list; `--add DIR`, `--remove N`, `--move N up\|down` (load order; a project keeps at least one pack) |
-| `tests FILE` | list; `--add [TICK:]COMMAND`, `--expect N TEXT`, `--expect-value N RANGE`, `--tick N TICK`, `--enable N`, `--disable N`, `--duplicate N`, `--move N up\|down`, `--remove N` |
+| `tests FILE` | list; `--add [TICK:]COMMAND`, `--expect N TEXT`, `--expect-value N RANGE`, `--check N CHECK`, `--uncheck N M\|all` (check numbers, too, refer to the checks before the command), `--tick N TICK`, `--enable N`, `--disable N`, `--duplicate N`, `--move N up\|down`, `--remove N` |
 | `note FILE FUNCTION [TEXT]` | read, write or (with `''`) remove the note on a function or `#tag` (a warning when the packs have no such id) |
 | `debug FILE` | list the debugger's breakpoints and watches; `--break FUNC:LINE[ if COND]`, `--unbreak FUNC:LINE\|all`, `--enable FUNC:LINE`, `--disable FUNC:LINE`, `--watch EXPR`, `--unwatch N\|all` (the debugger dock's lists) |
 | `list` | the projects in the projects folder the window saves to (`projects/` of the checkout, or the per-user data folder) |

@@ -141,8 +141,8 @@ def test_tests_table_runs_commands_and_saves_with_the_project(window, make_pack,
     )
     results = window.environment.run()
     assert [result.passed for result in results] == [True, False]
-    assert window.table_tests.item(0, 4).text().startswith("✔")
-    assert window.table_tests.item(1, 4).text().startswith("✘")
+    assert window.table_tests.item(0, 5).text().startswith("✔")
+    assert window.table_tests.item(1, 5).text().startswith("✘")
     assert window.test_summary.text().startswith("1/2 passed")
 
     window.spin_seed.setValue(42)
@@ -499,15 +499,15 @@ def test_tests_run_during_runs_and_steps_when_ticked(window, make_pack, tmp_path
     window.spin_ticks.setValue(5)
     window.runs.run_emulator()
     window.runs.wait()
-    assert window.table_tests.item(0, 4).text() == "✔ passed (value 3)"
-    assert window.table_tests.item(1, 4).text().startswith("✘ not reached")
+    assert window.table_tests.item(0, 5).text() == "✔ passed (value 3)"
+    assert window.table_tests.item(1, 5).text().startswith("✘ not reached")
     assert window.emulator.world.tick == 5  # the tests ran inside the run's world
 
     window.runs.step()  # tick 5: no test is due, the results stay
-    assert window.table_tests.item(0, 4).text() == "✔ passed (value 3)"
+    assert window.table_tests.item(0, 5).text() == "✔ passed (value 3)"
     window.environment.set_tests([CommandTest("scoreboard players get #ticks t", at_tick=6)])
     window.runs.step()  # tick 6
-    assert window.table_tests.item(0, 4).text() == "✔ passed (value 7)"
+    assert window.table_tests.item(0, 5).text() == "✔ passed (value 7)"
 
     saved = window.projects.capture().save(tmp_path / "p.dpemu")
     assert Project.load(saved).tests_during_runs is True
@@ -627,7 +627,7 @@ def test_tests_workflow_buttons_and_records(app, window, make_pack):
 
     results = env.run([1])  # only "say two"
     assert len(results) == 1 and not results[0].passed  # say returns 1, not 2
-    assert window.table_tests.item(0, 4).text() == "not run"
+    assert window.table_tests.item(0, 5).text() == "not run"
     env.reveal_records(1)
     selected = window.log_table.selectionModel().selectedRows()
     assert selected and window.log_view.model.record_at(selected[0].row()).message.startswith(
@@ -1320,3 +1320,70 @@ def QPushButton_type():  # noqa: N802
     from PySide6.QtWidgets import QPushButton
 
     return QPushButton
+
+
+def test_tests_have_checks(window, make_pack):
+    from datapack_emulator.emulator.testing import CommandTest
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add t dummy\n",
+            "data/test/function/tick.mcfunction": "scoreboard players add #ticks t 1\n",
+        }
+    )
+    window.datapacks.load(pack)
+    env = window.environment
+    env.set_tests([CommandTest("", at_tick=1, checks=["score #ticks t = 2"])])
+    assert window.table_tests.item(0, 4).text() == "score #ticks t = 2"
+    assert not env.edit_checks(0, "score #ticks t = 2\nnonsense")
+    assert "not saved" in window.statusBar().currentMessage()
+    assert env.edit_checks(0, "score #ticks t = 2\n\n@e[type=pig] = 0\n")
+    assert env.tests()[0].checks == ["score #ticks t = 2", "@e[type=pig] = 0"]
+    assert window.projects.modified
+    results = env.run()
+    assert results[0].passed, results[0].reason
+    assert window.table_tests.item(0, 5).text() == "✔ passed (checks only), 2 check(s) held"
+    env.edit_checks(0, "score #ticks t = 7")
+    env.run()
+    assert window.table_tests.item(0, 5).text() == "✘ score #ticks t: expected exactly 7, got 2"
+    assert window.projects.capture().tests[0]["checks"] == ["score #ticks t = 7"]
+
+
+def test_checks_edits_clear_results_and_keep_records(window, make_pack):
+    from datapack_emulator.emulator.testing import CommandTest
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add t dummy\n",
+            "data/test/function/tick.mcfunction": "scoreboard players add #ticks t 1\n",
+        }
+    )
+    window.datapacks.load(pack)
+    env = window.environment
+    env.set_tests(
+        [
+            CommandTest("", at_tick=1, checks=["score #ticks t = 2"]),
+            CommandTest("say hi", at_tick=1),
+        ]
+    )
+    env.run()
+    assert env.results[0].records  # a checks-only test has records too
+    env.reveal_records(0)
+    assert "run this test first" not in window.statusBar().currentMessage()
+    window.projects.mark_saved()
+    assert env.edit_checks(0, "score #ticks t = 2")  # unchanged: nothing to do
+    assert not window.projects.modified and 0 in env.results
+    assert env.edit_checks(0, "score #ticks t = 99")
+    assert window.table_tests.item(0, 5).text() == "edited: run it again"
+    assert 0 not in env.results and 1 in env.results
+    window.table_tests.item(1, 1).setText("say changed")
+    assert window.table_tests.item(1, 5).text() == "edited: run it again"
+    assert window.test_summary.text() == "tests edited since the last run"
+    env.duplicate_selected()  # no selection: nothing
+    window.table_tests.selectRow(0)
+    env.duplicate_selected()
+    assert env.tests()[1].checks == ["score #ticks t = 99"]
