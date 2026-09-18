@@ -457,6 +457,32 @@ def test_world_dock_shows_scores_entities_and_storage(app, window):
     assert storage.topLevelItem(0).text(0) == "test:mem"
     assert "entities" in window.world_label.text()
 
+    window.console.run('setblock 1 2 3 chest{Items:[{Slot:0b,id:"stone",count:2}]}')
+    window.console.run("execute in minecraft:the_nether run setblock 0 0 0 dirt")
+    window.tabs_world.setCurrentIndex(3)
+    blocks = window.tree_blocks
+    tops = {
+        blocks.topLevelItem(i).text(0): blocks.topLevelItem(i)
+        for i in range(blocks.topLevelItemCount())
+    }
+    chest = tops["1 2 3"]
+    assert chest.text(1) == "minecraft:chest · 2 item(s)"
+    assert "0 0 0 (minecraft:the_nether)" in tops
+    keys = {chest.child(i).text(0): chest.child(i) for i in range(chest.childCount())}
+    assert set(keys) == {"id", "Items"}
+    assert "2 blocks" in window.world_label.text()
+    # editing a value runs data modify block
+    from unittest import mock
+
+    count = keys["Items"].child(0).child(2)
+    assert count.text(0) == "count"
+    with mock.patch(
+        "datapack_emulator.window.controllers.world.QInputDialog.getText", return_value=("5", True)
+    ):
+        window.world_view.edit_value(count)
+    block = window.emulator.world.blocks.get("minecraft:overworld", (1, 2, 3))
+    assert block.items[0].count == 5
+
 
 def test_tests_run_during_runs_and_steps_when_ticked(window, make_pack, tmp_path):
     from datapack_emulator.emulator.testing import CommandTest

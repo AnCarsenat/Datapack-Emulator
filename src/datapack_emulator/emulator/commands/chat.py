@@ -89,15 +89,24 @@ def _text_resolver(context: ExecutionContext, viewer: Entity | None):
 
 
 def _nbt_text(context: ExecutionContext, component: dict[str, Any]) -> str:
-    """An ``nbt`` text component: the value at a path of a storage or entity."""
+    """An ``nbt`` text component: the value at a path of a storage, entity or block."""
     path = str(component.get("nbt", ""))
     if "storage" in component:
         store: Any = context.world.storage.get(normalise_id(str(component["storage"])), {})
     elif "entity" in component:
         entities = find_targets(context, str(component["entity"]))
         store = entities[0].data(context.emulator.version) if entities else None
+    elif "block" in component:
+        from datapack_emulator.emulator.commands.blocks import parse_block_position
+
+        position, _ = parse_block_position(context, str(component["block"]).split())
+        store = None
+        if position is not None:
+            block = context.world.blocks.stored(context.dimension, position)
+            if block is not None:
+                store = block.data(context.emulator.version, position) or None
     else:
-        return ""  # block NBT is not modelled
+        return ""
     value = nbt_get(store, path) if isinstance(store, dict) else None
     if value is None:
         return ""

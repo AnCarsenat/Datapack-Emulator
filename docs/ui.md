@@ -168,7 +168,7 @@ All four are open by default and can be toggled from *view*.
   world that has not ticked yet runs its first tick first, like a server
   that is up. The command's feedback and errors appear in the logs, and the
   world dock updates.
-* **world** — the current world, refreshed after runs, steps, tests and typed
+* **world** — the current world (scores, entities, storage, blocks), refreshed after runs, steps, tests and typed
   commands (a few times a second during a run), with separate filters for
   holders/entities and objectives, and *summon…* / *objective…* buttons.
   Every change made here runs as a command through the command line, so it
@@ -185,6 +185,10 @@ All four are open by default and can be toggled from *view*.
     1000 listed). Double-click a value to change it.
   * *storage*: every command storage and its contents; double-click a value
     to change it, right-click to remove or copy it.
+  * *blocks*: every block a command placed (the rest is air), by position
+    (and dimension outside the overworld) with its state and item count, and
+    its block entity data as a tree; double-click a value to change it
+    (`data modify block`).
 
 ### Right-click
 
@@ -200,6 +204,7 @@ All four are open by default and can be toggled from *view*.
 | world › score | set… · add 1 · remove 1 · reset · enable trigger · graph over time… · copy value · new objective… |
 | world › entity | change value… (on an NBT value) · teleport… · add tag… · give item… and clear inventory (players) · set item in slot… · kill · run a command as this entity (starts `execute as @e[nbt={UUID:[I;…]},limit=1] at @s run `, or the player's name) · copy UUID · copy data (SNBT) |
 | world › storage value | change value… · remove · copy value |
+| world › block | change value… and remove (on a block entity value) · replace block… · set item in slot… · remove block · run a command here · copy block state |
 
 "External editor" and "external file manager" use the desktop's default handler
 (`QDesktopServices`), so they open whatever your system associates with the

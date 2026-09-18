@@ -42,6 +42,7 @@ from datapack_emulator.cli.runs import (
 )
 from datapack_emulator.emulator.analysis.explain import explain_line
 from datapack_emulator.emulator.analysis.world_view import (
+    blocks_text,
     entities_text,
     history_text,
     scoreboard_text,
@@ -64,7 +65,7 @@ from datapack_emulator.project import Project
 from datapack_emulator.settings import EMULATION
 
 #: the parts of the world ``world`` and the shell print
-PARTS = ("scores", "entities", "storage")
+PARTS = ("scores", "entities", "storage", "blocks")
 
 
 class Session:
@@ -313,6 +314,14 @@ def world_json(session: Session, arguments: argparse.Namespace) -> dict:
         out["storage"] = {
             key: value for key, value in data["storage"].items() if holder in key.lower()
         }
+    if "blocks" in parts:
+        out["blocks"] = [
+            block
+            for block in data["blocks"]
+            if not holder
+            or holder in block["block"]
+            or holder in " ".join(str(value) for value in block["pos"])
+        ]
     out["gamerules"] = data["gamerules"]
     return out
 
@@ -334,6 +343,9 @@ def print_world(session: Session, arguments: argparse.Namespace) -> None:
     if "storage" in parts:
         print("\n# storage")
         print(storage_text(world, arguments.holder or ""))
+    if "blocks" in parts:
+        print("\n# blocks")
+        print(blocks_text(world, arguments.holder or "", version))
 
 
 def command_world(arguments: argparse.Namespace) -> int:
@@ -361,12 +373,15 @@ def command_world(arguments: argparse.Namespace) -> int:
 
 
 def add_view_arguments(parser: argparse.ArgumentParser) -> None:
-    group = parser.add_argument_group("what to print (default: all three)")
+    group = parser.add_argument_group("what to print (default: all four)")
     group.add_argument("--scores", action="store_true", help="the scoreboard grid")
     group.add_argument("--entities", action="store_true", help="the entities")
     group.add_argument("--storage", action="store_true", help="command storage")
+    group.add_argument("--blocks", action="store_true", help="the blocks commands placed")
     group.add_argument("--nbt", action="store_true", help="with the entities' full NBT")
-    group.add_argument("--holder", default=None, help="filter holders / entities / storage")
+    group.add_argument(
+        "--holder", default=None, help="filter holders / entities / storage / blocks"
+    )
     group.add_argument("--objective", default=None, help="filter objectives")
     group.add_argument(
         "--history",
@@ -387,7 +402,7 @@ def register_world(subparsers) -> None:
         help="run, then print the world: scores, entities, storage",
         description="The world dock: run the pack for --ticks ticks (the project's by "
         "default), run --command lines as typed commands, then print the scoreboard grid "
-        "(* = trigger enabled), the entities and command storage.",
+        "(* = trigger enabled), the entities, command storage and the blocks commands placed.",
     )
     add_source_arguments(world)
     world.add_argument(
@@ -423,7 +438,8 @@ Lines starting with a dot control the session:
            .scores [FILTER]      the scoreboard grid (* = trigger enabled)
            .entities [FILTER]    entities; .nbt [FILTER] with their NBT
            .storage [FILTER]     command storage
-           .world / .json        all three, as text or JSON
+           .blocks [FILTER]      the blocks commands placed
+           .world / .json        all four, as text or JSON
            .history HOLDER OBJ   the values a score took and when
   analyze  .explain COMMAND      analyze a command line
            .profile              the per-tick call tree
@@ -554,6 +570,9 @@ class Shell:
 
     def do_storage(self, session: Session, rest: str) -> None:
         print(storage_text(session.emulator.world, rest))
+
+    def do_blocks(self, session: Session, rest: str) -> None:
+        print(blocks_text(session.emulator.world, rest, session.version))
 
     def do_world(self, session: Session, rest: str) -> None:
         print_world(session, self.view_arguments(holder=rest))

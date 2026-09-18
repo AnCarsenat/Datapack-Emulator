@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datapack_emulator.emulator.commands.helpers import require_id, resource_id
+from datapack_emulator.emulator.commands.helpers import require_id
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.runtime.context import ExecutionContext
@@ -22,13 +22,4 @@ def cmd_effect(command: Command, context: ExecutionContext) -> CommandResult:
         and not require_id(context, "mob_effect", arguments[2])
     ):
         return CommandResult.failure()
-    return CommandResult(success=True, value=1)
-
-
-def cmd_setblock(command: Command, context: ExecutionContext) -> CommandResult:
-    """Only the block id is checked; there is no block model to change."""
-    if len(command.arguments) >= 4:
-        block = resource_id(command.arguments[3])
-        if not require_id(context, "block", block, "argument.block.id.invalid"):
-            return CommandResult.failure()
     return CommandResult(success=True, value=1)

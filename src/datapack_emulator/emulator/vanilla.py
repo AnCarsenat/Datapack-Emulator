@@ -122,6 +122,9 @@ class VanillaAssets:
     registries: dict[str, frozenset[str]] = field(default_factory=dict)
     #: registry name -> tag id -> raw entries
     tags: dict[str, dict[str, list[str]]] = field(default_factory=dict)
+    _block_properties: dict[str, dict[str, set[str]] | None] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     # -- loading ----------------------------------------------------------
 
@@ -215,6 +218,30 @@ class VanillaAssets:
             if data is not None:
                 return data
         return None
+
+    def block_properties(self, block_id: str) -> dict[str, set[str]] | None:
+        """The block-state properties a block has and their values, read from its
+        ``assets/minecraft/blockstates`` file; None when the jar has none."""
+        block_id = _qualify(block_id)
+        if block_id in self._block_properties:
+            return self._block_properties[block_id]
+        data = self.read_json(f"assets/minecraft/blockstates/{block_id.split(':', 1)[1]}.json")
+        properties: dict[str, set[str]] | None = None
+        if data is not None:
+            properties = {}
+            keys = list((data.get("variants") or {}).keys())
+            for part in data.get("multipart") or []:
+                when = part.get("when") if isinstance(part, dict) else None
+                for condition in (when.get("OR") or when.get("AND") or [when]) if when else []:
+                    if isinstance(condition, dict):
+                        keys.append(",".join(f"{key}={value}" for key, value in condition.items()))
+            for key in keys:
+                for pair in key.split(","):
+                    name, sep, value = pair.partition("=")
+                    if sep:
+                        properties.setdefault(name, set()).update(value.split("|"))
+        self._block_properties[block_id] = properties
+        return properties
 
     def knows(self, registry: str, resource_id: str) -> bool | None:
         """``True``/``False``, or ``None`` when that registry was not found."""

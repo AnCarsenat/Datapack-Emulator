@@ -193,6 +193,7 @@ class MainWindow(QMainWindow):
         self.table_scores: QTableWidget = find(QTableWidget, "tableScores")
         self.tree_entities: QTreeWidget = find(QTreeWidget, "treeEntities")
         self.tree_storage: QTreeWidget = find(QTreeWidget, "treeStorage")
+        self.tree_blocks: QTreeWidget = find(QTreeWidget, "treeBlocks")
         self.edit_console: QLineEdit = find(QLineEdit, "editConsole")
         self.check_step_on_command: QCheckBox = find(QCheckBox, "checkStepOnCommand")
         self.console_run_button: QPushButton = find(QPushButton, "buttonConsoleRun")

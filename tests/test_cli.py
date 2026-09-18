@@ -713,3 +713,22 @@ def test_info_graph_and_search_details(make_pack, capsys):
     assert "\ntag " in out and "\nfunction " not in out
     assert list(Path("generated").glob("pack1-*.dot"))
     assert main(["search", str(pack), " "]) == 2
+
+
+def test_world_and_shell_show_blocks(make_pack, capsys, monkeypatch):
+    import io
+    import json
+
+    pack = str(_pack(make_pack))
+    assert main(["world", pack, "-c", "setblock 1 2 3 barrel", "--blocks"]) == 0
+    out = capsys.readouterr().out
+    assert "# blocks\n1 2 3  minecraft:barrel  {Items: []}" in out and "# storage" not in out
+    assert main(["world", pack, "-c", "setblock 1 2 3 stone", "--blocks", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["blocks"] == [
+        {"dimension": "minecraft:overworld", "pos": [1, 2, 3], "block": "minecraft:stone",
+         "properties": {}, "nbt": {}}
+    ]  # fmt: skip
+    monkeypatch.setattr("sys.stdin", io.StringIO("fill 0 0 0 1 0 0 glass\n.blocks glass\n"))
+    assert main(["shell", pack]) == 0
+    assert "1 0 0  minecraft:glass" in capsys.readouterr().out

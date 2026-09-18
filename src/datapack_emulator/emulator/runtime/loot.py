@@ -26,6 +26,15 @@ TableLookup = Callable[[str], dict[str, Any] | None]
 
 
 @dataclass
+class LootContext:
+    """What a table can read: the mined block (``loot … mine``) and the tool."""
+
+    #: a runtime.blocks.Block
+    block: Any = None
+    tool: ItemStack | None = None
+
+
+@dataclass
 class LootResult:
     items: list[ItemStack] = field(default_factory=list)
     #: condition types and function names that were not evaluated
@@ -70,9 +79,14 @@ def integer(provider: Any, rng: random.Random) -> int:
 
 
 def evaluate(
-    table: dict[str, Any], lookup: TableLookup, rng: random.Random, depth: int = 0
+    table: dict[str, Any],
+    lookup: TableLookup,
+    rng: random.Random,
+    depth: int = 0,
+    context: LootContext | None = None,
 ) -> LootResult:
     result = LootResult()
+    context = context or LootContext()
     for pool in table.get("pools", []) or []:
         if not isinstance(pool, dict):
             continue
@@ -81,7 +95,7 @@ def evaluate(
         for _ in range(max(0, rolls)):
             entry = _pick(pool.get("entries", []) or [], rng)
             if entry is not None:
-                stacks = _entry_items(entry, lookup, rng, depth, result)
+                stacks = _entry_items(entry, lookup, rng, depth, result, context)
                 for function in pool.get("functions", []) or []:
                     stacks = [_apply(function, stack, rng, result) for stack in stacks]
                 result.items.extend(stack for stack in stacks if stack.count > 0)
@@ -113,7 +127,12 @@ def _pick(entries: list[Any], rng: random.Random) -> dict[str, Any] | None:
 
 
 def _entry_items(
-    entry: dict[str, Any], lookup: TableLookup, rng: random.Random, depth: int, result: LootResult
+    entry: dict[str, Any],
+    lookup: TableLookup,
+    rng: random.Random,
+    depth: int,
+    result: LootResult,
+    context: LootContext,
 ) -> list[ItemStack]:
     _skip_conditions(entry, result)
     kind = normalise_id(str(entry.get("type", "minecraft:item")))
@@ -123,13 +142,13 @@ def _entry_items(
     elif kind == "minecraft:loot_table":
         value = entry.get("value", entry.get("name"))
         if isinstance(value, dict):
-            stacks = evaluate(value, lookup, rng, depth + 1).items
+            stacks = evaluate(value, lookup, rng, depth + 1, context).items
         elif isinstance(value, str) and depth < MAX_DEPTH:
             nested = lookup(normalise_id(value))
             if nested is None:
                 result.missing.add(normalise_id(value))
             else:
-                inner = evaluate(nested, lookup, rng, depth + 1)
+                inner = evaluate(nested, lookup, rng, depth + 1, context)
                 result.skipped |= inner.skipped
                 result.missing |= inner.missing
                 stacks = inner.items
@@ -138,7 +157,19 @@ def _entry_items(
         if kind == "minecraft:alternatives":
             children = children[:1]  # conditions are not evaluated: the first one wins
         for child in children:
-            stacks.extend(_entry_items(child, lookup, rng, depth, result))
+            stacks.extend(_entry_items(child, lookup, rng, depth, result, context))
+    elif kind == "minecraft:dynamic":
+        name = normalise_id(str(entry.get("name", "")))
+        items = getattr(context.block, "items", None)
+        # only shulker boxes give their contents to the loot table
+        if (
+            name == "minecraft:contents"
+            and items is not None
+            and str(getattr(context.block, "id", "")).endswith("shulker_box")
+        ):
+            stacks = [items[slot].copy() for slot in sorted(items)]
+        else:
+            result.skipped.add(f"dynamic {name}")
     elif kind != "minecraft:empty":
         result.skipped.add(kind)
     for function in entry.get("functions", []) or []:

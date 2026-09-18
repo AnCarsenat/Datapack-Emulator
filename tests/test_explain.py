@@ -34,17 +34,21 @@ def test_version_support_and_emulator_coverage_are_reported():
     assert old["in the emulator"].startswith("does not exist in 1.16.1 (added in 1.17)")
     assert old["loads in 1.16.1"].startswith("no")
     assert _rows("item replace entity @s armor.head with air")["in the emulator"] == "emulated"
-    fill = _rows("fill ~ ~ ~ ~1 ~1 ~1 stone")
-    assert fill["in the emulator"] == (
-        "runs without changing the emulated world: blocks are not modelled"
+    assert _rows("fill ~ ~ ~ ~1 ~1 ~1 stone")["in the emulator"] == "emulated"
+    weather = _rows("weather clear")
+    assert weather["in the emulator"] == (
+        "runs without changing the emulated world: the weather is not modelled"
     )
     macro = _rows("$function test:x {a:$(a)}", "1.20.1")
     assert "needs the argument(s) a" in macro["macro line"] and "NBT" not in macro
     assert "1.20.2" in macro["macro support"]
     assert _rows("# comment")["does"] == "nothing: a comment"
-    assert _rows("execute if block ~ ~ ~ stone run say x")["step 1: if block ~ ~ ~ stone"].endswith(
-        "(not emulated: treated as false)"
-    )
+    assert not _rows("execute if block ~ ~ ~ stone run say x")[
+        "step 1: if block ~ ~ ~ stone"
+    ].endswith("(not emulated: treated as false)")
+    assert _rows("execute if biome ~ ~ ~ plains run say x")[
+        "step 1: if biome ~ ~ ~ plains"
+    ].endswith("(not emulated: treated as false)")
     assert describe_range("..5") == "5 or less" and describe_range("3") == "exactly 3"
 
 
@@ -52,11 +56,9 @@ def test_unmodelled_commands_leave_one_note_per_run(make_pack):
     from datapack_emulator.emulator import Emulator
 
     pack = Datapack.load(
-        make_pack(
-            {"data/test/function/tick.mcfunction": "fill 0 0 0 1 1 1 stone\nparticle flame\n"}
-        )
+        make_pack({"data/test/function/tick.mcfunction": "weather rain\nparticle flame\n"})
     )
     emulator = Emulator(pack, version="1.21.4")
     emulator.run(ticks=3)
     notes = [r.message for r in emulator.output.records if r.key == "emulator.not_modelled"]
-    assert notes == ["'fill' runs, but blocks are not modelled"]
+    assert notes == ["'weather' runs, but the weather is not modelled"]

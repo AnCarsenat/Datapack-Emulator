@@ -15,11 +15,13 @@ The handlers live in one module per command group:
 * :mod:`.data` — data, gamerule
 * :mod:`.execute` — execute and its conditions
 * :mod:`.items` — give, clear, item, replaceitem, enchant, loot
+* :mod:`.blocks` — setblock, fill, clone
 * :mod:`.misc` — commands that only check their ids
 """
 
 from __future__ import annotations
 
+from datapack_emulator.emulator.commands.blocks import cmd_clone, cmd_fill, cmd_setblock
 from datapack_emulator.emulator.commands.chat import (
     cmd_me,
     cmd_msg,
@@ -42,7 +44,7 @@ from datapack_emulator.emulator.commands.execute import (
 )
 from datapack_emulator.emulator.commands.helpers import Handler, checking
 from datapack_emulator.emulator.commands.items import ITEM_HANDLERS
-from datapack_emulator.emulator.commands.misc import cmd_effect, cmd_noop, cmd_setblock
+from datapack_emulator.emulator.commands.misc import cmd_effect, cmd_noop
 from datapack_emulator.emulator.commands.scoreboard import cmd_scoreboard, cmd_trigger
 
 #: commands that run without changing the emulated world, and why — for the
@@ -51,23 +53,20 @@ UNMODELLED: dict[str, str] = {
     "advancement": "advancements are not modelled",
     "attribute": "attributes are not modelled (queries return 1)",
     "bossbar": "boss bars are not modelled",
-    "clone": "blocks are not modelled",
     "damage": "health and damage are not modelled",
     "difficulty": "the difficulty is not modelled",
     "effect": "status effects are not modelled (the effect id is still checked)",
     "experience": "experience is not modelled",
-    "fill": "blocks are not modelled",
     "fillbiome": "biomes are not modelled",
     "forceload": "chunks are not modelled",
     "gamemode": "game modes are not modelled (gamemode= in selectors is not checked)",
     "particle": "particles have no effect on the world",
-    "place": "blocks and structures are not modelled",
+    "place": "features and structures are not modelled",
     "playsound": "sounds have no effect on the world",
     "random": "random draws are not modelled: the result is always 1",
     "recipe": "recipes are not modelled",
     "ride": "vehicles and passengers are not modelled",
     "rotate": "use tp or data to turn entities: rotate is not modelled",
-    "setblock": "blocks are not modelled (the block id is still checked)",
     "setworldspawn": "the world spawn is not modelled",
     "spawnpoint": "spawn points are not modelled",
     "spectate": "spectating is not modelled",
@@ -113,12 +112,12 @@ HANDLERS: dict[str, Handler] = {
     "advancement": cmd_noop,
     "attribute": cmd_noop,
     "bossbar": cmd_noop,
-    "clone": cmd_noop,
+    "clone": cmd_clone,
     "damage": cmd_noop,
     "difficulty": cmd_noop,
     "effect": cmd_effect,
     "experience": cmd_noop,
-    "fill": cmd_noop,
+    "fill": cmd_fill,
     "fillbiome": cmd_noop,
     "forceload": cmd_noop,
     "gamemode": cmd_noop,

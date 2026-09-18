@@ -15,7 +15,7 @@ logger (records from the emulator still print).
 | [`run`](#run--one-version) | emulate one version, profile it (and run the tests during the run) | run all (F5), run emulator (F6), profiler tab, *run tests during runs*, speed |
 | [`matrix`](#matrix--many-versions) | run across versions | engine window |
 | [`test`](#test--a-projects-tests) | run a project's tests, exit 1 on failure | run tests (F8), engine *run tests* |
-| [`world`](#world--the-world-after-a-run) | run, then print scores, entities, storage, a score's history | world dock, *graph over time* |
+| [`world`](#world--the-world-after-a-run) | run, then print scores, entities, storage, blocks, a score's history | world dock, *graph over time* |
 | [`shell`](#shell--an-open-world) | type commands in an open world; step, run, tests, views | logs dock command line, step (F7), environment tab |
 | [`info`](#info--the-inspector) | what a pack or a resource is | inspector dock, version note |
 | [`explain`](#explain--analyze-a-line) | what a command line does | analyze line (Ctrl+I) |
@@ -212,17 +212,19 @@ Runs the pack for `--ticks` ticks (a fresh world, like run all), then each
 * the **entities** — name, type, position, tags, items carried, UUID and the
   tick it was summoned; `--nbt` adds the full NBT, as `data get entity` shows
   it in that version;
-* **command storage**, as SNBT.
+* **command storage**, as SNBT;
+* the **blocks** commands placed: position (and dimension), state and block
+  entity data.
 
 | option | |
 | --- | --- |
 | `--version`, `--ticks`, `--players`, `--seed` | as for `run` |
 | `-c`, `--command COMMAND` | run after the ticks (repeatable) |
-| `--scores`, `--entities`, `--storage` | print only these (default: all three) |
+| `--scores`, `--entities`, `--storage`, `--blocks` | print only these (default: all four) |
 | `--nbt` | entities with their NBT |
 | `--holder TEXT`, `--objective TEXT` | filters, like the dock's |
 | `--history HOLDER OBJECTIVE` | every value the score took and at which game time (the *graph over time* data) |
-| `--json` | JSON on standard output — objectives, scores and enabled triggers, entities with NBT, storage (only the parts and filters asked for), gamerules; with `--history`, the score's changes. Everything else (commands, records) goes to standard error |
+| `--json` | JSON on standard output — objectives, scores and enabled triggers, entities with NBT, storage, blocks (only the parts and filters asked for), gamerules; with `--history`, the score's changes. Everything else (commands, records) goes to standard error |
 | `--level`, `--sources`, … | records printed while it runs (default `warn`), see [records](#records) |
 | `--vanilla`, `--no-vanilla`, `--download` | see [client jars](#client-jars) |
 
@@ -245,7 +247,7 @@ first tick first. Lines starting with a dot control the session:
 | `.run [N]` | a fresh world for N ticks, default `--ticks` (run all, F5); tests during runs that it does not reach are reported |
 | `.reset` | a fresh world |
 | `.tick` | the game time |
-| `.scores [FILTER]`, `.entities [FILTER]`, `.nbt [FILTER]`, `.storage [FILTER]`, `.world`, `.json` | the world, as `world` prints it |
+| `.scores [FILTER]`, `.entities [FILTER]`, `.nbt [FILTER]`, `.storage [FILTER]`, `.blocks [FILTER]`, `.world`, `.json` | the world, as `world` prints it |
 | `.history HOLDER OBJECTIVE` | a score over time |
 | `.explain COMMAND` | analyze a line |
 | `.profile` | the profiler tab's per-tick call tree |

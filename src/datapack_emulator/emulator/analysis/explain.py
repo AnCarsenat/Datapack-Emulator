@@ -137,7 +137,7 @@ CONDITION_SUMMARIES: dict[str, str] = {
 
 #: conditions the emulator evaluates (the others are noted and fail)
 EMULATED_CONDITIONS = frozenset(
-    {"score", "entity", "data", "dimension", "loaded", "function", "items"}
+    {"score", "entity", "data", "dimension", "loaded", "function", "items", "block", "blocks"}
 )
 
 SELECTOR_KINDS = {
@@ -371,8 +371,9 @@ def _check_references(
         checks.append(("entity_type", normalise_id(arguments[0])))
     if command.name in ("give", "clear") and len(arguments) > 1:
         checks.append(("item", normalise_id(arguments[1].split("[")[0].split("{")[0])))
-    if command.name == "setblock" and len(arguments) > 3:
-        checks.append(("block", normalise_id(arguments[3].split("[")[0].split("{")[0])))
+    block_at = {"setblock": 3, "fill": 6}.get(command.name)
+    if block_at is not None and len(arguments) > block_at:
+        checks.append(("block", normalise_id(arguments[block_at].split("[")[0].split("{")[0])))
     for registry, resource in checks:
         known = vanilla.knows(registry, resource)
         verdict = {True: "exists", False: "unknown in this version", None: "cannot be checked"}[
