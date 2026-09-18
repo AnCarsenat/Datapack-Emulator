@@ -2048,3 +2048,57 @@ def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
     event = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_K, Qt.NoModifier, "k")
     edit.keyPressEvent(event)
     assert edit.toPlainText() == "function work"
+
+    # Ctrl+Space through the key handler, and the menu entry itself, both work
+    edit.setPlainText("function wor")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Space, Qt.ControlModifier, " "))
+    assert edit.completer.popup().isVisible()
+    assert edit.toPlainText() == "function wor"  # no space typed
+    edit.completer.popup().hide()
+    app.processEvents()
+    window._action("actioncomplete").trigger()  # the File menu entry
+    assert edit.completer.popup().isVisible()
+    edit.completer.popup().hide()
+    app.processEvents()
+
+
+def test_renaming_a_function_carries_its_note_and_breakpoints(app, window, make_pack, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "function test:helper\n",
+            "data/test/function/helper.mcfunction": "say hi\nsay more\n",
+        }
+    )
+    window.datapacks.load(pack)
+    window.navigation.open_function("test:helper")
+    window.project.function_notes["test:helper"] = "mine"
+    window.debug.debugger.add("test:helper", 2)
+    window.debug.fill_breakpoints()
+
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **kw: ("test:worker", True))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.Yes)
+    assert window.editor.rename_function()
+
+    assert window.project.function_notes == {"test:worker": "mine"}
+    assert [(p.function_id, p.line) for p in window.debug.debugger.breakpoints.values()] == [
+        ("test:worker", 2)
+    ]
+    assert window.source_edit.breakpoints  # the gutter of the reopened file shows it
+
+    # an unsaved edit is only discarded once the rename is agreed
+    window.navigation.open_function("test:tick")
+    window.source_edit.appendPlainText("say mine")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **kw: ("", False))
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **kw: asked.append(a[2]) or QMessageBox.Discard
+    )
+    assert not window.editor.rename_function()
+    assert asked == []  # cancelled before anything was asked about the edit
+    assert window.source_edit.document().isModified()

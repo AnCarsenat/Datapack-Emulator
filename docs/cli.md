@@ -461,7 +461,10 @@ and tag ids (after `function`, `schedule function`, `schedule clear` and
 `setblock`, `give`, `clear`, `playsound`, `particle`, `effect` and `enchant`.
 Without `--pack`, only what the version itself knows (nothing is claimed about
 ids). A leading `/` and a macro line's `$` are read past, so `"$function "`
-completes like `"function "`; inside a quoted string nothing is offered.
+completes like `"function "`; inside a quoted string, in a comment, and where
+an `execute` subcommand's own arguments go (`execute as `, a coordinate),
+nothing is offered. What a condition or `store` target takes is not known, so
+subcommands are still offered there.
 
 | option | |
 | --- | --- |
@@ -489,14 +492,20 @@ searching the text of every `.mcfunction`, `.json` and `.mcmeta` file under
 each layer's `data/` folder (the base pack's, each overlay's, and each pack of
 a set) — function calls, function tags, advancement rewards, enchantment
 effects, and the id written in chat text or a comment too. Nothing outside
-`data/` is read, so `pack.mcmeta` and a project's own files are left alone.
+`data/` is read, so `pack.mcmeta` and a project's own files are left alone,
+and a symlink is not followed out of the pack. Each file keeps the line
+endings it was written with.
 
 Ids inside longer ids are left alone, so renaming `test:helper` does not touch
 `test:helper_two`, and `#test:helper` is the function *tag* of that name: it
 keeps its id. A `minecraft:` function is also called without its namespace, so
-`function helper` follows `minecraft:helper` too. Every file serving the id
-moves: an overlay's copy, and both folder spellings (`function/` since 1.21,
-`functions/` before).
+`function helper` follows `minecraft:helper` in a command — but not a bare
+`"helper"` in JSON, which is any string at all.
+
+Every file of that pack serving the id moves: an overlay's copy, and both
+folder spellings (`function/` since 1.21, `functions/` before). Another pack of
+a set that declares the same id keeps its own file (only the pack the version
+reads the function from is moved); references follow in every pack.
 
 Nothing is written without `--apply`; the rename is refused (exit `2`) when
 the function is not in the pack in that version, the new id is not a resource
