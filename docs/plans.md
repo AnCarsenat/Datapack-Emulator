@@ -41,6 +41,11 @@ Nothing reported is waiting right now.
   are built and run here; the Windows and macOS builds (and the `.app` the
   spec's `BUNDLE` step makes) have not been made on a machine of those
   platforms yet, and nothing is published to PyPI.
+* **Completion, further** — Ctrl+Space and [`complete`](cli.md#complete--what-can-be-typed-next)
+  know commands, `execute` subcommands and conditions, selector options and
+  function ids; block/item ids outside the eight commands listed there, NBT
+  paths, and the arguments of each `execute` subcommand (`as @…`, a block
+  position) are still not offered.
 * **Schema checks** — the problems list checks JSON resources by hand
   (conditions, item functions, loot entries, advancement criteria); validating
   recipes, loot tables, predicates, item modifiers and worldgen against the

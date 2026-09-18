@@ -15,6 +15,7 @@ from datapack_emulator.cli.common import (
     add_source_arguments,
     add_vanilla_arguments,
     load_inputs,
+    parse_version,
     vanilla_for,
 )
 from datapack_emulator.emulator import versions
@@ -382,9 +383,7 @@ def register_graph(subparsers) -> None:
 def command_complete(arguments: argparse.Namespace) -> int:
     inputs = load_inputs(arguments.pack) if arguments.pack else None
     version = (
-        inputs.version(arguments)
-        if inputs
-        else versions.parse(arguments.version or versions.LATEST)
+        inputs.version(arguments) if inputs else parse_version(arguments.version or versions.LATEST)
     )
     view = inputs.datapack.view_for(version) if inputs else None
     vanilla = vanilla_for(arguments, version, inputs) if inputs else None
