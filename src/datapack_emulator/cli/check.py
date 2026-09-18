@@ -11,12 +11,14 @@ from datapack_emulator.cli.common import (
     FAILED,
     OK,
     CliError,
+    add_schema_arguments,
     add_source_arguments,
     add_vanilla_arguments,
     add_version_selection,
     chosen_versions,
     err,
     load_inputs,
+    schema_for,
     vanilla_for,
     versions_given,
 )
@@ -81,9 +83,10 @@ def command_check(arguments: argparse.Namespace) -> int:
     failed = False
     for version in chosen:
         vanilla = vanilla_for(arguments, version, inputs)
+        schema = schema_for(arguments, vanilla)
         problems = [
             problem
-            for problem in find_problems(inputs.datapack, version, vanilla)
+            for problem in find_problems(inputs.datapack, version, vanilla, schema)
             if SEVERITIES.index(problem.severity) <= lowest and (not codes or problem.code in codes)
         ]
         totals = count(problems)
@@ -93,6 +96,7 @@ def command_check(arguments: argparse.Namespace) -> int:
                 {
                     "version": version.id,
                     "client_jar": vanilla.version_id if vanilla else "",
+                    "schema": schema.version_id if schema else "",
                     "counts": totals,
                     "problems": [problem.to_dict() for problem in problems],
                 }
@@ -122,7 +126,8 @@ def register(subparsers) -> None:
         description="The problems dock: functions and tags that do not load, unknown "
         "selector options, SNBT and ids the version does not have, calls to missing "
         "functions, JSON resources with unknown conditions, item functions or entries, "
-        "advancements without criteria, and — as notes — unused functions and recursion. "
+        "advancements without criteria, JSON fields the version's own files never use "
+        "(with a client jar), and — as notes — unused functions and recursion. "
         "Nothing runs. Exit status 1 when there is an error (or, with --strict, a warning).",
     )
     add_source_arguments(check)
@@ -157,4 +162,5 @@ def register(subparsers) -> None:
         "--verbose", action="store_true", help="name the version and each problem's file"
     )
     add_vanilla_arguments(check)
+    add_schema_arguments(check)
     check.set_defaults(handler=command_check)

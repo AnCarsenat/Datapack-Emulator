@@ -23,7 +23,7 @@ import logging
 import traceback
 
 from datapack_emulator import __version__
-from datapack_emulator.cli import check, inspect, jars, projects, runs, world
+from datapack_emulator.cli import check, inspect, jars, projects, runs, schemas, world
 from datapack_emulator.cli.common import CRASHED, USAGE, CliError, err
 
 PROG = "datapack-emulator-cli"
@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     world.register(subparsers)
     inspect.register(subparsers)
     check.register(subparsers)
+    schemas.register(subparsers)
     projects.register(subparsers)
     jars.register(subparsers)
     return parser

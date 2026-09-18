@@ -1456,6 +1456,56 @@ def test_inspector_and_source_reveal_the_explorer_row_and_the_graph(app, window,
     assert "open a function" in window.statusBar().currentMessage()
 
 
+def test_problems_dock_checks_json_fields_against_the_jar(
+    app, window, make_pack, tmp_path, monkeypatch
+):
+    """With a client jar loaded, the dock reports fields the version's own
+    files never use (`datapack-emulator-cli schema` prints the same)."""
+    import json
+    import zipfile
+
+    from datapack_emulator.emulator.vanilla import VanillaAssets
+    from datapack_emulator.settings import PATHS
+
+    shaped = {
+        "type": "minecraft:crafting_shaped",
+        "category": "building",
+        "pattern": ["##"],
+        "key": {"#": "minecraft:oak_planks"},
+        "result": {"id": "minecraft:stick", "count": 4},
+    }
+    jar = tmp_path / "minecraft-1.21.4-client.jar"
+    entries = {"version.json": {"id": "1.21.4"}, "assets/minecraft/lang/en_us.json": {}}
+    for index in range(6):
+        entries[f"data/minecraft/recipe/s{index}.json"] = shaped
+    with zipfile.ZipFile(jar, "w") as archive:
+        for name, content in entries.items():
+            archive.writestr(name, json.dumps(content))
+
+    window.vanilla = VanillaAssets.from_jar(jar)
+    window.problems._schema_jar = None  # a new jar: the fields are learned again
+    monkeypatch.setattr(PATHS, "CACHE", tmp_path / "cache")  # where schemas are kept
+    window.datapacks.load(
+        make_pack(
+            {
+                "data/test/recipe/typo.json": {**shaped, "resutl": shaped["result"]},
+                "data/test/function/tick.mcfunction": "say hi\n",
+            }
+        )
+    )
+    window.combo_version.setCurrentText("1.21.4")
+    app.processEvents()
+    window.problems.refresh()
+
+    fields = [problem for problem in window.problems.problems if problem.code == "schema"]
+    assert [problem.message for problem in fields if problem.severity == "warning"] == [
+        "resutl: no 1.21.4 file read uses this field here"
+    ]
+    # the schema is learned once per jar, then read from the controller
+    learned = window.problems.schema()
+    assert learned is not None and window.problems.schema() is learned
+
+
 def test_problems_check_once_and_only_when_shown(app, window, make_pack):
     from unittest import mock
 

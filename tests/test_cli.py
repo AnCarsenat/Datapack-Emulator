@@ -1398,7 +1398,9 @@ def test_complete_and_rename_from_the_command_line(make_pack, tmp_path, capsys):
     assert "move " in out and "would rename" in out
     assert (pack / "data/test/function/helper.mcfunction").exists()
     assert main(["rename", str(pack), "test:helper", "test:deep/worker", "--apply"]) == 0
-    assert "renamed test:helper -> test:deep/worker: 1 file(s), 1 line(s)" in capsys.readouterr().out
+    assert (
+        "renamed test:helper -> test:deep/worker: 1 file(s), 1 line(s)" in capsys.readouterr().out
+    )
     assert (pack / "data/test/function/deep/worker.mcfunction").is_file()
     assert (pack / "data/test/function/tick.mcfunction").read_text() == (
         "function test:deep/worker\n"
@@ -1434,3 +1436,93 @@ def test_project_samples_lists_the_packs_to_start_from(capsys, monkeypatch, tmp_
     monkeypatch.setattr(PATHS, "PACKAGED_SAMPLES", Path("/no/such/folder"))
     assert main(["project", "samples"]) == 1
     assert "no sample pack in" in capsys.readouterr().err
+
+
+def test_schema_prints_what_a_version_holds_and_check_reads_it(
+    make_pack, tmp_path, scratch, capsys, monkeypatch
+):
+    """`schema` reads a client jar's own data pack; `check` uses the same
+    schema, and `--schema FILE` works where there is no jar."""
+    import json
+    import zipfile
+
+    from datapack_emulator.settings import PATHS
+
+    monkeypatch.setattr(PATHS, "CACHE", tmp_path / "cache")
+    jar = tmp_path / "minecraft-1.21.4-client.jar"
+    shaped = {
+        "type": "minecraft:crafting_shaped",
+        "category": "building",
+        "pattern": ["##"],
+        "key": {"#": "minecraft:oak_planks"},
+        "result": {"id": "minecraft:stick", "count": 4},
+    }
+    entries = {"version.json": {"id": "1.21.4"}, "assets/minecraft/lang/en_us.json": {}}
+    for index in range(6):
+        entries[f"data/minecraft/recipe/s{index}.json"] = shaped
+    with zipfile.ZipFile(jar, "w") as archive:
+        for name, content in entries.items():
+            archive.writestr(name, json.dumps(content))
+
+    assert main(["schema", "--vanilla", str(jar)]) == 0
+    assert "recipe" in capsys.readouterr().out
+    assert main(["schema", "recipe", "--vanilla", str(jar)]) == 0
+    assert "minecraft:crafting_shaped" in capsys.readouterr().out
+    assert main(["schema", "recipe", "minecraft:crafting_shaped", "--vanilla", str(jar)]) == 0
+    out = capsys.readouterr().out
+    assert "pattern" in out and "always" in out
+    assert main(["schema", "recipe", "minecraft:nothing", "--vanilla", str(jar)]) == 2
+    assert "has no type minecraft:nothing" in capsys.readouterr().err
+    assert main(["schema", "nothing", "--vanilla", str(jar)]) == 2
+    assert "has no nothing files read" in capsys.readouterr().err
+
+    # --write saves the whole schema: a folder or --json with it is a mistake
+    assert main(["schema", "recipe", "--vanilla", str(jar), "--write", "x.json"]) == 2
+    assert "--write saves the whole schema" in capsys.readouterr().err
+    # a written schema is a schema: it takes no jar
+    assert main(["schema", "--read", "x.json", "--version", "1.21.4"]) == 2
+    assert "takes no version or client jar" in capsys.readouterr().err
+
+    written = tmp_path / "schema.json"
+    assert main(["schema", "--vanilla", str(jar), "--write", str(written)]) == 0
+    assert str(written) in capsys.readouterr().out
+    assert written.is_file()
+    assert main(["schema", "recipe", "--read", str(written), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["dispatch"] == "type"
+
+    pack = make_pack(
+        {
+            "data/test/recipe/typo.json": {
+                "type": "minecraft:crafting_shaped",
+                "category": "building",
+                "pattern": ["##"],
+                "key": {"#": "minecraft:oak_planks"},
+                "resutl": {"id": "minecraft:stick", "count": 4},
+            }
+        }
+    )
+    # exit 1: the pack's own tag points at a function it does not have
+    assert main(["check", str(pack), "--version", "1.21.4", "--vanilla", str(jar)]) == 1
+    assert "no 1.21.4 file read uses this field" in capsys.readouterr().out
+    # the same, from a written schema and with no jar at all
+    assert (
+        main(
+            [
+                "check",
+                str(pack),
+                "--version",
+                "1.21.4",
+                "--no-vanilla",
+                "--schema",
+                str(written),
+                "--code",
+                "schema",
+            ]
+        )
+        == 0
+    )
+    assert "resutl" in capsys.readouterr().out
+    assert (
+        main(["check", str(pack), "--version", "1.21.4", "--vanilla", str(jar), "--no-schema"]) == 1
+    )
+    assert "resutl" not in capsys.readouterr().out

@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from datapack_emulator.emulator.analysis.problems import SEVERITIES, Problem, count, find_problems
+from datapack_emulator.emulator.analysis.schema import Schema, schema_for
+from datapack_emulator.settings.main import PATHS
 from datapack_emulator.window.controllers.base import Controller
 
 log = logging.getLogger(__name__)
@@ -43,6 +45,10 @@ class ProblemsController(Controller):
         self.problems: list[Problem] = []
         #: the pack, version or jar changed since the last check
         self.stale = False
+        #: the jar the fields were learned from (path, when, how big), and
+        #: what was learned from it
+        self._schema_jar: tuple[str, int, int] | None = None
+        self._schema: Schema | None = None
         self._refresh_timer = QTimer(window)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(lambda: self.refresh())
@@ -60,6 +66,9 @@ class ProblemsController(Controller):
         self.combo_severity.currentIndexChanged.connect(lambda _index: self.fill())
         self.edit_filter.textChanged.connect(lambda _text: self._filter_timer.start())
         window.dock_problems.visibilityChanged.connect(self._on_visibility)
+        fields = window._action("actioncheck_fields")
+        if fields is not None:
+            fields.triggered.connect(lambda _checked: self.refresh())
         self.tree.itemDoubleClicked.connect(lambda item, _column: self.open(item))
         self.tree.customContextMenuRequested.connect(self.menu)
 
@@ -88,7 +97,9 @@ class ProblemsController(Controller):
             self.fill()
             return
         try:
-            self.problems = find_problems(window.datapack, window.version, window.vanilla)
+            self.problems = find_problems(
+                window.datapack, window.version, window.vanilla, self.schema()
+            )
         except Exception as exc:  # a bug in a check must not break loading
             log.exception("checking the pack failed")
             self.problems = []
@@ -106,6 +117,36 @@ class ProblemsController(Controller):
             window.dock_problems.show()
             window.dock_problems.raise_()
             self.status(self.label.text())
+
+    def schema(self) -> Schema | None:
+        """The fields of the loaded jar's own files, learned once per jar
+        (reading a jar's data folder takes a moment; it is kept in the cache).
+        ``datapack-emulator-cli schema`` prints the same thing, and its
+        ``check --no-schema`` is this dock's *check JSON fields* entry."""
+        window = self.window
+        if not self.checks_fields():
+            return None
+        jar = getattr(window.vanilla, "jar_path", None)
+        if jar is None:
+            return None
+        try:  # a jar written again in place is another jar
+            stat = jar.stat()
+            key = (str(jar), stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            key = (str(jar), 0, 0)
+        if self._schema_jar != key:
+            self._schema_jar = key
+            try:
+                self._schema = schema_for(window.vanilla, PATHS.CACHE)
+            except Exception:  # a schema is a nicety: never break the check
+                log.exception("cannot read the fields of %s", jar)
+                self._schema = None
+        return self._schema
+
+    def checks_fields(self) -> bool:
+        """Whether *run › check JSON fields against the client jar* is on."""
+        action = self.window._action("actioncheck_fields")
+        return action is None or action.isChecked()
 
     def visible(self) -> list[Problem]:
         lowest = SEVERITIES.index(self.combo_severity.currentText() or "info")

@@ -17,7 +17,7 @@ falls back to the packaged one.
 
 The packaged pack belongs to pip: an update replaces it, and the folder may be
 read-only. So the window's cold start and
-[`project samples --install`](cli.md#project--saved-projects-and-recent-files)
+[`project samples --install`](cli.md#project--dpemu-files)
 **copy** it into the per-user samples folder and open the copy
 (`project.default_sample(copy=True)`); an existing copy is never overwritten.
 `project samples` on its own only prints where the packs are.
@@ -69,7 +69,7 @@ An installed copy keeps its projects and the window's reports in the per-user
 and the client jars, unpacked projects and window state in the per-user
 **cache** folder (`~/.cache/datapack-emulator`, `~/Library/Caches/datapack-emulator`,
 `%LOCALAPPDATA%\datapack-emulator\cache`) — see
-[architecture](architecture.md#folders) and `settings/main.py`. The command
+[architecture](architecture.md) and `settings/main.py`. The command
 line writes its own reports next to where it runs (`./generated/`, or
 `--html`), not in those folders.
 

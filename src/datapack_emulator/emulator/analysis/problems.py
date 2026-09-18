@@ -56,6 +56,7 @@ CODES = (
     "loot-entry",
     "advancement",
     "recipe",
+    "schema",
     "snbt",
     "missing-function",
     "missing-tag",
@@ -96,10 +97,14 @@ class Problem:
 class _Scan:
     """What one check reads, computed once (views rebuild their dicts)."""
 
-    def __init__(self, datapack: Any, version: Version, vanilla: Any | None):
+    def __init__(
+        self, datapack: Any, version: Version, vanilla: Any | None, schema: Any | None = None
+    ):
         self.datapack = datapack
         self.version = version
         self.vanilla = vanilla
+        #: an analysis.schema.Schema of this version's own files, or None
+        self.schema = schema
         self.view = datapack.view_for(version)
         self.functions = self.view.functions
         self.tags = self.view.function_tags
@@ -126,15 +131,20 @@ class _Scan:
 
 
 def find_problems(
-    datapack: Any, version: str | Version, vanilla: Any | None = None
+    datapack: Any,
+    version: str | Version,
+    vanilla: Any | None = None,
+    schema: Any | None = None,
 ) -> list[Problem]:
     """Every problem of ``datapack`` (a Datapack or DatapackSet) in
-    ``version``, errors first; ``vanilla`` (VanillaAssets) lets ids be checked."""
-    scan = _Scan(datapack, versions.parse(version), vanilla)
+    ``version``, errors first; ``vanilla`` (VanillaAssets) lets ids be checked,
+    and ``schema`` (analysis.schema.Schema) the fields of each JSON file."""
+    scan = _Scan(datapack, versions.parse(version), vanilla, schema)
     problems = list(_pack(scan))
     problems += _load_failures(scan)
     problems += _function_lines(scan)
     problems += _json_resources(scan)
+    problems += _schema_fields(scan)
     problems += _graph(scan)
     order = {severity: index for index, severity in enumerate(SEVERITIES)}
     unique = list(dict.fromkeys(problems))
@@ -352,6 +362,41 @@ def _json_resources(scan: _Scan) -> Iterator[Problem]:
     for resource in scan.resources("recipe"):
         if not resource.error:
             yield from _recipe(resource, scan)
+
+
+def _schema_fields(scan: _Scan) -> Iterator[Problem]:
+    """What a file says that the version's own files never say (analysis.schema)."""
+    schema = scan.schema
+    if schema is None:
+        return
+    if not _same_version(schema.version_id, scan.version):
+        # another version writes its files differently: checking against them
+        # would report the difference as the pack's mistake
+        yield Problem(
+            "info",
+            "schema",
+            f"JSON fields are not checked: the client jar is {schema.version_id}, "
+            f"the emulated version is {scan.version.id}",
+        )
+        return
+    for folder in sorted(schema.folders):
+        for resource in scan.resources(folder):
+            if resource.error:
+                continue
+            for issue in schema.check(resource.content, folder):
+                yield _problem(
+                    resource,
+                    issue.severity,
+                    "schema",
+                    f"{issue.where or 'the file'}: {issue.message}",
+                )
+
+
+def _same_version(version_id: str, version: Version) -> bool:
+    try:
+        return versions.parse(version_id) == version
+    except (KeyError, ValueError):
+        return False
 
 
 def _type_id(value: Any) -> str | None:
