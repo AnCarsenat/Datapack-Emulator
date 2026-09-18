@@ -391,6 +391,8 @@ def command_complete(arguments: argparse.Namespace) -> int:
     cursor = arguments.cursor
     if cursor is not None and not 0 <= cursor <= len(line):
         raise CliError(f"--cursor must be between 0 and {len(line)}")
+    if arguments.limit < 1:
+        raise CliError("--limit must be 1 or more")
     found = complete(line, cursor, version, view=view, vanilla=vanilla, limit=arguments.limit)
     if arguments.json:
         print(
@@ -448,7 +450,7 @@ def command_rename(arguments: argparse.Namespace) -> int:
     moves = sum(edit.kind == "move" for edit in edits)
     lines = len(edits) - moves
     done = "renamed" if arguments.apply else "would rename"
-    print(f"{done} {arguments.function} -> {arguments.new_id}: {moves} file, {lines} line(s)")
+    print(f"{done} {arguments.function} -> {arguments.new_id}: {moves} file(s), {lines} line(s)")
     if not arguments.apply:
         print("nothing was written: --apply does it")
     return OK

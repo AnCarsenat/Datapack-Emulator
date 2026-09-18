@@ -292,10 +292,24 @@ class EditorController(Controller):
             return False
         moved = next(Path(edit.after) for edit in edits if edit.kind == "move")
         window.output.app(f"renamed {function_id} to {new_id.strip()} ({lines} line(s))")
+        self._follow_rename(function_id, new_id.strip())
         window.datapacks.reload()
         window.navigation.show_source(moved, ask=False)
         self.status(f"renamed {function_id} to {new_id.strip()}: {lines} line(s) followed")
         return True
+
+    def _follow_rename(self, old_id: str, new_id: str) -> None:
+        """What the window keeps under the old id: the function's note and its
+        breakpoints (``shift_breakpoints`` does the same for moved lines)."""
+        window = self.window
+        notes = window.project.function_notes
+        note = notes.pop(old_id, "")
+        if note:
+            notes[new_id] = note
+        moved = window.debug.debugger.rename(old_id, new_id)
+        if note or moved:
+            window.projects.mark_modified()
+        window.debug.fill_breakpoints()
 
     # -- checking as you type --------------------------------------------------
 

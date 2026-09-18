@@ -258,3 +258,116 @@ def test_renaming_writes_nothing_when_a_file_cannot_be_written(pack):
     assert "test:helper" in locked.read_text()
     advancement = (root / "data/test/advancement/done.json").read_text()
     assert "test:helper" in advancement  # and nothing else was written either
+
+
+def test_completion_is_quiet_where_a_command_cannot_go(pack):
+    from datapack_emulator.emulator import versions
+
+    view = pack.view_for(versions.parse("1.21.4"))
+    for line in (
+        'say "hello run ',  # inside a string
+        "say run ",  # the word run in a message
+        "tag @s add run ",  # ... or in an argument
+        "# this will run ",  # a comment
+        "execute as ",  # an entity is wanted
+        "execute positioned 1 2 ",  # a third coordinate is wanted
+    ):
+        assert texts(line, version="1.21.4", view=view) == [], line
+    # a tab separates words like a space does
+    assert texts("execute\tif ", version="1.21.4") == texts("execute if ", version="1.21.4")
+    # after an execute chain's run, a whole command is wanted again
+    assert "say" in texts("execute as @a run sa", version="1.21.4")
+    # selector options the version does not have are not offered
+    assert "predicate" not in texts("execute as @e[", version="1.14")
+    assert "predicate" in texts("execute as @e[", version="1.21.4")
+
+
+def test_renaming_keeps_a_file_as_it_was_written(make_pack):
+    """CRLF stays CRLF, and a rollback restores the bytes."""
+    root = make_pack({"data/test/function/helper.mcfunction": "say hi\n"})
+    crlf = root / "data/test/function/tick.mcfunction"
+    crlf.write_bytes(b"function test:helper\r\nsay done\r\n")
+    pack = Datapack.load(root)
+
+    rename_function(pack, "test:helper", "test:worker", version="1.21.4", apply=True)
+    assert crlf.read_bytes() == b"function test:worker\r\nsay done\r\n"
+
+    # and when a write fails, every file is byte-identical afterwards
+    before = crlf.read_bytes()
+    pack = Datapack.load(root)
+    (root / "data/test/function").chmod(0o555)
+    try:
+        with pytest.raises(RenameError):
+            rename_function(pack, "test:worker", "other:deep/one", version="1.21.4", apply=True)
+    finally:
+        (root / "data/test/function").chmod(0o755)
+    assert crlf.read_bytes() == before
+    assert not (root / "data/other").exists()  # the folders it made are gone too
+
+
+def test_renaming_does_not_follow_a_symlink_out_of_the_pack(make_pack, tmp_path):
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"note": "test:helper"}\n', encoding="utf-8")
+    root = make_pack(
+        {
+            "data/test/function/helper.mcfunction": "say hi\n",
+            "data/test/function/tick.mcfunction": "function test:helper\n",
+        }
+    )
+    (root / "data/test/linked.json").symlink_to(outside)
+    pack = Datapack.load(root)
+
+    rename_function(pack, "test:helper", "test:worker", version="1.21.4", apply=True)
+    assert outside.read_text() == '{"note": "test:helper"}\n'
+    assert (root / "data/test/function/tick.mcfunction").read_text() == "function test:worker\n"
+
+
+def test_renaming_a_minecraft_function_leaves_json_strings_alone(make_pack):
+    """A bare id is a function call in a command; in JSON it is any string."""
+    root = make_pack(
+        {
+            "data/minecraft/function/helper.mcfunction": "say hi\n",
+            "data/minecraft/function/tick.mcfunction": "function helper\n",
+            "data/test/predicate/p.json": {"condition": "minecraft:value_check", "helper": 3},
+        }
+    )
+    pack = Datapack.load(root)
+    rename_function(pack, "minecraft:helper", "minecraft:worker", version="1.21.4", apply=True)
+    assert (root / "data/minecraft/function/tick.mcfunction").read_text() == (
+        "function minecraft:worker\n"
+    )
+    assert json.loads((root / "data/test/predicate/p.json").read_text())["helper"] == 3
+
+
+def test_renaming_refuses_an_id_that_is_not_a_place_in_the_pack(pack):
+    for new_id in (".:x", "test:./x", "test:a//b", "test:x/"):
+        with pytest.raises(RenameError):
+            rename_function(pack, "test:helper", new_id, version="1.21.4")
+
+
+def test_renaming_moves_only_the_pack_the_function_comes_from(make_pack):
+    from datapack_emulator.emulator.datapack import DatapackSet
+
+    first = make_pack(
+        {
+            "data/test/function/helper.mcfunction": "say first\n",
+            "data/test/function/tick.mcfunction": "function test:helper\n",
+        }
+    )
+    second = make_pack(
+        {
+            "data/test/function/helper.mcfunction": "say second\n",
+            "data/test/function/other.mcfunction": "function test:helper\n",
+        }
+    )
+    packs = DatapackSet.load([first, second])
+
+    rename_function(packs, "test:helper", "test:worker", version="1.21.4", apply=True)
+    # the later pack wins the id, so its file is the one that moves
+    assert (second / "data/test/function/worker.mcfunction").read_text() == "say second\n"
+    assert (first / "data/test/function/helper.mcfunction").read_text() == "say first\n"
+    # references follow in both, so the set still calls the function that runs
+    for pack, name in ((first, "tick"), (second, "other")):
+        assert (pack / f"data/test/function/{name}.mcfunction").read_text() == (
+            "function test:worker\n"
+        )

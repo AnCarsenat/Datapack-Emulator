@@ -1389,6 +1389,8 @@ def test_complete_and_rename_from_the_command_line(make_pack, tmp_path, capsys):
     # an unknown version reads like everywhere else, not as a traceback
     assert main(["complete", "function ", "--version", "nosuchversion"]) == 2
     assert "unknown Minecraft version" in capsys.readouterr().err
+    assert main(["complete", "execute ", "--limit", "0"]) == 2
+    assert "--limit must be 1 or more" in capsys.readouterr().err
 
     # rename prints what it would do, then does it
     assert main(["rename", str(pack), "test:helper", "test:deep/worker"]) == 0
@@ -1396,7 +1398,7 @@ def test_complete_and_rename_from_the_command_line(make_pack, tmp_path, capsys):
     assert "move " in out and "would rename" in out
     assert (pack / "data/test/function/helper.mcfunction").exists()
     assert main(["rename", str(pack), "test:helper", "test:deep/worker", "--apply"]) == 0
-    assert "renamed test:helper -> test:deep/worker: 1 file, 1 line(s)" in capsys.readouterr().out
+    assert "renamed test:helper -> test:deep/worker: 1 file(s), 1 line(s)" in capsys.readouterr().out
     assert (pack / "data/test/function/deep/worker.mcfunction").is_file()
     assert (pack / "data/test/function/tick.mcfunction").read_text() == (
         "function test:deep/worker\n"

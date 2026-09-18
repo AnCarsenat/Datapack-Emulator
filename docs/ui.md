@@ -178,9 +178,10 @@ current version.
   function shown: its file moves to the new id's path and every reference to
   the id in the pack's `data/` follows, after a confirmation saying how many
   lines change ([`rename`](cli.md#rename--a-function-and-its-references) does
-  the same, and says what it reads and what it leaves alone). It is refused
-  while the debugger is stopped, and unsaved edits are only asked about once
-  the rename is agreed. Images are shown read-only. Right-click a line to:
+  the same, and says what it reads and what it leaves alone). The function's
+  note and its breakpoints follow the new id. It is refused while the debugger
+  is stopped, and unsaved edits are only asked about once the rename is
+  agreed. Images are shown read-only. Right-click a line to:
   * **analyze this line** (also Ctrl+I): the inspector explains it without
     running it — what the command does, each `execute` step in words (who,
     where, which condition), what each selector matches, the functions and

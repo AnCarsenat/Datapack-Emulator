@@ -34,6 +34,21 @@ ID_ARGUMENTS: dict[str, tuple[str, int]] = {
 }
 #: what `schedule` can be followed by
 SCHEDULE_SUBCOMMANDS = ("clear", "function")
+#: selector options the game gained after the oldest version gating covers
+SELECTOR_SINCE = {"predicate": "1.15"}
+#: how many words an `execute` subcommand takes before another one may start
+#: (its own arguments; only the fixed-length ones are listed)
+SUBCOMMAND_WORDS = {
+    "as": 1,
+    "at": 1,
+    "in": 1,
+    "on": 1,
+    "anchored": 1,
+    "align": 1,
+    "positioned": 3,
+    "rotated": 2,
+    "summon": 1,
+}
 
 
 @dataclass(frozen=True)
@@ -93,7 +108,7 @@ def _tokens(before: str) -> list[str]:
     body = before
     if body[:1] in LINE_PREFIXES:
         body = body[1:]
-    return [token for token in body.split(" ") if token]
+    return body.split()  # any whitespace: a tab separates words too
 
 
 def _in_quotes(before: str) -> bool:
@@ -109,10 +124,12 @@ def _wants_function(tokens: list[str]) -> bool:
 
 
 def _executable(tokens: list[str]) -> bool:
-    """Whether a whole command is expected next (the start, or after ``run``)."""
+    """Whether a whole command is expected next: the start of the line, or
+    after an ``execute`` chain's ``run`` (the word ``run`` in a message is
+    not one)."""
     if not tokens:
         return True
-    return tokens[-1] in ("run",)
+    return tokens[-1] == "run" and tokens[0] == "execute"
 
 
 def complete(
@@ -134,20 +151,22 @@ def complete(
     tokens = _tokens(before)
     candidates: list[Candidate] = []
 
+    if _in_quotes(before) or before.lstrip().startswith("#"):
+        return []  # inside a string, or a comment: nothing here is a command
     if _inside_selector(before):
         if not _expects_option_value(before):
             candidates = [
-                Candidate(option, "selector-option") for option in sorted(SELECTOR_OPTIONS)
+                Candidate(option, "selector-option", _option_since(option, parsed))
+                for option in sorted(SELECTOR_OPTIONS)
+                if _has_option(option, parsed)
             ]
         elif before.rstrip().endswith(("type=", "type=!")):
             candidates = _ids(vanilla, "entity_type")
     elif _executable(tokens):
         candidates = [
-            Candidate(name, "command", _since(name, parsed))
+            Candidate(name, "command", _since(name))
             for name in sorted(versions.vanilla_commands(parsed))
         ]
-    elif _in_quotes(before):
-        candidates = []
     elif _wants_function(tokens):
         candidates = _functions(view)
     elif tokens == ["schedule"]:
@@ -164,9 +183,19 @@ def complete(
     return matching[:limit]
 
 
-def _since(name: str, version: Version) -> str:
+def _since(name: str) -> str:
     since = versions.since_of(f"command:{name}")
     return f"since {since.id}" if since else ""
+
+
+def _has_option(option: str, version: Version) -> bool:
+    since = SELECTOR_SINCE.get(option)
+    return since is None or versions.parse(since) <= version
+
+
+def _option_since(option: str, version: Version) -> str:
+    since = SELECTOR_SINCE.get(option)
+    return f"since {since}" if since and versions.parse(since) <= version else ""
 
 
 def _execute(tokens: list[str], version: Version, vanilla: Any | None) -> list[Candidate]:
@@ -184,12 +213,25 @@ def _execute(tokens: list[str], version: Version, vanilla: Any | None) -> list[C
             Candidate(name, "store", f"since {since}" if since else "")
             for name, since in sorted(_feature_names("store", version))
         ]
-    if last in names and last != "run":  # its own argument comes first
+    if _in_arguments(tokens, names):  # a subcommand's own arguments come first
         return []
     return [
         Candidate(name, "subcommand", f"since {since}" if since else "")
         for name, since in sorted(names.items())
     ]
+
+
+def _in_arguments(tokens: list[str], names: dict[str, str]) -> bool:
+    """Whether the words typed so far are still one subcommand's arguments."""
+    for index in range(len(tokens) - 1, 0, -1):
+        word = tokens[index]
+        if word not in names:
+            continue
+        wanted = SUBCOMMAND_WORDS.get(word)
+        if wanted is None:  # if/unless/store/run: their own branches say
+            return False
+        return len(tokens) - index - 1 < wanted
+    return False
 
 
 def _functions(view: Any | None) -> list[Candidate]:
