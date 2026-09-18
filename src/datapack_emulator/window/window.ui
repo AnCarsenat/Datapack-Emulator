@@ -1011,6 +1011,7 @@ QMenuBar::item:selected {
     <addaction name="actionsearch_pack"/>
     <addaction name="separator"/>
     <addaction name="actionanalyze_line"/>
+    <addaction name="actionshow_in_graph"/>
    </widget>
    <widget class="QMenu" name="menurun">
     <property name="title">
@@ -2629,6 +2630,17 @@ QMenuBar::item:selected {
    </property>
    <property name="checked">
     <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionshow_in_graph">
+   <property name="text">
+    <string>show in call graph</string>
+   </property>
+   <property name="statusTip">
+    <string>open the call graph centred on the source view's function, with its callers and calls ringed</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+G</string>
    </property>
   </action>
  </widget>

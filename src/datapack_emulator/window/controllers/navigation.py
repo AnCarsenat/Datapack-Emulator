@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt, QUrl
+from PySide6.QtCore import QAbstractItemModel, QPoint, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QMenu
 
-from datapack_emulator.window.controllers.base import TAB_SOURCE, Controller
+from datapack_emulator.window.controllers.base import TAB_GRAPH, TAB_SOURCE, Controller
 from datapack_emulator.window.panels import (
     PACK_INDEX_ROLE,
     PATH_ROLE,
@@ -73,19 +73,21 @@ class NavigationController(Controller):
         if path is not None and path.is_file():
             self.show_source(path, line)
 
-    def function_path(self, function_id: str) -> Path | None:
-        """Where a function or tag id lives in the version being emulated."""
+    def resource_of(self, resource_id: str):
+        """The function (``ns:id``) or function tag (``#ns:id``) the version
+        reads; a plain id that names no function falls back to the tag."""
         window = self.window
         if window.datapack is None:
             return None
         view = window.datapack.view_for(window.version)
-        function = view.function(function_id.lstrip("#"))
-        if function is not None:
-            return function.path
-        tag = view.function_tags.get(
-            function_id if function_id.startswith("#") else f"#{function_id}"
-        )
-        return tag.path if tag is not None else None
+        if resource_id.startswith("#"):
+            return view.function_tags.get(resource_id)
+        return view.function(resource_id) or view.function_tags.get(f"#{resource_id}")
+
+    def function_path(self, function_id: str) -> Path | None:
+        """Where a function or tag id lives in the version being emulated."""
+        resource = self.resource_of(function_id)
+        return resource.path if resource is not None else None
 
     def open_function(self, function_id: str, line: int = 0) -> None:
         """Right-click target from the graph, the profiler and the logs."""
@@ -104,7 +106,9 @@ class NavigationController(Controller):
             self._highlighter.setParent(None)
             self._highlighter = None
 
-    def show_source(self, path: Path, line: int = 0) -> None:
+    def show_source(self, path: Path, line: int = 0, reveal: bool = True) -> None:
+        """Open a file in the source view; ``reveal`` selects it in the
+        explorer too (not when the click came from the explorer)."""
         window = self.window
         self.source_path = path
         window.source_label.setText(f"{path}:{line}" if line else str(path))
@@ -127,7 +131,71 @@ class NavigationController(Controller):
                 window.source_edit.setTextCursor(cursor)
                 window.source_edit.centerCursor()
         window.debug.refresh_gutter()
+        if reveal:
+            self.reveal_in_explorer(path)
         window.tabs.setCurrentWidget(window.tab_page(TAB_SOURCE))
+
+    # -- the explorer ---------------------------------------------------------
+
+    def reveal_in_explorer(self, path: Path | None) -> bool:
+        """Select a file's row in the explorer, expanding its folders and
+        scrolling to it; whether the explorer has it."""
+        tree = self.window.tree
+        model: QAbstractItemModel | None = tree.model()
+        if path is None or model is None or model.rowCount() == 0:
+            return False
+        matches = model.match(
+            model.index(0, 0),
+            PATH_ROLE,
+            str(path),
+            1,
+            Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+        )
+        if not matches:
+            return False
+        index = matches[0]
+        if tree.currentIndex() == index:
+            return True  # already there: do not move the row under the mouse
+        parent = index.parent()
+        while parent.isValid():
+            tree.expand(parent)
+            parent = parent.parent()
+        tree.setCurrentIndex(index)
+        tree.scrollTo(index, tree.ScrollHint.EnsureVisible)
+        return True
+
+    def show_panels(self, path: Path | None) -> None:
+        """The inspector in front, and the explorer showing ``path``'s row."""
+        window = self.window
+        window.dock_inspector.show()
+        window.dock_inspector.raise_()
+        window.dock_explorer.show()
+        if window.dock_explorer not in window.tabifiedDockWidgets(window.dock_inspector):
+            window.dock_explorer.raise_()
+        self.reveal_in_explorer(path)
+
+    # -- the call graph ---------------------------------------------------------
+
+    def show_in_graph(self, function_id: str | None = None) -> None:
+        """The call graph tab, centred on a function (default: the one in the
+        source view) with its callers and calls ringed."""
+        window = self.window
+        if function_id is None:
+            function_id = self.resource_id_at(self.source_path)
+        if function_id is None:
+            self.status("open a function or function tag in the source view first")
+            return
+        if window.call_graph is None or window.graph_widget.graph is not window.call_graph:
+            window.runs.run_graphview()
+        window.tabs.setCurrentWidget(window.tab_page(TAB_GRAPH))
+        if window.graph_widget.focus(function_id):
+            graph = window.call_graph
+            self.status(
+                f"{function_id}: called by {len(set(graph.predecessors(function_id)))}, "
+                f"calls {len(set(graph.successors(function_id)))}"
+            )
+        else:
+            self.status(f"{function_id} is not in the call graph of {window.version.id}")
 
     # -- analysing lines ------------------------------------------------------
 
@@ -140,6 +208,32 @@ class NavigationController(Controller):
         for function_id, function in view.functions.items():
             if function.path == path:
                 return function_id
+        return None
+
+    def resource_id_at(self, path: Path | None) -> str | None:
+        """The function or function tag (``#id``) a file is, in the version
+        being emulated; for a file that version does not use (another
+        overlay, another pack's copy), the id its folders give it."""
+        window = self.window
+        if path is None or window.datapack is None:
+            return None
+        function_id = self.function_at(path)
+        if function_id is not None:
+            return function_id
+        view = window.datapack.view_for(window.version)
+        for tag_id, tag in view.function_tags.items():
+            if tag.path == path:
+                return tag_id
+        parts = path.with_suffix("").parts
+        for index in range(len(parts) - 1, -1, -1):
+            if parts[index] != "data" or index + 3 > len(parts):
+                continue
+            namespace, rest = parts[index + 1], parts[index + 2 :]
+            if rest[0] in ("function", "functions") and len(rest) > 1:
+                return f"{namespace}:{'/'.join(rest[1:])}"
+            if rest[0] == "tags" and len(rest) > 2 and rest[1] in ("function", "functions"):
+                return f"#{namespace}:{'/'.join(rest[2:])}"
+            break
         return None
 
     def line_text(self, function_id: str, line: int) -> str | None:
@@ -158,8 +252,9 @@ class NavigationController(Controller):
         cursor = self.window.source_edit.textCursor()
         return cursor.block().text(), cursor.blockNumber() + 1
 
-    def analyze(self, text: str, where: str = "") -> None:
-        """Explain one command line in the inspector."""
+    def analyze(self, text: str, where: str = "", function_id: str | None = None) -> None:
+        """Explain one command line in the inspector (``function_id``: the
+        function it comes from, shown in the explorer)."""
         from datapack_emulator.emulator.analysis.explain import explain_line
 
         window = self.window
@@ -168,8 +263,11 @@ class NavigationController(Controller):
         if where:
             rows.insert(0, ("from", where))
         window.datapacks.fill_inspector(rows)
-        window.dock_inspector.show()
-        window.dock_inspector.raise_()
+        if function_id:
+            self.show_panels(self.function_path(function_id))
+        else:
+            window.dock_inspector.show()
+            window.dock_inspector.raise_()
         self.status(f"analyzed {where or 'the line'} for {window.version.id}")
 
     def search(self, mode: int = 0) -> None:
@@ -193,8 +291,7 @@ class NavigationController(Controller):
         graph = window.call_graph or CallGraph.from_pack(window.datapack.view_for(window.version))
         rows = graph.relations(function_id)
         window.datapacks.fill_inspector(rows + window.notes.rows_for(function_id))
-        window.dock_inspector.show()
-        window.dock_inspector.raise_()
+        self.show_panels(self.function_path(function_id))
 
     def analyze_cursor_line(self) -> None:
         if self.source_path is None:
@@ -202,12 +299,15 @@ class NavigationController(Controller):
             return
         text, number = self.cursor_line()
         function_id = self.function_at(self.source_path)
-        self.analyze(text, f"{function_id or self.source_path.name}:{number}")
+        self.analyze(
+            text, f"{function_id or self.source_path.name}:{number}", function_id=function_id
+        )
 
     # -- menus ------------------------------------------------------------
 
-    def path_menu(self, path: Path | None, title: str = "") -> QMenu:
-        """The menu every file and folder gets."""
+    def path_menu(self, path: Path | None, title: str = "", in_explorer: bool = False) -> QMenu:
+        """The menu every file and folder gets (``in_explorer``: the explorer's
+        own, which needs no *show in explorer*)."""
         menu = QMenu(self.window)
         if title:
             menu.addAction(title).setEnabled(False)
@@ -217,6 +317,11 @@ class NavigationController(Controller):
             return menu
         if path.is_file():
             menu.addAction("open in source view", lambda: self.open_in_source(path))
+            if not in_explorer:
+                menu.addAction("show in explorer", lambda: self.reveal_in_explorer(path))
+            resource_id = self.resource_id_at(path)
+            if resource_id is not None:
+                menu.addAction("show in call graph", lambda: self.show_in_graph(resource_id))
             function_id = self.function_at(path)
             if function_id is not None:
                 menu.addAction(
@@ -258,6 +363,13 @@ class NavigationController(Controller):
             "show callers and calls", lambda: self.calls_and_callers(function_id)
         )
         graph.setEnabled(function_id is not None)
+        resource_id = self.resource_id_at(self.source_path)
+        in_graph = window._action("actionshow_in_graph")
+        if in_graph is not None:
+            in_graph.setEnabled(resource_id is not None)
+            menu.addAction(in_graph)
+        inspect = menu.addAction("show in inspector", lambda: self.inspect_function(resource_id))
+        inspect.setEnabled(resource_id is not None and self.resource_of(resource_id) is not None)
         note = menu.addAction(
             "edit note on this function…",
             lambda: self.window.notes.edit_function_note(function_id),
@@ -271,7 +383,7 @@ class NavigationController(Controller):
         index = tree.indexAt(point)
         value = index.data(PATH_ROLE) if index.isValid() else None
         path = Path(value) if value else None
-        menu = self.path_menu(path, path.name if path else "")
+        menu = self.path_menu(path, path.name if path else "", in_explorer=True)
         pack_index = index.data(PACK_INDEX_ROLE) if index.isValid() else None
         menu.addSeparator()
         if pack_index is not None and window.datapack is not None:
@@ -300,14 +412,11 @@ class NavigationController(Controller):
         window = self.window
         if window.datapack is None:
             return
-        view = window.datapack.view_for(window.version)
-        resource = view.function(function_id.lstrip("#")) or view.function_tags.get(
-            function_id if function_id.startswith("#") else f"#{function_id}"
-        )
+        resource = self.resource_of(function_id)
         if resource is not None:
             rows = describe_resource(resource, window.version)
             window.datapacks.fill_inspector(rows + window.notes.rows_for(function_id))
-            window.dock_inspector.show()
+            self.show_panels(resource.path)
 
     def _on_profile_double_click(self, item, _column: int) -> None:
         from datapack_emulator.window.panels.profile import FUNCTION_ROLE

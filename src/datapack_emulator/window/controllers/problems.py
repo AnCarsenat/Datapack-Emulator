@@ -162,7 +162,9 @@ class ProblemsController(Controller):
             if text is not None:
                 menu.addAction(
                     "analyze the line",
-                    lambda: window.navigation.analyze(text, problem.where),
+                    lambda: window.navigation.analyze(
+                        text, problem.where, function_id=problem.resource
+                    ),
                 )
             menu.addAction(
                 "copy", lambda: window.navigation.copy_text(problem.format(), "the problem")

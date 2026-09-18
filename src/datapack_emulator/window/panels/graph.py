@@ -20,6 +20,11 @@ NODE_COLOURS = {
     "overlay": (41, 128, 185),
 }
 
+FOCUS_COLOUR = (231, 76, 60)
+#: how far ``focus`` zooms out around a node, in layout units
+MAX_FOCUS_HALF_WIDTH = 12.0
+MAX_FOCUS_HALF_HEIGHT = 5.0
+
 EDGE_COLOURS = {
     "call": (120, 120, 120),
     "tag": (142, 68, 173),
@@ -46,12 +51,64 @@ class FunctionGraphWidget(pg.GraphicsLayoutWidget):
         self._decorations: list[Any] = []
         self._positions: dict[str, tuple[float, float]] = {}
         self.graph: CallGraph | None = None
+        #: the node shown by ``focus``, ringed
+        self.focused: str | None = None
+        self._focus_items: list[Any] = []
 
     def clear_graph(self) -> None:
+        self._clear_focus()
         for item in self._decorations:
             self.plot.removeItem(item)
         self._decorations.clear()
         self.graph_item.setData()
+        self._positions = {}
+        self.graph = None
+
+    def _clear_focus(self) -> None:
+        for item in self._focus_items:
+            self.plot.removeItem(item)
+        self._focus_items.clear()
+        self.focused = None
+
+    def focus(self, node_id: str) -> bool:
+        """Ring a node and its direct calls and callers, and centre the view on
+        it; whether the graph has it."""
+        self._clear_focus()
+        if self.graph is None or node_id not in self._positions:
+            return False
+        x, y = self._positions[node_id]
+        neighbours = [
+            name
+            for name in (*self.graph.predecessors(node_id), *self.graph.successors(node_id))
+            if name in self._positions
+        ]
+        near = pg.ScatterPlotItem(
+            pos=_as_array([self._positions[name] for name in neighbours]).reshape(-1, 2),
+            size=24,
+            symbol="o",
+            brush=None,
+            pen=pg.mkPen(FOCUS_COLOUR, width=2),
+        )
+        ring = pg.ScatterPlotItem(
+            pos=_as_array([(x, y)]),
+            size=30,
+            symbol="o",
+            brush=None,
+            pen=pg.mkPen(FOCUS_COLOUR, width=4),
+        )
+        for item in (near, ring):
+            self.plot.addItem(item)
+            self._focus_items.append(item)
+        # centred on the node; wide enough for its neighbours, but never so
+        # wide that labels run together (the rest is a pan away)
+        dx = max((abs(self._positions[name][0] - x) for name in neighbours), default=0.0)
+        dy = max((abs(self._positions[name][1] - y) for name in neighbours), default=0.0)
+        half_width = min(dx + 3.0, MAX_FOCUS_HALF_WIDTH)
+        half_height = min(dy + 2.0, MAX_FOCUS_HALF_HEIGHT)
+        self.plot.setXRange(x - half_width, x + half_width, padding=0)
+        self.plot.setYRange(y - half_height, y + half_height, padding=0)
+        self.focused = node_id
+        return True
 
     def set_graph(self, graph: CallGraph) -> None:
         self.clear_graph()

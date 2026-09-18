@@ -30,7 +30,7 @@ layout changes are made in Qt Designer, never in code.
 | menu | entries |
 | --- | --- |
 | file | new / open / save / save as project ([projects](projects.md)) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
-| edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor |
+| edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor · show in call graph (the source view's function) |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · check pack (the problems dock) · version engine… · export call graph (.dot) |
 | debug | toggle breakpoint · remove all breakpoints · continue · step into · step over · step out · pause (see the [debugger](#debugger-dock)) |
 | view | explorer · inspector · logs · world · debugger · problems (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
@@ -125,7 +125,12 @@ current version.
     tick, calls and total ms for the whole run).
 * **Call graph** — layered DAG of `function`, `schedule`, `execute if function`
   and tag edges. Purple nodes are tags, blue ones come from an overlay, orange
-  ones are macros, red ones are called but missing.
+  ones are macros, red ones are called but missing. *Show in call graph*
+  (Ctrl+Shift+G, from the source view, the edit menu or a file's menu)
+  centres the view on a function or function tag and rings it in red, with
+  a thinner ring on its direct callers and calls; a busy node keeps a
+  readable zoom and the rest is a pan away. For a file the version does not
+  use (another overlay's copy), the id its folders give is shown.
 * **Source** — the selected file with syntax highlighting for `.mcfunction`
   (commands, subcommands, selectors, resource locations, NBT, macros,
   comments) and JSON/`pack.mcmeta`. Right-click a line to:
@@ -161,6 +166,12 @@ All six are open by default and can be toggled from *view*.
   load order: `pack.mcmeta`, `pack.png`, `data/`, and one subtree per overlay
   directory with its format range. Right-click a pack's root to remove it from
   the project or to load it earlier or later; *add datapack…* adds another.
+  It follows what you look at: *show in inspector* (from the call graph, the
+  profiler, notes or the source view), *show callers and calls*, *analyze*
+  from a log record, the problems dock or the source view, and opening a
+  file in the source view select that file's row, expanding the folders
+  above it (a `#tag` selects the tag's `.json`, not a function of the same
+  name). The inspector comes to the front, and a hidden explorer is shown.
 * **inspector** — facts about the selection: for the pack, its declared
   formats and active overlays for the current version; for a function, its
   calls, estimated cost, and which features it uses that the current version
@@ -262,11 +273,11 @@ All six are open by default and can be toggled from *view*.
 
 | where | menu |
 | --- | --- |
-| explorer row | open in source view · open in external editor · open in external file manager · copy path |
-| call-graph node | same, plus *show in inspector*; tags open their `.json` |
+| explorer row | open in source view · show in call graph (functions and function tags) · open in external editor · open in external file manager · copy path |
+| call-graph node | same, plus *show in explorer* and *show in inspector*; tags open their `.json` |
 | profiler row | same as a graph node |
 | explorer file, call-graph node, profiler row of a function | also *edit note…* |
-| source view | the editor's own menu · analyze this line · run this line · add this line as a test · toggle breakpoint · run this function · show callers and calls · edit note on this function |
+| source view | the editor's own menu · analyze this line · run this line · add this line as a test · toggle breakpoint · run this function · show callers and calls · show in call graph · show in inspector · edit note on this function |
 | source view gutter | click: set or remove a breakpoint |
 | log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from (double-click too) · analyze the command · add the command as a test |
 | test | run this test · show its records in the logs · analyze the command · edit checks… · duplicate · move up / down · remove · add test |
@@ -299,6 +310,7 @@ file type or folders.
 | Ctrl+P | quick open |
 | Ctrl+Shift+F | search in pack |
 | Ctrl+I | analyze the source view's line |
+| Ctrl+Shift+G | show the source view's function in the call graph |
 | Ctrl+L | command line |
 | Ctrl+T | add the command line's command as a test |
 | F9 | toggle a breakpoint on the source view's line |
