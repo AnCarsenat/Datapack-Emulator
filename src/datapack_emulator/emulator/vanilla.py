@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 import urllib.request
 import zipfile
 from collections.abc import Callable, Iterable
@@ -311,6 +312,9 @@ class VanillaLibrary:
         self.cache_dir = Path(cache_dir)
         self.search_dirs = [Path(directory) for directory in search_dirs]
         self._loaded: dict[str, VanillaAssets] = {}
+        #: the engine window loads jars on a worker thread while the window may too
+        self._lock = threading.Lock()
+        self._version_locks: dict[str, threading.Lock] = {}
 
     # -- discovery --------------------------------------------------------
 
@@ -424,18 +428,25 @@ class VanillaLibrary:
         allow_download: bool = False,
         progress: Progress | None = None,
     ) -> VanillaAssets | None:
-        """Assets for ``version_id``, or ``None`` if no jar is available."""
+        """Assets for ``version_id``, or ``None`` if no jar is available.
+        Safe to call from several threads: each jar is read once."""
         cached = self._loaded.get(version_id)
         if cached is not None:
             return cached
-        jar = self.find(version_id)
-        if jar is None:
-            if not allow_download:
-                return None
-            jar = self.download(version_id, progress)
-        assets = VanillaAssets.from_jar(jar)
-        self._loaded[version_id] = assets
-        return assets
+        with self._lock:  # one lock per version: other versions load meanwhile
+            lock = self._version_locks.setdefault(version_id, threading.Lock())
+        with lock:
+            cached = self._loaded.get(version_id)
+            if cached is not None:
+                return cached
+            jar = self.find(version_id)
+            if jar is None:
+                if not allow_download:
+                    return None
+                jar = self.download(version_id, progress)
+            assets = VanillaAssets.from_jar(jar)
+            self._loaded[version_id] = assets
+            return assets
 
     def load_jar(self, jar_path: Path | str) -> VanillaAssets:
         assets = VanillaAssets.from_jar(jar_path)

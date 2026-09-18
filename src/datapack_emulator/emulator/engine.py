@@ -34,6 +34,8 @@ from datapack_emulator.emulator.vanilla import VanillaAssets, VanillaLibrary
 from datapack_emulator.emulator.versions import Version
 
 Progress = Callable[[int, int, Version], None]
+#: asked between ticks and versions; True ends the run early
+Cancelled = Callable[[], bool]
 
 
 @dataclass
@@ -61,6 +63,15 @@ class VersionRun:
     graph: CallGraph | None = None
     #: command tests run during the ticks, when the engine was given any
     tests: list[TestResult] = field(default_factory=list)
+    #: the run was cancelled before its last tick (``ticks`` says how far it got)
+    cancelled: bool = False
+    #: the ticks it was asked to run
+    planned_ticks: int = 0
+
+    @property
+    def ticks_summary(self) -> str:
+        """``20``, or ``7/20`` for a cancelled run."""
+        return f"{self.ticks}/{self.planned_ticks}" if self.cancelled else str(self.ticks)
 
     # -- summaries --------------------------------------------------------
 
@@ -90,20 +101,34 @@ class VersionRun:
         return sum(1 for result in self.tests if result.passed)
 
     @property
+    def tests_failed(self) -> int:
+        return sum(1 for result in self.tests if not result.passed and not result.skipped)
+
+    @property
+    def tests_skipped(self) -> int:
+        return sum(1 for result in self.tests if result.skipped)
+
+    @property
     def tests_summary(self) -> str:
-        return f"{self.tests_passed}/{len(self.tests)}" if self.tests else "-"
+        if not self.tests:
+            return "-"
+        ran = len(self.tests) - self.tests_skipped
+        skipped = f" ({self.tests_skipped} skipped)" if self.tests_skipped else ""
+        return f"{self.tests_passed}/{ran}{skipped}"
 
     @property
     def status(self) -> str:
-        """errors > tests failed > warnings > unsupported > ok.
+        """errors > tests failed > cancelled > warnings > unsupported > ok.
 
         "unsupported" only means the pack's metadata does not claim this version:
         the game still loads it, so real problems take precedence.
         """
         if self.errors:
             return "errors"
-        if self.tests_passed < len(self.tests):
+        if self.tests_failed:
             return "tests failed"
+        if self.cancelled:
+            return "cancelled"
         if self.warnings:
             return "warnings"
         if not self.supported:
@@ -172,7 +197,12 @@ class TestEngine:
 
     # -- running ----------------------------------------------------------
 
-    def run_version(self, version: str | Version, output: OutputBus | None = None) -> VersionRun:
+    def run_version(
+        self,
+        version: str | Version,
+        output: OutputBus | None = None,
+        cancelled: Cancelled | None = None,
+    ) -> VersionRun:
         version = versions.parse(version)
         bus = output or OutputBus()
         first_record = len(bus.records)
@@ -212,13 +242,19 @@ class TestEngine:
         emulator.start()
         if self.ticks <= 0:
             emulator.run(ticks=0)
+        done = 0
         for _ in range(self.ticks):
+            if cancelled is not None and cancelled():
+                run.cancelled = True
+                bus.app(f"cancelled after {done} tick(s)", version=version.id)
+                break
             tick = emulator.world.tick
             emulator.run_tick()
+            done += 1
             if schedule is not None:
                 schedule.after_tick(emulator, tick)
         if schedule is not None:
-            run.tests = schedule.results()
+            run.tests = schedule.results(cancelled_after=done if run.cancelled else None)
 
         # functions the version could not parse were logged by the emulator as
         # load failures; keep what they needed for the summary columns
@@ -237,7 +273,8 @@ class TestEngine:
         graph = CallGraph.from_pack(view)
         run.profiler = emulator.profiler
         run.graph = graph
-        run.ticks = self.ticks
+        run.ticks = done
+        run.planned_ticks = self.ticks
         run.commands = int(sum(entry["commands"] for entry in emulator.profiler.entries.values()))
         run.total_us = emulator.profiler.total_us
         run.worst_tick_us = emulator.profiler.worst_tick_us
@@ -252,7 +289,11 @@ class TestEngine:
         version_list: Iterable[str | Version] | None = None,
         progress: Progress | None = None,
         output: OutputBus | None = None,
+        cancelled: Cancelled | None = None,
     ) -> list[VersionRun]:
+        """One run per version, in order. A cancelled run is kept (marked) and
+        the versions after it are skipped; a cancel that comes between two
+        versions marks the last one that ran."""
         chosen = (
             [versions.parse(item) for item in version_list]
             if version_list is not None
@@ -260,9 +301,16 @@ class TestEngine:
         )
         results: list[VersionRun] = []
         for index, version in enumerate(chosen, start=1):
+            if cancelled is not None and cancelled():
+                if results and not results[-1].cancelled:
+                    results[-1].cancelled = True
+                break
             if progress is not None:
                 progress(index, len(chosen), version)
-            results.append(self.run_version(version, output=output))
+            run = self.run_version(version, output=output, cancelled=cancelled)
+            results.append(run)
+            if run.cancelled:
+                break
         return results
 
     # -- static checks ----------------------------------------------------
@@ -333,7 +381,9 @@ class TestEngine:
     # -- reporting --------------------------------------------------------
 
     @staticmethod
-    def to_html(results: list[VersionRun], pack_name: str = "") -> str:
+    def to_html(results: list[VersionRun], pack_name: str = "", not_run: int = 0) -> str:
+        """The matrix table; ``not_run`` versions were chosen but never ran
+        (the run was cancelled)."""
         rows = []
         colours = {
             "ok": "#1e6f3d",
@@ -341,6 +391,7 @@ class TestEngine:
             "errors": "#c0392b",
             "unsupported": "#7f8c8d",
             "tests failed": "#8e44ad",
+            "cancelled": "#555555",
         }
         for run in results:
             rows.append(
@@ -348,6 +399,7 @@ class TestEngine:
                 f"<td class='id'>{run.version.id}</td>"
                 f"<td>{run.version.format_string}</td>"
                 f"<td style='color:{colours[run.status]};font-weight:bold'>{run.status}</td>"
+                f"<td>{run.ticks_summary}</td>"
                 f"<td>{run.commands}</td>"
                 f"<td>{run.total_us / 1000:.2f}</td>"
                 f"<td>{run.worst_tick_us / 1000:.2f}</td>"
@@ -372,21 +424,25 @@ class TestEngine:
 <body>
 <h2>{title}</h2>
 <table>
-<thead><tr><th>version</th><th>format</th><th>status</th><th>commands</th><th>total ms</th>
+<thead><tr><th>version</th><th>format</th><th>status</th><th>ticks</th><th>commands</th>
+<th>total ms</th>
 <th>worst ms</th><th>warnings</th><th>errors</th><th>tests</th><th>unknown commands</th>
 <th>overlays</th></tr>
 </thead>
 <tbody>
-{chr(10).join(rows) or "<tr><td colspan='11'>no runs</td></tr>"}
+{chr(10).join(rows) or "<tr><td colspan='12'>no runs</td></tr>"}
 </tbody>
 </table>
+{f"<p>cancelled: {not_run} more version(s) were not run</p>" if not_run else ""}
 </body>
 </html>
 """
 
     @staticmethod
-    def write_html(results: list[VersionRun], path: Path | str, pack_name: str = "") -> Path:
+    def write_html(
+        results: list[VersionRun], path: Path | str, pack_name: str = "", not_run: int = 0
+    ) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(TestEngine.to_html(results, pack_name), encoding="utf-8")
+        path.write_text(TestEngine.to_html(results, pack_name, not_run), encoding="utf-8")
         return path

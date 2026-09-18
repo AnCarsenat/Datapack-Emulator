@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -46,6 +47,9 @@ log = logging.getLogger(__name__)
 SCHEDULE_ROOT = "<schedule>"
 #: the gamerule that stops the time of day (renamed with the gamerule overhaul)
 DAYLIGHT_RULES = ("doDaylightCycle", "advance_time", "minecraft:advance_time")
+
+
+_RECURSION_LOCK = threading.Lock()
 
 
 class Emulator:
@@ -213,16 +217,16 @@ class Emulator:
 
     @contextmanager
     def _stack_headroom(self) -> Iterator[None]:
-        """Deep datapack recursion maps onto Python recursion; make room for it."""
+        """Deep datapack recursion maps onto Python recursion; make room for it.
+
+        The limit is process-wide and emulators may tick on several threads
+        (the engine window), so it is raised once and never lowered: lowering
+        it when one emulator finishes would break another one mid-tick."""
         needed = self.MAX_DEPTH * self.FRAMES_PER_DEPTH + 1000
-        previous = sys.getrecursionlimit()
-        if previous < needed:
-            sys.setrecursionlimit(needed)
-        try:
-            yield
-        finally:
-            if previous < needed:
-                sys.setrecursionlimit(previous)
+        with _RECURSION_LOCK:
+            if sys.getrecursionlimit() < needed:
+                sys.setrecursionlimit(needed)
+        yield
 
     #: until 1.19.2 the first tick ran #minecraft:tick before #minecraft:load
     LOAD_BEFORE_TICK_SINCE = "1.19.3"

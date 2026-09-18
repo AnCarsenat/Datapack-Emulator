@@ -57,7 +57,9 @@ for run in engine.run(chosen):
 | `missing_functions`, `unreachable`, `cycles` | from the call graph |
 | `profiler`, `graph` | the full objects |
 | `tests`, `tests_passed`, `tests_summary` | the command tests' results, and `"3/4"` (or `-` without tests) |
-| `status` | `errors` › `tests failed` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
+| `cancelled`, `planned_ticks`, `ticks_summary` | the run was cancelled (`ticks` is how many ran, `ticks_summary` reads `7/20`) |
+| `tests_failed`, `tests_skipped` | tests that failed, and tests a cancel stopped (`skipped`, "skipped: the run was cancelled after N tick(s)"); `tests_summary` counts only the ones that ran |
+| `status` | `errors` › `tests failed` › `cancelled` › `warnings` › `unsupported` › `ok` — `unsupported` only means the metadata does not claim that version; the pack still loads |
 | `warnings`, `errors`, `chat`, `count(source, level)` | summaries |
 
 ## Choosing versions
@@ -68,6 +70,14 @@ for run in engine.run(chosen):
 | `TestEngine.version_range(a, b)` | inclusive range |
 | `TestEngine.format_boundaries(list)` | first release of each pack format |
 
+`engine.run(versions, progress=…, output=…, cancelled=…)` runs them in order.
+`cancelled` is asked before each version and between ticks; once it answers
+`True`, the current run stops (it is kept, marked `cancelled`) and the rest
+are skipped; a cancel that comes between two versions marks the last run
+that finished. `run_version` takes the same callback. The engine window runs
+the engine on a worker thread and its *cancel* button sets it; the command
+line's first Ctrl+C does.
+
 `engine.run()` with no list uses the declared versions, or the newest release
 at or below `pack_format` (`versions.closest_to_pack_format`) when nothing is
 declared.
@@ -77,12 +87,17 @@ project's tests) and `datapack-emulator-cli test` — see [cli.md](cli.md).
 
 ## Reports
 
-`TestEngine.write_html(results, path, pack_name)` writes the matrix table.
+`TestEngine.write_html(results, path, pack_name, not_run=0)` writes the
+matrix table (with the ticks each run reached, and a note when `not_run`
+versions never ran).
 The engine window's *export html* and `datapack-emulator-cli matrix` both use
 it.
 
 ## Performance note
 
-Runs are sequential and, in the window, on the UI thread: a large selection
-with many ticks keeps the window busy until it finishes. *one per format*
-covers 1.13 → 26.3-rc-3 in 23 runs.
+Runs are sequential: a large selection with many ticks takes as long as all
+its versions together. The window runs them on a worker thread, so it stays
+usable and can cancel. *one per format* covers 1.13 → 26.3-rc-3 in 23 runs.
+Emulators on several threads share the process: the recursion limit is only
+ever raised, and each client jar is read once (`VanillaLibrary.load` locks
+per version).

@@ -884,6 +884,38 @@ def test_project_debug_edits_breakpoints_and_watches(make_pack, tmp_path, capsys
     assert Project.load(Path(path)).watches == ["score #ticks t"]
 
 
+def test_ctrl_c_stops_a_matrix_after_the_current_tick(make_pack, capsys, monkeypatch):
+    import signal
+
+    from datapack_emulator.cli.common import interruptible
+    from datapack_emulator.emulator.runtime.emulator import Emulator
+
+    with interruptible() as interrupt:
+        assert not interrupt()
+        signal.raise_signal(signal.SIGINT)
+        assert interrupt()
+        with pytest.raises(KeyboardInterrupt):
+            signal.raise_signal(signal.SIGINT)
+    assert "stopping after this tick" in capsys.readouterr().err
+
+    ticks = []
+    original = Emulator.run_tick
+
+    def run_tick(self):
+        ticks.append(1)
+        if len(ticks) == 3:
+            signal.raise_signal(signal.SIGINT)
+        return original(self)
+
+    monkeypatch.setattr(Emulator, "run_tick", run_tick)
+    pack = str(_pack(make_pack))
+    code = main(["matrix", pack, "--versions", "1.20.4", "1.21.4", "--ticks", "10", "--no-vanilla"])
+    captured = capsys.readouterr()
+    assert code == 130
+    assert "stopped: 1.20.4 after 3/10 tick(s); 1 version(s) not run" in captured.err
+    assert "cancelled" in captured.out and "1.21.4" not in captured.out.split("matrix report")[0]
+
+
 def test_shell_debugger_edge_cases(make_pack, tmp_path, capsys, monkeypatch):
     import io
 
@@ -930,3 +962,44 @@ def test_shell_debugger_edge_cases(make_pack, tmp_path, capsys, monkeypatch):
     assert "warning: breakpoint test:nope:3: no function test:nope" in captured.err
     assert "test:tick:9 (disabled)" in captured.out
     assert main(["shell", pack, "--watch", "if function test:tick"]) == 2
+
+
+def test_ctrl_c_between_versions_and_skipped_tests(make_pack, tmp_path, capsys, monkeypatch):
+    import signal
+
+    from datapack_emulator.emulator.analysis.graph import CallGraph
+    from datapack_emulator.emulator.runtime.emulator import Emulator
+
+    pack = str(_pack(make_pack))
+    original = CallGraph.from_pack.__func__
+
+    def from_pack(cls, view):
+        signal.raise_signal(signal.SIGINT)  # after the version's last tick
+        return original(cls, view)
+
+    monkeypatch.setattr(CallGraph, "from_pack", classmethod(from_pack))
+    code = main(
+        ["matrix", pack, "--versions", "1.20.4", "1.21.4", "--ticks", "2", "--no-vanilla",
+         "--junit", str(tmp_path / "m.xml")]
+    )  # fmt: skip
+    captured = capsys.readouterr()
+    assert code == 130
+    assert "stopped: 1.20.4 after 2/2 tick(s); 1 version(s) not run" in captured.err
+    assert "1.21.4" in (tmp_path / "m.xml").read_text()
+    monkeypatch.undo()
+
+    ticks = []
+    original_tick = Emulator.run_tick
+
+    def run_tick(self):
+        ticks.append(1)
+        if len(ticks) == 2:
+            signal.raise_signal(signal.SIGINT)
+        return original_tick(self)
+
+    monkeypatch.setattr(Emulator, "run_tick", run_tick)
+    code = main(["test", pack, "--only", "--test", "0:say a", "--test", "5:say b"])
+    out = capsys.readouterr().out
+    assert code == 130
+    assert "SKIP 1.21.4" in out and "skipped: the run was cancelled after 2 tick(s)" in out
+    assert "1/1 passed in 1.21.4, 1 skipped" in out

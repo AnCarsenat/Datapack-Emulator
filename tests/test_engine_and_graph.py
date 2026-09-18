@@ -95,3 +95,56 @@ def test_multi_version_packs_are_not_warned_for_their_legacy_forms(make_pack):
 
     assert folder_notes(spanning) == [LogLevel.INFO]
     assert folder_notes(only_modern) == [LogLevel.WARNING]
+
+
+def test_engine_runs_can_be_cancelled(make_pack):
+    from datapack_emulator.emulator import Datapack
+    from datapack_emulator.emulator.engine import TestEngine
+
+    pack = Datapack.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}))
+    engine = TestEngine(pack, ticks=10)
+    calls = []
+
+    def cancelled():
+        calls.append(1)
+        return len(calls) > 4
+
+    runs = engine.run(["1.20.4", "1.21.4"], cancelled=cancelled)
+    assert len(runs) == 1
+    assert runs[0].cancelled and runs[0].status == "cancelled" and runs[0].ticks == 3
+    assert any("cancelled after 3 tick(s)" in record.message for record in runs[0].records)
+    assert engine.run(["1.20.4"], cancelled=lambda: True) == []
+
+
+def test_cancelled_runs_skip_their_tests_and_report(make_pack):
+    from datapack_emulator.cli.junit import junit_tree
+    from datapack_emulator.emulator import Datapack
+    from datapack_emulator.emulator.engine import TestEngine
+    from datapack_emulator.emulator.testing import CommandTest
+
+    pack = Datapack.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}))
+    tests = [CommandTest("say a", at_tick=0), CommandTest("say b", at_tick=5)]
+    engine = TestEngine(pack, ticks=10, tests=tests)
+    calls = []
+    runs = engine.run(["1.21.4"], cancelled=lambda: len(calls.append(1) or calls) > 3)
+    run = runs[0]
+    assert run.cancelled and run.ticks_summary == "2/10"
+    assert run.tests_passed == 1 and run.tests_failed == 0 and run.tests_skipped == 1
+    assert run.tests_summary == "1/1 (1 skipped)" and run.status == "cancelled"
+    assert run.tests[1].reason == "skipped: the run was cancelled after 2 tick(s)"
+    html = TestEngine.to_html(runs, "p", not_run=2)
+    assert "<td>2/10</td>" in html and "2 more version(s) were not run" in html
+    xml = junit_tree(runs, "p", ["1.21.5"]).getroot()
+    assert xml.get("skipped") == "1" and xml.get("failures") == "0"
+    assert xml.find("testsuite/testcase/skipped") is not None
+    assert [suite.get("name") for suite in xml.findall("testsuite")] == ["p @ 1.21.4", "p @ 1.21.5"]
+
+    # a cancel between versions marks the last run
+    flags = iter([False, True])
+    runs = TestEngine(pack, ticks=0).run(["1.20.4", "1.21.4"], cancelled=lambda: next(flags, True))
+    assert len(runs) == 1 and runs[0].cancelled
+
+    # failures still show through a cancel
+    failing = TestEngine(pack, ticks=3, tests=[CommandTest("say a", expect="nope")])
+    run = failing.run(["1.21.4"], cancelled=lambda: len(calls.append(1) or calls) > 6)[0]
+    assert run.cancelled and run.status == "tests failed"
