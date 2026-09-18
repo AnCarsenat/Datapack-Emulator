@@ -61,13 +61,18 @@ src/datapack_emulator/     the package (standard src layout)
       problems.py          find_problems: static diagnostics (problems dock, check)
       inspector.py         rows for the inspector / info, version_note
       search.py            quick open and text search in a pack view
+      completion.py        complete: what can be typed next on a command line
+      rename.py            rename_function: a function id and its references
+      schema.py            what a version's own JSON files hold (from client.jar)
       world_view.py        score holders, histories, entity summaries, world dumps
     engine.py              TestEngine, VersionRun
     testing.py             CommandTest, TestSchedule, run_tests (the environment tab's tests)
     __main__.py            python -m datapack_emulator.emulator (the CLI below)
+  samples/                 the starter pack an installed copy opens (releases.md)
   cli/                     datapack-emulator-cli; no Qt, packs or .dpemu projects
     __init__.py            main(), the argument parser
     common.py              reading packs/projects, client jars, version selection
+    schemas.py             schema: the fields a version's own files hold
     runs.py                run, matrix, test
     world.py               world, shell (Session: one open world)
     debug.py               the shell's debugger commands and stop prompt, run --break
@@ -113,7 +118,8 @@ samples/     example packs: hat (formats 6–107.1, 1.16.2 → 26.2) and hat_v2
              (formats 5–121, runs cleanly from 1.16.1 to 26.3)
 projects/    saved .dpemu projects (git-ignored)
 generated/   reports and .dot files (git-ignored)
-.cache/      downloaded client jars, unpacked projects, window-state.json (git-ignored)
+.cache/      downloaded client jars, learned field schemas, unpacked projects,
+             window-state.json (git-ignored)
 ```
 
 These folders sit in the checkout when the package runs from one (a folder
