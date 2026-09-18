@@ -26,7 +26,7 @@ dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 datapack-emulator = "datapack_emulator.app:main"
-datapack-emulator-cli = "datapack_emulator.emulator.__main__:main"
+datapack-emulator-cli = "datapack_emulator.cli:main"
 
 [project.urls]
 Repository = "https://github.com/AnCarsenat/Datapack-Emulator"

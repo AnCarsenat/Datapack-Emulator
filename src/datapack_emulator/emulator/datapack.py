@@ -738,6 +738,29 @@ class DatapackSet:
         return f"<DatapackSet {self.name}>"
 
 
+def preferred_version(datapack: Datapack | DatapackSet) -> Version:
+    """The version to emulate a pack in when nobody picked one.
+
+    A multi-version pack's pack_format is often its oldest target (hat_v2:
+    5, but supported up to 121), so it is only the fallback. The newest
+    declared release whose server reads the metadata cleanly comes first, then
+    one that cannot read it, then any declared release; pre-releases only as a
+    last resort.
+    """
+    declared = datapack.declared_versions()
+    stable = [version for version in declared if version.stable]
+    statuses = {version: datapack.compatibility(version).status for version in stable}
+    for candidates in (
+        [version for version in stable if statuses[version] == "compatible"],
+        [version for version in stable if statuses[version] == "unknown"],
+        stable,
+        declared,
+    ):
+        if candidates:
+            return candidates[-1]
+    return versions.closest_to_pack_format(datapack.pack_format)
+
+
 #: 1.20.2 reads supported_formats; 1.21.9 (25w31a) requires min_format/max_format
 SUPPORTED_FORMATS_SINCE = "1.20.2"
 MIN_MAX_FORMAT_SINCE = "1.21.9"

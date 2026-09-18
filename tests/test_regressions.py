@@ -719,12 +719,12 @@ def test_nbt_paths_accept_quoted_keys(make_pack):
 
 def test_unknown_commands_and_bad_ranges_are_described_honestly():
     from datapack_emulator.emulator.analysis.explain import explain_line
-    from datapack_emulator.emulator.testing import _valid_range
+    from datapack_emulator.emulator.testing import valid_range
 
     rows = dict(explain_line("foo bar", "1.21.4"))
     assert rows["in the emulator"].startswith("not a command in any version")
-    assert not _valid_range("4..1") and not _valid_range("nan") and not _valid_range("1..2..3")
-    assert _valid_range("1..4") and _valid_range("..-3") and _valid_range("5")
+    assert not valid_range("4..1") and not valid_range("nan") and not valid_range("1..2..3")
+    assert valid_range("1..4") and valid_range("..-3") and valid_range("5")
 
 
 # -- logs and profiler ---------------------------------------------------------------

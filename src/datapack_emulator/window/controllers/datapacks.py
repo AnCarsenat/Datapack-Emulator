@@ -9,7 +9,7 @@ from PySide6.QtCore import QEvent, QModelIndex, QObject
 from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.datapack import Datapack, DatapackSet
+from datapack_emulator.emulator.datapack import Datapack, DatapackSet, preferred_version
 from datapack_emulator.emulator.resources import Resource
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel
@@ -199,29 +199,8 @@ class DatapackController(Controller):
         self.load_many(self.window.datapack.paths, keep_project=True, keep_version=True)
 
     def select_pack_version(self, datapack: Datapack) -> None:
-        """Default the version combo to the newest release the pack declares.
-
-        A multi-version pack's pack_format is often its oldest target (hat_v2:
-        5, but supported up to 121), so it is only the fallback. Releases whose
-        server reads the metadata cleanly come first, then those that cannot
-        read it, then any declared release; pre-releases only as a last resort.
-        """
-        declared = datapack.declared_versions()
-        stable = [version for version in declared if version.stable]
-        statuses = {version: datapack.compatibility(version).status for version in stable}
-        target = next(
-            (
-                candidates[-1]
-                for candidates in (
-                    [version for version in stable if statuses[version] == "compatible"],
-                    [version for version in stable if statuses[version] == "unknown"],
-                    stable,
-                    declared,
-                )
-                if candidates
-            ),
-            None,
-        ) or versions.closest_to_pack_format(datapack.pack_format)
+        """Default the version combo to the version the pack prefers."""
+        target = preferred_version(datapack)
         index = self.window.combo_version.findData(target.id)
         if index >= 0:
             self.window.combo_version.setCurrentIndex(index)

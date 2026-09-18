@@ -65,7 +65,7 @@ download runs on a worker thread, so the window stays responsive. From a
 terminal:
 
 ```sh
-python -m datapack_emulator.emulator vanilla --download 1.21.4
+datapack-emulator-cli vanilla --download 1.21.4
 ```
 
 The version is looked up in Mojang's

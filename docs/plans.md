@@ -6,22 +6,7 @@ Nothing here is promised; cross an entry out (or delete it) once it lands.
 
 ## Recommended next
 
-### 1. Run a project's tests from the command line
-
-`datapack-emulator-cli test hat.dpemu [--versions … | --declared] [--ticks N]`
-runs the tests saved in a project against one or more versions and exits
-non-zero when any test fails, so a datapack's own repository can check every
-commit in CI.
-
-* **Touches:** `emulator/__main__.py` (new `test` subcommand), `project.py`
-  (load the archive headless), `emulator/testing.py`, `emulator/engine.py`
-  (already runs tests per version), `docs/cli.md`.
-* **How:** load the project, build a `DatapackSet` from its packs, run
-  `TestEngine(…, tests=…)` over the chosen versions, print one line per test
-  and version, write a JUnit XML report (`--junit path`) for CI dashboards.
-* **Size:** small.
-
-### 2. Blocks
+### 1. Blocks
 
 A sparse block model so `setblock`, `fill`, `clone`, `execute if block|blocks`,
 `data … block`, containers (`item … block`, `loot insert`, `loot … mine`) and
@@ -39,7 +24,7 @@ many real packs move items through blocks.
   loot tables, which the jar has.
 * **Size:** large.
 
-### 3. Function debugger
+### 2. Function debugger
 
 Breakpoints on function lines, then step command by command (step into a
 called function, step over, continue) while watching scores, NBT, the
@@ -53,7 +38,7 @@ executor and the position.
   hands the context to the UI.
 * **Size:** medium to large.
 
-### 4. Run the engine window in the background
+### 3. Run the engine window in the background
 
 A large version matrix runs on the UI thread and freezes the window.
 

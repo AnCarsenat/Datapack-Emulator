@@ -105,6 +105,19 @@ you save is included.
 
 `projects/` is git-ignored except for its `.gitkeep`: projects are personal.
 
+## From the command line
+
+Every `datapack-emulator-cli` command that reads a pack also takes a project,
+with its settings as defaults — `test` runs its tests, so a project saved next
+to a pack can check it in CI:
+
+```sh
+datapack-emulator-cli test projects/hat.dpemu --junit generated/tests.xml
+datapack-emulator-cli matrix projects/hat.dpemu --tests      # the engine window's versions
+```
+
+See [cli.md](cli.md).
+
 ## From code
 
 ```python
