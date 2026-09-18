@@ -123,6 +123,10 @@ uses per-user folders instead (`settings/main.py`): `projects/` and
 `~/Library/Application Support/datapack-emulator`, `%APPDATA%\datapack-emulator`)
 and the jar cache in the cache folder (`~/.cache/datapack-emulator`,
 `~/Library/Caches/datapack-emulator`, `%LOCALAPPDATA%\datapack-emulator\cache`).
+Such a copy has no `samples/` folder either, so one starter pack ships inside
+the package (`datapack_emulator/samples/`, `PATHS.PACKAGED_SAMPLES`); opening
+it copies it into `<data folder>/samples` first, because the installation
+itself is not a place to edit files. See [releases](releases.md).
 
 ## Data flow of a run
 

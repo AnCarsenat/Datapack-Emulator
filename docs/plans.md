@@ -37,6 +37,10 @@ Nothing reported is waiting right now.
 
 ## Tooling
 
+* **Installed copies, the rest** — the wheel and the Linux PyInstaller folder
+  are built and run here; the Windows and macOS builds (and the `.app` the
+  spec's `BUNDLE` step makes) have not been made on a machine of those
+  platforms yet, and nothing is published to PyPI.
 * **Completion, further** — Ctrl+Space and [`complete`](cli.md#complete--what-can-be-typed-next)
   know commands, `execute` subcommands and conditions, selector options and
   function ids; block/item ids outside the eight commands listed there, NBT
@@ -46,9 +50,6 @@ Nothing reported is waiting right now.
   (conditions, item functions, loot entries, advancement criteria); validating
   recipes, loot tables, predicates, item modifiers and worldgen against the
   version's schemas (Spyglass mcdoc) would catch every field.
-* **Installed copies** — ship a default pack inside the package (today the
-  sample only exists in a source checkout), Windows/macOS builds (PyInstaller),
-  and a PyPI release.
 
 ## Code health
 

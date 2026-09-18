@@ -1,0 +1,12 @@
+{
+  "pack": {
+    "description": [
+      { "text": "Starter", "color": "yellow", "bold": true },
+      { "text": " — the pack an installed copy opens with", "color": "gray" }
+    ],
+    "pack_format": 61,
+    "supported_formats": { "min_inclusive": 48, "max_inclusive": 121 },
+    "min_format": 48,
+    "max_format": 121
+  }
+}

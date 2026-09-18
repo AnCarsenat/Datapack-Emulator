@@ -49,8 +49,14 @@ python -m venv .venv
 Or, from a checkout, `src/main.sh` (uses `.venv/` or `src/.venv/` if present,
 no install needed beyond the requirements).
 
-The project opened most recently comes back on startup (the first pack in
-`samples/` when there is none). The [command line](docs/cli.md) does what the window does — run, test,
+An installed copy (a wheel, or a folder built with PyInstaller) has no
+`samples/`: it carries a starter pack inside the package, which the window
+copies into your samples folder and opens on a cold start (the command line
+does the same with `datapack-emulator-cli project samples --install`). See
+[docs/releases.md](docs/releases.md) for building and publishing one.
+
+The project opened most recently comes back on startup (the first sample pack
+when there is none). The [command line](docs/cli.md) does what the window does — run, test,
 profile, inspect, explain, search, complete, rename, the call graph, the
 world, an interactive console with a debugger and project editing — on packs or saved projects:
 

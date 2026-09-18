@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from datapack_emulator.cli.common import OK, CliError, count, err, parse_version
+from datapack_emulator.cli.common import FAILED, OK, CliError, count, err, parse_version
 from datapack_emulator.cli.runs import parse_test
 from datapack_emulator.emulator.common import normalise_tagged_id
 from datapack_emulator.emulator.datapack import DatapackSet
@@ -17,10 +17,13 @@ from datapack_emulator.emulator.testing import CommandTest, valid_check, valid_r
 from datapack_emulator.project import (
     SUFFIX,
     Project,
+    install_sample,
+    is_packaged,
     list_projects,
     opens_last_project,
     recent_datapacks,
     recent_projects,
+    samples,
     set_opens_last_project,
 )
 from datapack_emulator.settings import EMULATION, PATHS
@@ -143,6 +146,22 @@ def command_list(arguments: argparse.Namespace) -> int:
         print(path)
     if not projects:
         print(f"no saved projects in {PATHS.PROJECTS}")
+    return OK
+
+
+def command_samples(arguments: argparse.Namespace) -> int:
+    """The packs to start from: the checkout's samples/, else the starter pack
+    shipped inside the package (what the window opens on a cold start)."""
+    found = samples()
+    if not found:
+        err(f"no sample pack in {PATHS.SAMPLES} or {PATHS.PACKAGED_SAMPLES}")
+        return FAILED
+    if arguments.install:
+        # the packaged copy belongs to pip: an update replaces it, and the
+        # folder may be read-only, so editing starts from a copy
+        found = [install_sample(path) if is_packaged(path) else path for path in found]
+    for path in found:
+        print(path)
     return OK
 
 
@@ -505,6 +524,21 @@ def register(subparsers) -> None:
         "list", help="the projects saved in the projects folder (the window's default)"
     )
     listing.set_defaults(handler=command_list)
+
+    sample_packs = actions.add_parser(
+        "samples",
+        help="the sample packs to start from (an installed copy carries one)",
+        description="Print the packs the window offers on a cold start: the checkout's "
+        "samples/ (or the per-user samples folder), else the starter pack shipped inside "
+        "the package. Exit 1 when there is none.",
+    )
+    sample_packs.add_argument(
+        "--install",
+        action="store_true",
+        help="copy a packaged pack into the samples folder first, so it can be edited "
+        "(the window does this when it opens one); an existing copy is kept",
+    )
+    sample_packs.set_defaults(handler=command_samples)
 
     recent = actions.add_parser(
         "recent", help="the window's recent projects and datapacks (@last opens the first)"

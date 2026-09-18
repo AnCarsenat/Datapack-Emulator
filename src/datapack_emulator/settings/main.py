@@ -24,6 +24,11 @@ def find_checkout(start: Path | None = None) -> Path | None:
     return None
 
 
+def _absolute(value: str | None, fallback: Path) -> Path:
+    path = Path(value) if value else None
+    return path if path is not None and path.is_absolute() else fallback
+
+
 def user_dirs(platform: str = sys.platform, environ=os.environ) -> tuple[Path, Path]:
     """``(data, cache)`` folders of an installed copy, per operating system."""
     home = Path.home()
@@ -36,8 +41,10 @@ def user_dirs(platform: str = sys.platform, environ=os.environ) -> tuple[Path, P
             home / "Library" / "Application Support" / APP_NAME,
             home / "Library" / "Caches" / APP_NAME,
         )
-    data = Path(environ.get("XDG_DATA_HOME") or home / ".local" / "share")
-    cache = Path(environ.get("XDG_CACHE_HOME") or home / ".cache")
+    # the XDG spec: a value that is not an absolute path is ignored, so
+    # projects never land beside wherever the app happened to be started
+    data = _absolute(environ.get("XDG_DATA_HOME"), home / ".local" / "share")
+    cache = _absolute(environ.get("XDG_CACHE_HOME"), home / ".cache")
     return data / APP_NAME, cache / APP_NAME
 
 
@@ -63,6 +70,9 @@ class EMULATION:
 class PATHS:
     ROOT = ROOT
     SAMPLES = ROOT / "samples"
+    #: the pack shipped inside the package, for an installed copy that has no
+    #: samples/ folder of its own
+    PACKAGED_SAMPLES = Path(__file__).resolve().parent.parent / "samples"
     PROJECTS = ROOT / "projects"
     GENERATED = ROOT / "generated"
     CACHE = _CACHE
