@@ -1024,6 +1024,7 @@ QMenuBar::item:selected {
     <addaction name="actionrun_tests"/>
     <addaction name="actionrun_profiler"/>
     <addaction name="actionrun_graphview"/>
+    <addaction name="actioncheck_pack"/>
     <addaction name="separator"/>
     <addaction name="actionopen_engine"/>
     <addaction name="actionexport_dot"/>
@@ -1050,6 +1051,7 @@ QMenuBar::item:selected {
     <addaction name="actionlog"/>
     <addaction name="actionworld"/>
     <addaction name="actiondebugger"/>
+    <addaction name="actionproblems"/>
     <addaction name="actionreset_layout"/>
     <addaction name="separator"/>
     <addaction name="actionenvironment"/>
@@ -1963,6 +1965,137 @@ QMenuBar::item:selected {
     </layout>
    </widget>
   </widget>
+  <widget class="QDockWidget" name="dockWidgetProblems">
+   <property name="minimumSize">
+    <size>
+     <width>260</width>
+     <height>140</height>
+    </size>
+   </property>
+   <property name="windowTitle">
+    <string>problems</string>
+   </property>
+   <attribute name="dockWidgetArea">
+    <number>8</number>
+   </attribute>
+   <widget class="QWidget" name="dockWidgetContentsProblems">
+    <layout class="QVBoxLayout" name="problemsDockLayout">
+     <property name="leftMargin">
+      <number>2</number>
+     </property>
+     <property name="topMargin">
+      <number>2</number>
+     </property>
+     <property name="rightMargin">
+      <number>2</number>
+     </property>
+     <property name="bottomMargin">
+      <number>2</number>
+     </property>
+     <item>
+      <layout class="QHBoxLayout" name="problemsToolsLayout">
+       <item>
+        <widget class="QLabel" name="labelProblems">
+         <property name="text">
+          <string>no pack checked yet</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #555;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QComboBox" name="comboProblemsSeverity">
+         <property name="toolTip">
+          <string>the lowest severity shown</string>
+         </property>
+         <item>
+          <property name="text">
+           <string>info</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>warning</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>error</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="editProblemsFilter">
+         <property name="placeholderText">
+          <string>filter problems…</string>
+         </property>
+         <property name="toolTip">
+          <string>show only problems whose place, message or kind contains this text</string>
+         </property>
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="buttonProblemsRefresh">
+         <property name="text">
+          <string>check again</string>
+         </property>
+         <property name="toolTip">
+          <string>check the pack again for the version being emulated (Ctrl+Shift+K)</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QTreeWidget" name="treeProblems">
+       <property name="contextMenuPolicy">
+        <enum>Qt::CustomContextMenu</enum>
+       </property>
+       <property name="toolTip">
+        <string>what the emulated version refuses or cannot run, found without running; double-click to open the place</string>
+       </property>
+       <property name="rootIsDecorated">
+        <bool>false</bool>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+       <property name="editTriggers">
+        <set>QAbstractItemView::NoEditTriggers</set>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+       </property>
+       <column>
+        <property name="text">
+         <string>severity</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>where</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>problem</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>kind</string>
+        </property>
+       </column>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
   <action name="actionnew_project">
    <property name="text">
     <string>new project</string>
@@ -2462,6 +2595,34 @@ QMenuBar::item:selected {
    </property>
    <property name="shortcut">
     <string>Alt+5</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="actioncheck_pack">
+   <property name="text">
+    <string>check pack</string>
+   </property>
+   <property name="statusTip">
+    <string>find what the emulated version refuses or cannot run in the pack, without running it (the problems dock)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Shift+K</string>
+   </property>
+  </action>
+  <action name="actionproblems">
+   <property name="text">
+    <string>problems</string>
+   </property>
+   <property name="statusTip">
+    <string>show or hide the problems dock: what the emulated version refuses or cannot run</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+6</string>
    </property>
    <property name="checkable">
     <bool>true</bool>

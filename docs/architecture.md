@@ -57,6 +57,7 @@ src/datapack_emulator/     the package (standard src layout)
       profiler.py          Profiler: per function and per call path, HTML report
       graph.py             CallGraph
       explain.py           explain_line: what one command line does (analyze line)
+      problems.py          find_problems: static diagnostics (problems dock, check)
       inspector.py         rows for the inspector / info, version_note
       search.py            quick open and text search in a pack view
       world_view.py        score holders, histories, entity summaries, world dumps
@@ -69,6 +70,7 @@ src/datapack_emulator/     the package (standard src layout)
     runs.py                run, matrix, test
     world.py               world, shell (Session: one open world)
     debug.py               the shell's debugger commands and stop prompt, run --break
+    check.py               check (the problems dock)
     inspect.py             info, explain, search, graph
     projects.py            project new/show/set/packs/tests/note/debug/list
     junit.py               JUnit XML reports
@@ -90,6 +92,7 @@ src/datapack_emulator/     the package (standard src layout)
       session.py           recent projects/datapacks, remembered window layout
       navigation.py        source view, external editor / file manager, right-click menus
       debug.py             debugger dock, breakpoint gutter, stops (a nested event loop)
+      problems.py          problems dock
       logs.py              logs dock: buffered model, filters, record menu
     engine_window.py       EngineWindow
     download_dialog.py     DownloadDialog + DownloadWorker (QThread)

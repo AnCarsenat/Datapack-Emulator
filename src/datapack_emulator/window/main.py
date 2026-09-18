@@ -49,6 +49,7 @@ from datapack_emulator.window.controllers import (
     LogController,
     NavigationController,
     NotesController,
+    ProblemsController,
     ProjectController,
     RunController,
     SessionController,
@@ -98,6 +99,7 @@ class MainWindow(QMainWindow):
         self.notes = NotesController(self)
         self.session = SessionController(self)
         self.debug = DebugController(self)
+        self.problems = ProblemsController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -110,6 +112,7 @@ class MainWindow(QMainWindow):
             self.notes,
             self.session,
             self.debug,
+            self.problems,
         ):
             controller.connect()
         self._wire_actions()
@@ -183,6 +186,7 @@ class MainWindow(QMainWindow):
         self.dock_logs: QDockWidget = find(QDockWidget, "dockWidgetLogs")
         self.dock_world: QDockWidget = find(QDockWidget, "dockWidgetWorld")
         self.dock_debug: QDockWidget = find(QDockWidget, "dockWidgetDebug")
+        self.dock_problems: QDockWidget = find(QDockWidget, "dockWidgetProblems")
         self.recent_projects_menu: QMenu = find(QMenu, "menurecent_projects")
         self.recent_datapacks_menu: QMenu = find(QMenu, "menurecent_datapacks")
         self.remove_datapack_menu: QMenu = find(QMenu, "menuremove_datapack")
@@ -286,6 +290,7 @@ class MainWindow(QMainWindow):
             ("actionlog", self.dock_logs),
             ("actionworld", self.dock_world),
             ("actiondebugger", self.dock_debug),
+            ("actionproblems", self.dock_problems),
         ):
             action = self._action(name)
             if action is None or dock is None:
@@ -324,6 +329,7 @@ class MainWindow(QMainWindow):
             self.dock_logs,
             self.dock_world,
             self.dock_debug,
+            self.dock_problems,
         )
 
     def show_all_docks(self) -> None:
@@ -337,6 +343,7 @@ class MainWindow(QMainWindow):
             "actionlog",
             "actionworld",
             "actiondebugger",
+            "actionproblems",
         ):
             action = self._action(name)
             if action is not None:

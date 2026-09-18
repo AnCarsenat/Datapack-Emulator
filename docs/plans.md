@@ -47,11 +47,10 @@ Nothing is queued here right now; take the next item from the lists below.
 
 ## Tooling
 
-* **Problems panel** — static diagnostics for the whole pack in one dock:
-  selector arguments that do not exist, invalid NBT, ids the version does not
-  have, missing functions, unused functions, recursion; validate recipes, loot
-  tables, predicates and item modifiers against the version's schemas
-  (Spyglass mcdoc).
+* **Schema checks** — the problems list checks JSON resources by hand
+  (conditions, item functions, loot entries, advancement criteria); validating
+  recipes, loot tables, predicates, item modifiers and worldgen against the
+  version's schemas (Spyglass mcdoc) would catch every field.
 * **Edit in the source view** — it is read-only today; editing with save
   (Ctrl+S in the view) and an automatic reload, with the analysis updating as
   you type.
