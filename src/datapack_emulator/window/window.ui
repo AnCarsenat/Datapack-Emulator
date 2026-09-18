@@ -1070,6 +1070,7 @@ QMenuBar::item:selected {
     <addaction name="actionrun_profiler"/>
     <addaction name="actionrun_graphview"/>
     <addaction name="actioncheck_pack"/>
+    <addaction name="actioncheck_fields"/>
     <addaction name="separator"/>
     <addaction name="actionopen_engine"/>
     <addaction name="actionexport_dot"/>
@@ -2834,6 +2835,20 @@ QMenuBar::item:selected {
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+K</string>
+   </property>
+  </action>
+  <action name="actioncheck_fields">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>check JSON fields against the client jar</string>
+   </property>
+   <property name="statusTip">
+    <string>also report JSON fields the emulated version's own files never use (needs a client jar; the command line's check --no-schema turns the same thing off)</string>
    </property>
   </action>
   <action name="actionproblems">

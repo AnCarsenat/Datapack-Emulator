@@ -1470,11 +1470,18 @@ def test_schema_prints_what_a_version_holds_and_check_reads_it(
     assert "minecraft:crafting_shaped" in capsys.readouterr().out
     assert main(["schema", "recipe", "minecraft:crafting_shaped", "--vanilla", str(jar)]) == 0
     out = capsys.readouterr().out
-    assert "pattern" in out and "required" in out
+    assert "pattern" in out and "always" in out
     assert main(["schema", "recipe", "minecraft:nothing", "--vanilla", str(jar)]) == 2
     assert "has no type minecraft:nothing" in capsys.readouterr().err
     assert main(["schema", "nothing", "--vanilla", str(jar)]) == 2
     assert "has no nothing files read" in capsys.readouterr().err
+
+    # --write saves the whole schema: a folder or --json with it is a mistake
+    assert main(["schema", "recipe", "--vanilla", str(jar), "--write", "x.json"]) == 2
+    assert "--write saves the whole schema" in capsys.readouterr().err
+    # a written schema is a schema: it takes no jar
+    assert main(["schema", "--read", "x.json", "--version", "1.21.4"]) == 2
+    assert "takes no version or client jar" in capsys.readouterr().err
 
     written = tmp_path / "schema.json"
     assert main(["schema", "--vanilla", str(jar), "--write", str(written)]) == 0
@@ -1496,7 +1503,7 @@ def test_schema_prints_what_a_version_holds_and_check_reads_it(
     )
     # exit 1: the pack's own tag points at a function it does not have
     assert main(["check", str(pack), "--version", "1.21.4", "--vanilla", str(jar)]) == 1
-    assert "no 1.21.4 file uses this field" in capsys.readouterr().out
+    assert "no 1.21.4 file read uses this field" in capsys.readouterr().out
     # the same, from a written schema and with no jar at all
     assert (
         main(

@@ -23,7 +23,7 @@ logger (records from the emulator still print).
 | [`complete`](#complete--what-can-be-typed-next) | what can be typed at a point in a line | the source view's popup (Ctrl+Space) |
 | [`rename`](#rename--a-function-and-its-references) | rename a function and every reference | source view *rename function…* (F2) |
 | [`check`](#check--problems) | what a version refuses or cannot run, without running (exit 1 on an error) | problems dock, *run › check pack* (Ctrl+Shift+K) |
-| [`schema`](#schema--what-a-versions-own-files-hold) | the fields a version's own JSON files hold (what `check` reads them against) | the problems dock's field checks |
+| [`schema`](#schema--what-a-versions-own-files-hold) | the fields a version's own JSON files hold (what `check` reads them against) | no window equivalent; the dock's *run › check JSON fields* switches the checks on and off |
 | [`graph`](#graph--the-call-graph) | the call graph, callers and calls | call graph tab, *show callers and calls*, *show in call graph*, export .dot |
 | [`project`](#project--dpemu-files) | create, show and edit projects | *file › new / save project*, environment tab, notes |
 | [`versions`](#versions) | list known versions | the version combo |
@@ -556,7 +556,7 @@ the counts. Nothing runs.
 | `pack` | warning | the version lists the pack as incompatible, or reads none of its functions (the folder is spelled for other versions) |
 | `unused-function` | info | nothing in the pack calls it: not the load and tick tags, other tags, functions, schedules, advancement rewards or enchantment `run_function` effects |
 | `recursion` | info | the function calls itself (directly or not) |
-| `schema` | error / warning / info | with a client jar (or `--schema`): the file holds something the version's own files never hold. Error: a value of a kind that never appears there (`"count": "many"` where every file has a number). Warning: a field no file of that version uses — a typo, or a field the game accepts and vanilla never writes. Info: a field every file of that version sets and this one leaves out (which does not make it required) |
+| `schema` | warning / info | with a client jar of the emulated version (or `--schema`): the file holds something none of that version's own files hold. Warning: a field none of them uses — a typo, or a field the game accepts and vanilla never writes — or a value of a kind none of them holds there. Info: a field every one of them sets and this file leaves out, or a note that the checks were skipped because the jar is of another version. None of these is an error: the version's files say what the game writes, not everything it accepts |
 
 Macro lines (`$…`) are parsed when called, as the game does; only their
 template is checked. Type ids are checked against the vanilla registries of
@@ -576,35 +576,43 @@ datapack-emulator-cli schema --version 1.21.4 --write generated/1.21.4-schema.js
 ```
 
 The game ships its own data pack inside `client.jar`: every recipe, loot
-table, advancement, enchantment and worldgen file that version loads. Reading
-them says which fields each kind of file has, which of them every file sets,
-and what each one holds — which is what [`check`](#check--problems)'s `schema`
-code reports a pack against.
+table, advancement, enchantment and worldgen file that version loads. All of
+them are read — sampling would turn "no file writes this" into a claim about
+the half that happened to be read — and what they hold is what
+[`check`](#check--problems)'s `schema` code reports a pack against.
 
-With no arguments it lists the folders read and how many files each was
-learned from; with a folder, the types in it (recipes by `type`, predicates by
-`condition`, item modifiers by `function`); with a type, its fields, whether
-every file sets it, what it holds and in how many files.
+With no arguments it lists the folders read and how many files (or, for the
+collected folders below, objects) each was learned from; with a folder, the
+types in it (recipes by `type`, predicates by `condition`, item modifiers by
+`function`); with a type, its fields, whether every file sets it, what it
+holds and in how many.
 
 | option | |
 | --- | --- |
-| `folder` | `recipe`, `loot_table`, `predicate`, `item_modifier`, `advancement`, `damage_type`, `enchantment`, `dimension_type`, `worldgen/…` |
+| `folder` | `recipe`, `loot_table`, `predicate`, `item_modifier`, `advancement`, `damage_type`, `enchantment`, `dimension_type`, `banner_pattern`, `chat_type`, `dialog`, `instrument`, `jukebox_song`, `painting_variant`, `trim_material`, `trim_pattern`, `worldgen/configured_feature`, `worldgen/placed_feature`, `worldgen/biome`, `worldgen/noise_settings`, `worldgen/structure`, `worldgen/template_pool` (what a version has of them) |
 | `type` | one type of that folder, e.g. `minecraft:crafting_shaped` |
 | `--version` | which version's files (default: the newest) |
-| `--read FILE` | a schema written earlier, instead of a jar |
-| `--write FILE` | write the schema, for `check --schema FILE` where there is no jar |
+| `--read FILE` | a schema written earlier, instead of a jar (it takes no version or jar of its own) |
+| `--write FILE` | write the whole schema, for `check --schema FILE` where there is no jar (no folder, type or `--json` with it) |
 | `--json` | print JSON |
-| `--vanilla`, `--no-vanilla`, `--download` | which client jar (see [client jars](#client-jars)) |
+| `--vanilla`, `--download` | which client jar (see [client jars](#client-jars)) |
 
-A schema is learned once per jar and kept in the cache (`schemas/` beside the
-downloaded jars), so the second run is instant. Exit `1` when there is nothing
-to show, `2` when there is no jar, or the folder or type is not one it read.
+A schema is learned once per jar (a fifth of a second on a real one) and kept
+in the cache, in `schemas/` next to the `vanilla/` folder the jars are
+downloaded to, so the second run is instant. Exit `1` when there is nothing to
+show, `2` when there is no jar, or the folder or type is not one it read.
 
 Vanilla ships no `predicate` or `item_modifier` files of its own, so those are
-collected from where the game writes them: inside its loot tables. What this
-cannot say is what the game *accepts* — only what it itself writes. A field no
-vanilla file uses is therefore a warning, not an error, and "every file sets
-it" is a note rather than "required".
+collected from where the game writes them: inside its loot tables (their count
+is of objects, not files). What this cannot say is what the game *accepts* —
+only what it itself writes, and only as deep as it was read. So nothing here
+is ever an error, a field no vanilla file uses is a warning, "every file sets
+it" is a note rather than "required", places whose names the pack chooses (a
+recipe's key letters, an advancement's criteria) are not read as fields at
+all, and the checks are skipped outright when the client jar is not of the
+emulated version. Every one of a version's own files passes its own schema —
+`tests/test_schema.py` checks exactly that, against a real jar when the
+machine has one.
 
 ## `graph` — the call graph
 

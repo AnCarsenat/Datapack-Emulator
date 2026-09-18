@@ -1499,7 +1499,7 @@ def test_problems_dock_checks_json_fields_against_the_jar(
 
     fields = [problem for problem in window.problems.problems if problem.code == "schema"]
     assert [problem.message for problem in fields if problem.severity == "warning"] == [
-        "resutl: no 1.21.4 file uses this field here"
+        "resutl: no 1.21.4 file read uses this field here"
     ]
     # the schema is learned once per jar, then read from the controller
     learned = window.problems.schema()

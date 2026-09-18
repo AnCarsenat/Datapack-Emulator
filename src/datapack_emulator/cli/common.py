@@ -191,7 +191,7 @@ def add_vanilla_arguments(parser: argparse.ArgumentParser, per_version: bool = F
 
 def add_schema_arguments(parser: argparse.ArgumentParser) -> None:
     """Checking a pack's JSON fields against the version's own files."""
-    group = parser.add_argument_group("field checks")
+    group = parser.add_argument_group("field checks").add_mutually_exclusive_group()
     group.add_argument(
         "--no-schema",
         action="store_true",

@@ -204,11 +204,15 @@ All six are open by default and can be toggled from *view*.
   unknown selector options, SNBT and (with a client jar) ids the version
   does not have, calls to missing functions, broken JSON resources and
   unknown conditions or item functions in them, and — as notes — unused
-  functions and recursion. With a client jar loaded it also reports JSON
-  fields the version's own files never use — a typo like `resutl`, or a value
-  of a kind that never appears there — read out of the jar's own data pack
+  functions and recursion. With a client jar **of the emulated version**
+  loaded it also reports, as warnings, JSON fields that version's own files
+  never use — a typo like `resutl`, or a value of a kind none of them holds
+  there — and, as notes, fields every one of them sets that this file leaves
+  out. They are read out of the jar's own data pack
   ([`schema`](cli.md#schema--what-a-versions-own-files-hold) prints what it
-  learned, and says what such a check can and cannot claim). It is checked
+  learned and says what such a check can and cannot claim); *run › check JSON
+  fields against the client jar* turns them off, as `check --no-schema` does,
+  and a jar of another version skips them with a note saying so. It is checked
   again once after a pack loads or
   the version or client jar changes (while the dock is hidden, when it is
   next shown), or with *check again* (Ctrl+Shift+K); if a check fails, the

@@ -57,7 +57,8 @@ does the same with `datapack-emulator-cli project samples --install`). See
 
 The project opened most recently comes back on startup (the first sample pack
 when there is none). The [command line](docs/cli.md) does what the window does — run, test,
-profile, inspect, explain, search, complete, rename, the call graph, the
+profile, inspect, explain, search, complete, rename, the fields a version's
+own files hold, the call graph, the
 world, an interactive console with a debugger and project editing — on packs or saved projects:
 
 ```sh

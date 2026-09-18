@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,6 +54,14 @@ LEARNED = (
     "damage_type",
     "enchantment",
     "dimension_type",
+    "banner_pattern",
+    "chat_type",
+    "dialog",
+    "instrument",
+    "jukebox_song",
+    "painting_variant",
+    "trim_material",
+    "trim_pattern",
     "worldgen/configured_feature",
     "worldgen/placed_feature",
     "worldgen/biome",
@@ -59,8 +69,46 @@ LEARNED = (
     "worldgen/structure",
     "worldgen/template_pool",
 )
-#: how many files of one folder are read (vanilla has thousands of some)
-PER_FOLDER = 1000
+#: a bound for a pathological jar; vanilla's biggest folder is ~1400 files,
+#: so every file is normally read (reading only some would make "the version
+#: never writes this" a claim about the half that happened to be read)
+PER_FOLDER = 20000
+#: fields whose names the pack chooses: a criterion, a recipe key letter, a
+#: mob in spawn costs. Their names say nothing, only their values do.
+MAP_FIELDS = frozenset(
+    {
+        "criteria",
+        "key",
+        "spawn_costs",
+        "effects",
+        "spawners",
+        "carvers",
+        "features",
+        "properties",
+        "requirements",
+    }
+)
+#: how many different names a field must hold before it is read as a map
+MAP_NAMES = 8
+#: how many files must agree before "it is always this kind" is said at all
+KIND_EVIDENCE = 20
+#: how many of the objects in one place must carry the dispatch key for the
+#: place to be read as dispatching (an entity predicate's `type` is an entity
+#: id, not a kind of object, and most of them have no `type` at all)
+DISPATCH_SHARE = 0.9
+#: where a `condition` or `function` object can be: a `type` dispatches
+#: anywhere, but `{"function": "ns:id"}` is also an advancement's reward
+DISPATCH_PARENTS = {
+    "condition": ("conditions", "term", "terms", "predicate"),
+    "function": ("functions", "modifier", "modifiers"),
+}
+
+
+def _mostly_once(fields: dict[str, Shape]) -> bool:
+    """Whether most of these names were written by one file only: then they
+    are names the pack chose, not fields of a schema."""
+    once = sum(1 for shape in fields.values() if shape.seen <= 1)
+    return once * 2 > len(fields)
 
 
 def kind_of(value: Any) -> str:
@@ -94,16 +142,22 @@ class Shape:
     dispatch: str = ""
     #: that key's id -> the shape of an object of that kind
     variants: dict[str, Shape] = field(default_factory=dict)
+    #: whether learning stopped here (too deep): nothing below it is known
+    truncated: bool = False
+    #: whether the field names here are the pack's own (a criterion, a recipe
+    #: key letter): then only their values are worth checking
+    named_by_the_pack: bool = False
 
     # -- learning ----------------------------------------------------------
 
-    def learn(self, value: Any, depth: int = 0) -> None:
+    def learn(self, value: Any, depth: int = 0, parent: str = "") -> None:
         self.seen += 1
         self.kinds.add(kind_of(value))
         if depth >= MAX_DEPTH:
+            self.truncated = True  # nothing below this is known, so nothing is claimed
             return
         if isinstance(value, dict):
-            key = _dispatch_key(value)
+            key = _dispatch_key(value, parent)
             if key:
                 self.dispatch = key
                 variant = self.variants.setdefault(normalise_id(str(value[key])), Shape())
@@ -116,17 +170,50 @@ class Shape:
             for item in value:
                 if self.items is None:
                     self.items = Shape()
-                self.items.learn(item, depth + 1)
+                self.items.learn(item, depth + 1, parent)
 
     def _learn_fields(self, value: dict[str, Any], depth: int) -> None:
         for name, held in value.items():
-            self.fields.setdefault(name, Shape()).learn(held, depth + 1)
+            self.fields.setdefault(name, Shape()).learn(held, depth + 1, name)
+
+    def settle(self, name: str = "") -> None:
+        """After learning: drop a dispatch the objects there mostly do not
+        carry, and mark the places whose field names the pack chooses, so
+        their names are not read as a list of what may be written."""
+        if self.dispatch and self.variants:
+            dispatched = sum(shape.seen for shape in self.variants.values())
+            if dispatched < DISPATCH_SHARE * self.seen:
+                # most of them are plain objects: this was never a kind
+                for shape in self.variants.values():
+                    for field_name, held in shape.fields.items():
+                        self.fields.setdefault(field_name, Shape()).merge(held)
+                self.dispatch = ""
+                self.variants = {}
+        if self.fields and (
+            name in MAP_FIELDS or (len(self.fields) >= MAP_NAMES and _mostly_once(self.fields))
+        ):
+            self.named_by_the_pack = True
+        for field_name, shape in self.fields.items():
+            shape.settle(field_name)
+        if self.items is not None:
+            self.items.settle(name)
+        for shape in self.variants.values():
+            shape.settle(name)
+
+    def values_shape(self) -> Shape:
+        """One shape for every value of a map (its keys are the pack's own)."""
+        merged = Shape()
+        for shape in self.fields.values():
+            merged.merge(shape)
+        return merged
 
     def merge(self, other: Shape) -> None:
         """Fold another shape of the same place into this one."""
         self.seen += other.seen
         self.kinds |= other.kinds
         self.dispatch = self.dispatch or other.dispatch
+        self.truncated = self.truncated or other.truncated
+        self.named_by_the_pack = self.named_by_the_pack or other.named_by_the_pack
         for name, shape in other.fields.items():
             self.fields.setdefault(name, Shape()).merge(shape)
         if other.items is not None:
@@ -168,6 +255,10 @@ class Shape:
         if self.dispatch:
             out["dispatch"] = self.dispatch
             out["variants"] = {name: shape.to_dict() for name, shape in self.variants.items()}
+        if self.truncated:
+            out["truncated"] = True
+        if self.named_by_the_pack:
+            out["named_by_the_pack"] = True
         return out
 
     @classmethod
@@ -182,14 +273,20 @@ class Shape:
         shape.variants = {
             name: cls.from_dict(held) for name, held in (data.get("variants") or {}).items()
         }
+        shape.truncated = bool(data.get("truncated", False))
+        shape.named_by_the_pack = bool(data.get("named_by_the_pack", False))
         return shape
 
 
-def _dispatch_key(value: dict[str, Any]) -> str:
+def _dispatch_key(value: dict[str, Any], parent: str = "") -> str:
     for key in DISPATCH_KEYS:
         held = value.get(key)
-        if isinstance(held, str) and held:
-            return key
+        if not isinstance(held, str) or ":" not in held:
+            continue  # a kind is written as an id; `"type": "top"` is a value
+        where = DISPATCH_PARENTS.get(key)
+        if where is not None and parent not in where:
+            continue  # an advancement's `rewards.function` is an id, not a kind
+        return key
     return ""
 
 
@@ -202,9 +299,9 @@ class Issue:
     #: where it is, as ``pools[0].entries[1].name``
     where: str
     message: str
-    #: errors are "no file of that version ever holds this kind of value",
-    #: warnings "no file of that version has this field", notes "every file of
-    #: that version sets this field" (which does not make it required)
+    #: warnings are "no file of that version read does this", notes "every
+    #: file of that version read does". Neither is a rule of the game: the
+    #: version's own files say what it writes, not everything it accepts.
     severity: str = "warning"
 
 
@@ -214,6 +311,13 @@ class Schema:
 
     version_id: str = ""
     folders: dict[str, Shape] = field(default_factory=dict)
+    #: folders vanilla writes no files of: their shapes were collected from
+    #: inside other files, so their count is of objects, not files
+    collected: set[str] = field(default_factory=set)
+
+    def counts(self, folder: str) -> str:
+        """ "file(s)" or "object(s)": what the number for that folder counts."""
+        return "object(s)" if folder in self.collected else "file(s)"
 
     def shape(self, folder: str) -> Shape | None:
         return self.folders.get(folder)
@@ -239,6 +343,7 @@ class Schema:
             "kind": KIND,
             "format": FORMAT,
             "version": self.version_id,
+            "collected": sorted(self.collected),
             "folders": {name: shape.to_dict() for name, shape in self.folders.items()},
         }
 
@@ -252,6 +357,7 @@ class Schema:
         schema.folders = {
             name: Shape.from_dict(held) for name, held in (data.get("folders") or {}).items()
         }
+        schema.collected = {str(name) for name in (data.get("collected") or [])}
         return schema
 
 
@@ -261,13 +367,16 @@ def _at(where: str, step: str) -> str:
 
 def _check(value: Any, shape: Shape, where: str, issues: list[Issue], version_id: str) -> None:
     held = kind_of(value)
-    if shape.kinds and held not in shape.kinds and shape.seen >= ENOUGH:
+    if shape.truncated:
+        return  # learning stopped above here: nothing below it is known
+    if shape.kinds and held not in shape.kinds and shape.seen >= KIND_EVIDENCE:
         issues.append(
             Issue(
                 "wrong-kind",
                 where,
-                f"is {held}; in {version_id} it is always " + " or ".join(sorted(shape.kinds)),
-                "error",
+                f"is {held}; every {version_id} file read holds "
+                + " or ".join(sorted(shape.kinds))
+                + " here",
             )
         )
         return
@@ -281,23 +390,31 @@ def _check(value: Any, shape: Shape, where: str, issues: list[Issue], version_id
             if found is None:
                 return  # an unknown type: the registry check says so, not this
             inner = found
-        for name in sorted(set(value) - inner.known()):
-            issues.append(
-                Issue(
-                    "unknown-field",
-                    _at(where, name),
-                    f"no {version_id} file uses this field here",
+        if inner.named_by_the_pack:
+            # a criterion, a recipe key letter: the names are the pack's own,
+            # so only what they hold is worth checking
+            values = inner.values_shape()
+            for name, held_value in value.items():
+                _check(held_value, values, _at(where, name), issues, version_id)
+            return
+        if inner.seen >= ENOUGH and inner.fields:
+            for name in sorted(set(value) - inner.known()):
+                issues.append(
+                    Issue(
+                        "unknown-field",
+                        _at(where, name),
+                        f"no {version_id} file read uses this field here",
+                    )
                 )
-            )
-        for name in sorted(inner.required() - set(value)):
-            issues.append(
-                Issue(
-                    "missing-field",
-                    _at(where, name),
-                    f"missing: every {version_id} file sets it here (it may be optional)",
-                    "info",
+            for name in sorted(inner.required() - set(value)):
+                issues.append(
+                    Issue(
+                        "missing-field",
+                        _at(where, name),
+                        f"missing: every {version_id} file read sets it here (it may be optional)",
+                        "info",
+                    )
                 )
-            )
         for name, held_value in value.items():
             child = inner.fields.get(name)
             if child is not None:
@@ -321,8 +438,7 @@ def _folder_names(names: list[str], folder: str) -> list[str]:
             continue
         if len(found) <= PER_FOLDER:
             return found
-        # spread over the whole folder: the first N alphabetically are all the
-        # same kind of file (every block's drops before any chest's loot)
+        # a jar with more files than any real one: spread over the whole folder
         step = (len(found) + PER_FOLDER - 1) // PER_FOLDER
         return found[::step][:PER_FOLDER]
     return []
@@ -376,6 +492,7 @@ def learn_from_jar(jar_path: Path | str, folders: tuple[str, ...] = LEARNED) -> 
                     continue
                 shape.learn(content)
             if shape.seen:
+                shape.settle()
                 schema.folders[folder] = shape
     for folder, dispatch in FROM_INSIDE.items():
         collected = Shape()
@@ -385,6 +502,8 @@ def learn_from_jar(jar_path: Path | str, folders: tuple[str, ...] = LEARNED) -> 
         if collected.seen < ENOUGH:
             continue
         collected.kinds.add("an object")
+        collected.settle()
+        schema.collected.add(folder)
         # a pack writes these as files; vanilla mostly writes them inside a
         # loot table, so both are folded together
         if folder in schema.folders:
@@ -403,6 +522,7 @@ def schema_path(cache_dir: Path | str, version_id: str, jar_path: Path | str | N
     """Where a learned schema is kept: one file per jar, not per version id —
     two jars can call themselves the same version (a snapshot rebuilt, a
     hand-made one)."""
+    version_id = re.sub(r"[^A-Za-z0-9._-]", "_", version_id) or "unknown"
     mark = ""
     if jar_path is not None:
         try:
@@ -417,15 +537,18 @@ def load_schema(path: Path | str) -> Schema:
     path = Path(path)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot read {path}: {exc}") from exc
     return Schema.from_dict(data)
 
 
 def save_schema(schema: Schema, path: Path | str) -> Path:
+    """Write it whole: another run may be reading the same file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(schema.to_dict()), encoding="utf-8")
+    beside = path.with_name(f"{path.name}.{os.getpid()}.part")
+    beside.write_text(json.dumps(schema.to_dict()), encoding="utf-8")
+    os.replace(beside, path)
     return path
 
 

@@ -49,10 +49,11 @@ Nothing reported is waiting right now.
 * **Schema checks, further** — JSON fields are now checked against the
   version's own files, read out of its client jar
   ([`schema`](cli.md#schema--what-a-versions-own-files-hold)). That says what
-  the game *writes*, not everything it *accepts*, so a field vanilla never
-  uses is only a warning; a real schema (Spyglass mcdoc) would say which
-  fields are optional, what each value's range is, and would work without a
-  jar.
+  the game *writes*, not everything it *accepts*: a field vanilla never uses
+  is only a warning, nothing is claimed below the depth the files were read
+  to, and a jar of another version skips the checks. A real schema (Spyglass
+  mcdoc) would say which fields are genuinely optional, what each value's
+  range is, which ids each field takes, and would need no jar at all.
 
 ## Code health
 

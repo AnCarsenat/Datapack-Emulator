@@ -369,6 +369,16 @@ def _schema_fields(scan: _Scan) -> Iterator[Problem]:
     schema = scan.schema
     if schema is None:
         return
+    if not _same_version(schema.version_id, scan.version):
+        # another version writes its files differently: checking against them
+        # would report the difference as the pack's mistake
+        yield Problem(
+            "info",
+            "schema",
+            f"JSON fields are not checked: the client jar is {schema.version_id}, "
+            f"the emulated version is {scan.version.id}",
+        )
+        return
     for folder in sorted(schema.folders):
         for resource in scan.resources(folder):
             if resource.error:
@@ -380,6 +390,13 @@ def _schema_fields(scan: _Scan) -> Iterator[Problem]:
                     "schema",
                     f"{issue.where or 'the file'}: {issue.message}",
                 )
+
+
+def _same_version(version_id: str, version: Version) -> bool:
+    try:
+        return versions.parse(version_id) == version
+    except (KeyError, ValueError):
+        return False
 
 
 def _type_id(value: Any) -> str | None:

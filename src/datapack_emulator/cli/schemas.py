@@ -34,6 +34,8 @@ from datapack_emulator.settings.main import PATHS
 
 def _schema(arguments: argparse.Namespace) -> Schema:
     if arguments.read is not None:
+        if arguments.version or arguments.vanilla is not None or arguments.download:
+            raise CliError("--read is a schema already: it takes no version or client jar")
         try:
             return load_schema(arguments.read)
         except ValueError as exc:
@@ -67,6 +69,8 @@ def _fields(shape: Shape, folder: str, type_id: str) -> list[tuple[str, bool, st
 
 
 def command_schema(arguments: argparse.Namespace) -> int:
+    if arguments.write is not None and (arguments.folder or arguments.json):
+        raise CliError("--write saves the whole schema: give it no folder, type or --json")
     schema = _schema(arguments)
     if arguments.write is not None:
         save_schema(schema, arguments.write)
@@ -79,7 +83,7 @@ def command_schema(arguments: argparse.Namespace) -> int:
         known = ", ".join(sorted(schema.folders)) or "none"
         raise CliError(f"{schema.version_id} has no {arguments.folder} files read; known: {known}")
     if arguments.type is None and shape.variants:
-        return _print_types(shape, arguments.folder, arguments.json)
+        return _print_types(schema, shape, arguments.folder, arguments.json)
     return _print_fields(schema, shape, arguments.folder, arguments.type or "", arguments.json)
 
 
@@ -90,29 +94,39 @@ def _print_folders(schema: Schema, as_json: bool) -> int:
     ]
     if as_json:
         rows = [
-            {"folder": name, "files": seen, "types": variants} for name, seen, variants in folders
+            {
+                "folder": name,
+                "files": seen,
+                "counts": schema.counts(name),
+                "types": variants,
+            }
+            for name, seen, variants in folders
         ]
         print(json.dumps({"version": schema.version_id, "folders": rows}, indent=2))
     else:
         print(f"{schema.version_id}: the fields of its own files")
         for name, seen, variants in folders:
             kinds = f", {len(variants)} type(s)" if variants else ""
-            print(f"{name:32} {seen:5d} file(s){kinds}")
+            print(f"{name:32} {seen:5d} {schema.counts(name)}{kinds}")
     return OK if folders else FAILED
 
 
-def _print_types(shape: Shape, folder: str, as_json: bool) -> int:
+def _print_types(schema: Schema, shape: Shape, folder: str, as_json: bool) -> int:
     """The types of one folder: recipes by `type`, conditions by `condition`…"""
     variants = [
         (name, held.seen, sorted(held.fields)) for name, held in sorted(shape.variants.items())
     ]
     if as_json:
-        rows = [{"type": name, "files": seen, "fields": names} for name, seen, names in variants]
+        rows = [
+            {"type": name, "files": seen, "counts": schema.counts(folder), "fields": names}
+            for name, seen, names in variants
+        ]
         print(json.dumps({"folder": folder, "dispatch": shape.dispatch, "types": rows}, indent=2))
     else:
-        print(f"{folder}: {shape.seen} file(s), by {shape.dispatch}")
+        counts = schema.counts(folder)
+        print(f"{folder}: {shape.seen} {counts}, by {shape.dispatch}")
         for name, seen, names in variants:
-            print(f"{name:44} {seen:5d} file(s), {len(names)} field(s)")
+            print(f"{name:44} {seen:5d} {counts}, {len(names)} field(s)")
     return OK if variants else FAILED
 
 
@@ -129,9 +143,10 @@ def _print_fields(schema: Schema, shape: Shape, folder: str, type_id: str, as_js
     print(f"{folder} {type_id}".strip() + f" in {schema.version_id}")
     if shape.seen < ENOUGH:
         err(f"only {shape.seen} file(s) read: nothing is claimed about what they always hold")
+    counts = schema.counts(folder)
     for name, always, holds, seen in fields:
-        mark = "required" if always else "optional"
-        print(f"{name:28} {mark:9} {holds} ({seen} file(s))")
+        mark = "always" if always else "sometimes"
+        print(f"{name:28} {mark:9} {holds} ({seen} {counts})")
     if not fields:
         print("no fields")
     return OK if fields else FAILED
