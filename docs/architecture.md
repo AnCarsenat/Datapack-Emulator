@@ -51,6 +51,7 @@ src/datapack_emulator/     the package (standard src layout)
       loot.py              loot tables and item modifiers (entries, item functions)
       context.py           ExecutionContext (the command source; silent in functions)
       library.py           FunctionLibrary: functions and tags a version's server loads
+      snapshot.py          Snapshot: keep a world, put it back, compare two
       debugger.py          Debugger: breakpoints, stepping, watches (asked before each function line)
       emulator.py          Emulator: start, load/tick order, dispatch, schedules
     analysis/
@@ -93,6 +94,8 @@ src/datapack_emulator/     the package (standard src layout)
       navigation.py        source view, external editor / file manager, right-click menus
       debug.py             debugger dock, breakpoint gutter, stops (a nested event loop)
       problems.py          problems dock
+      snapshots.py         the world dock's snapshots tab
+      editor.py            editing in the source view, lines checked as you type
       logs.py              logs dock: buffered model, filters, record menu
     engine_window.py       EngineWindow
     download_dialog.py     DownloadDialog + DownloadWorker (QThread)

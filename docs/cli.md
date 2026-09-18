@@ -284,6 +284,11 @@ first tick first. Lines starting with a dot control the session:
 | `.tick` | the game time |
 | `.scores [FILTER]`, `.entities [FILTER]`, `.nbt [FILTER]`, `.storage [FILTER]`, `.blocks [FILTER]`, `.state`, `.world`, `.json` | the world, as `world` prints it |
 | `.history HOLDER OBJECTIVE` | a score over time |
+| `.snapshot [LABEL]` | keep this world aside (the world dock's *snapshots* tab) |
+| `.snapshots` | list them; a new world (`.run`, `.reset`, `.version`, `.reload`, another pack…) forgets them, as the window does |
+| `.rewind N` | put snapshot N back; the world (and the profiler's ticks) goes on from there |
+| `.diff N [M]` | what changed between snapshot N and M, or the world now |
+| `.unsnapshot N\|all` | forget them |
 | `.explain COMMAND` | analyze a line |
 | `.profile` | the profiler tab's per-tick call tree |
 | `.report [FILE]` | write the HTML profiler report (*run profiler*; default `generated/index.html`) |

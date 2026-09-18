@@ -195,6 +195,7 @@ class DatapackController(Controller):
             vanilla=window.vanilla,
         )
         window.debug.attach(window.emulator)
+        window.snapshots.forget()  # they belong to the world that was replaced
         window.tick_label.setText("idle")
         window.world_view.forget()
         window.log_view.refresh_readers()

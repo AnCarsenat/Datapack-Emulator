@@ -1595,6 +1595,147 @@ QMenuBar::item:selected {
          </item>
         </layout>
        </widget>
+       <widget class="QWidget" name="tabSnapshots">
+        <attribute name="title">
+         <string>snapshots</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="snapshotsLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <layout class="QHBoxLayout" name="snapshotButtons">
+           <item>
+            <widget class="QPushButton" name="buttonSnapshotTake">
+             <property name="text">
+              <string>take</string>
+             </property>
+             <property name="toolTip">
+              <string>keep this world aside, to rewind to or compare with later</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="buttonSnapshotRewind">
+             <property name="text">
+              <string>rewind</string>
+             </property>
+             <property name="toolTip">
+              <string>put the selected snapshot back: the world goes on from there</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="buttonSnapshotCompare">
+             <property name="text">
+              <string>compare</string>
+             </property>
+             <property name="toolTip">
+              <string>what changed between the selected snapshot and the next selected one, or the world now</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="buttonSnapshotRemove">
+             <property name="text">
+              <string>remove</string>
+             </property>
+             <property name="toolTip">
+              <string>forget the selected snapshots</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QTreeWidget" name="treeSnapshots">
+           <property name="toolTip">
+            <string>worlds kept aside; select one and rewind, or two and compare</string>
+           </property>
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::DoubleClicked</set>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>snapshot</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>tick</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>world</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelSnapshotChanges">
+           <property name="text">
+            <string>take a snapshot, run, then compare</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">color: #555;</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QTreeWidget" name="treeSnapshotChanges">
+           <property name="toolTip">
+            <string>what changed between the two snapshots compared</string>
+           </property>
+           <property name="rootIsDecorated">
+            <bool>false</bool>
+           </property>
+           <property name="alternatingRowColors">
+            <bool>true</bool>
+           </property>
+           <property name="editTriggers">
+            <set>QAbstractItemView::NoEditTriggers</set>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QTreeWidget { font-family: monospace; font-size: 11px; }</string>
+           </property>
+           <column>
+            <property name="text">
+             <string>what</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>before</string>
+            </property>
+           </column>
+           <column>
+            <property name="text">
+             <string>after</string>
+            </property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
       </widget>
      </item>
     </layout>

@@ -72,7 +72,7 @@ def build_entity(context: ExecutionContext, entity_type: str, data: dict) -> Ent
     created: list[Entity] = []
 
     def make(kind: str, nbt: dict, position: list[float]) -> Entity | None:
-        entity = Entity(type=kind)
+        entity = Entity(type=kind, uuid=world.new_uuid())
         ints = nbt.get("UUID")
         uuid = ints_to_uuid(ints) if isinstance(ints, list) else None
         if uuid is not None:

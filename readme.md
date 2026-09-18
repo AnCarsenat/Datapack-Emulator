@@ -20,6 +20,8 @@ checked against the real base game read out of a `client.jar`.
   entity counts, in the window, during runs and across versions —
   and in CI: `datapack-emulator-cli test` exits non-zero on a failure and
   writes JUnit XML
+* world snapshots: keep a world aside, rewind to it, and compare two to see
+  what a tick changed
 * a problems list for the whole pack, per version: functions that do not
   load, unknown selector options, bad SNBT and ids, missing functions,
   broken loot tables and predicates, unused functions

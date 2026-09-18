@@ -139,7 +139,11 @@ def _execute_step(
         return [current] if evaluate_condition(arguments, current) == (name == "if") else []
     if name == "summon" and arguments:
         entity = world.spawn(
-            Entity(type=normalise_id(arguments[0]), position=list(current.position))
+            Entity(
+                type=normalise_id(arguments[0]),
+                uuid=world.new_uuid(),
+                position=list(current.position),
+            )
         )
         return [current.branch(executor=entity)]
     if name == "on" and arguments:

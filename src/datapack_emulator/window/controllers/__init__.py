@@ -18,6 +18,7 @@ from datapack_emulator.window.controllers.problems import ProblemsController
 from datapack_emulator.window.controllers.projects import ProjectController
 from datapack_emulator.window.controllers.runs import RunController
 from datapack_emulator.window.controllers.session import SessionController
+from datapack_emulator.window.controllers.snapshots import SnapshotController
 from datapack_emulator.window.controllers.world import WorldController
 
 __all__ = [
@@ -34,5 +35,6 @@ __all__ = [
     "ProjectController",
     "RunController",
     "SessionController",
+    "SnapshotController",
     "WorldController",
 ]
