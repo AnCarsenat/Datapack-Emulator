@@ -19,12 +19,15 @@ The handlers live in one module per command group:
 * :mod:`.state` — time, weather, difficulty, worldborder, random, seed, list, tick,
   forceload, setworldspawn, spawnpoint
 * :mod:`.players` — gamemode, defaultgamemode, experience, team, teammsg
+* :mod:`.living` — effect, attribute, damage, ride
+* :mod:`.bossbar` — bossbar
 * :mod:`.misc` — commands that only check their ids
 """
 
 from __future__ import annotations
 
 from datapack_emulator.emulator.commands.blocks import cmd_clone, cmd_fill, cmd_setblock
+from datapack_emulator.emulator.commands.bossbar import BOSSBAR_HANDLERS
 from datapack_emulator.emulator.commands.chat import (
     cmd_me,
     cmd_msg,
@@ -47,7 +50,8 @@ from datapack_emulator.emulator.commands.execute import (
 )
 from datapack_emulator.emulator.commands.helpers import Handler, checking
 from datapack_emulator.emulator.commands.items import ITEM_HANDLERS
-from datapack_emulator.emulator.commands.misc import cmd_effect, cmd_noop
+from datapack_emulator.emulator.commands.living import LIVING_HANDLERS
+from datapack_emulator.emulator.commands.misc import cmd_noop
 from datapack_emulator.emulator.commands.players import PLAYER_HANDLERS
 from datapack_emulator.emulator.commands.scoreboard import cmd_scoreboard, cmd_trigger
 from datapack_emulator.emulator.commands.state import STATE_HANDLERS
@@ -56,16 +60,11 @@ from datapack_emulator.emulator.commands.state import STATE_HANDLERS
 #: once-per-run emulator note and the line analysis
 UNMODELLED: dict[str, str] = {
     "advancement": "advancements are not modelled",
-    "attribute": "attributes are not modelled (queries return 1)",
-    "bossbar": "boss bars are not modelled",
-    "damage": "health and damage are not modelled",
-    "effect": "status effects are not modelled (the effect id is still checked)",
     "fillbiome": "biomes are not modelled",
     "particle": "particles have no effect on the world",
     "place": "features and structures are not modelled",
     "playsound": "sounds have no effect on the world",
     "recipe": "recipes are not modelled",
-    "ride": "vehicles and passengers are not modelled",
     "rotate": "use tp or data to turn entities: rotate is not modelled",
     "spectate": "spectating is not modelled",
     "spreadplayers": "spreadplayers does not move entities in the emulator",
@@ -100,18 +99,13 @@ HANDLERS: dict[str, Handler] = {
     "gamerule": cmd_gamerule,
     # dispatched and costed, but no state change is modelled
     "advancement": cmd_noop,
-    "attribute": cmd_noop,
-    "bossbar": cmd_noop,
     "clone": cmd_clone,
-    "damage": cmd_noop,
-    "effect": cmd_effect,
     "fill": cmd_fill,
     "fillbiome": cmd_noop,
     "particle": checking("particle", 0, "argument.id.unknown"),
     "place": cmd_noop,
     "playsound": cmd_noop,
     "recipe": cmd_noop,
-    "ride": cmd_noop,
     "rotate": cmd_noop,
     "setblock": cmd_setblock,
     "spectate": cmd_noop,
@@ -121,6 +115,8 @@ HANDLERS: dict[str, Handler] = {
 HANDLERS.update(ITEM_HANDLERS)
 HANDLERS.update(STATE_HANDLERS)
 HANDLERS.update(PLAYER_HANDLERS)
+HANDLERS.update(LIVING_HANDLERS)
+HANDLERS.update(BOSSBAR_HANDLERS)
 
 __all__ = [
     "COSMETIC",

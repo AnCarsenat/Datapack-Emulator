@@ -407,7 +407,11 @@ NON_LIVING = frozenset(
 
 
 def has_equipment(entity_type: str) -> bool:
-    return entity_type not in NON_LIVING and not entity_type.endswith(("_boat", "_raft"))
+    return (
+        entity_type not in NON_LIVING
+        and entity_type not in ("minecraft:boat", "minecraft:chest_boat")
+        and not entity_type.endswith(("_boat", "_raft"))
+    )
 
 
 class Inventory:

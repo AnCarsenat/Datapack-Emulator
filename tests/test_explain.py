@@ -35,9 +35,9 @@ def test_version_support_and_emulator_coverage_are_reported():
     assert old["loads in 1.16.1"].startswith("no")
     assert _rows("item replace entity @s armor.head with air")["in the emulator"] == "emulated"
     assert _rows("fill ~ ~ ~ ~1 ~1 ~1 stone")["in the emulator"] == "emulated"
-    bossbar = _rows("bossbar list")
-    assert bossbar["in the emulator"] == (
-        "runs without changing the emulated world: boss bars are not modelled"
+    recipe = _rows("recipe give @a *")
+    assert recipe["in the emulator"] == (
+        "runs without changing the emulated world: recipes are not modelled"
     )
     macro = _rows("$function test:x {a:$(a)}", "1.20.1")
     assert "needs the argument(s) a" in macro["macro line"] and "NBT" not in macro

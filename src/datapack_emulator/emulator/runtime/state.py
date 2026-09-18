@@ -14,6 +14,7 @@ from __future__ import annotations
 import random
 import zlib
 from dataclasses import dataclass, field
+from typing import Any
 
 #: default world border: 59 999 968 blocks wide, centered on 0 0
 BORDER_SIZE = 59_999_968.0
@@ -84,6 +85,8 @@ class ServerState:
     seed: int = 0
     #: random sequences in use, by id
     sequences: dict[str, random.Random] = field(default_factory=dict)
+    #: custom boss bars by id (commands.bossbar.Bossbar)
+    bossbars: dict[str, Any] = field(default_factory=dict)
 
     # -- teams ------------------------------------------------------------
 

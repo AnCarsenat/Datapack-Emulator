@@ -481,13 +481,12 @@ def test_emulator_limitations_are_noted_once_per_run(make_pack):
 
     emulator = run(
         make_pack,
-        "execute if biome 0 0 0 minecraft:plains run say plains\n"
-        "execute on vehicle run say riding\n",
+        "execute if biome 0 0 0 minecraft:plains run say plains\nexecute as @a on attacker run say hit\n",
         ticks=5,
     )
     notes = [r for r in emulator.output.records if r.source is LogSource.EMULATOR]
     assert len([r for r in notes if "'biome'" in r.message]) == 1
-    assert len([r for r in notes if "execute on vehicle" in r.message]) == 1
+    assert len([r for r in notes if "execute on attacker" in r.message]) == 1
     assert all(r.level <= LogLevel.INFO for r in notes if "biome" in r.message)
 
 
