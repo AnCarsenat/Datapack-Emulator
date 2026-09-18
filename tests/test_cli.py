@@ -1386,6 +1386,9 @@ def test_complete_and_rename_from_the_command_line(make_pack, tmp_path, capsys):
     assert "test:helper  (function)" in out and "#minecraft:tick  (tag)" in out
     assert main(["complete", "function ", "--cursor", "99"]) == 2
     assert "--cursor" in capsys.readouterr().err
+    # an unknown version reads like everywhere else, not as a traceback
+    assert main(["complete", "function ", "--version", "nosuchversion"]) == 2
+    assert "unknown Minecraft version" in capsys.readouterr().err
 
     # rename prints what it would do, then does it
     assert main(["rename", str(pack), "test:helper", "test:deep/worker"]) == 0

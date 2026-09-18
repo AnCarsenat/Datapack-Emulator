@@ -17,7 +17,9 @@ from datapack_emulator.emulator.runtime.library import SELECTOR_OPTIONS
 from datapack_emulator.emulator.versions import Version
 
 #: where a word being typed starts: these characters end the one before it
-WORD_BREAKS = " \t[]{},=\"'"
+WORD_BREAKS = " \t[]{},=!\"'"
+#: what a line may start with and still be a command: `/say hi`, `$say $(x)`
+LINE_PREFIXES = ("/", "$")
 #: commands whose first argument is an id of a registry the jar knows
 #: command -> (registry, which word after the command name)
 ID_ARGUMENTS: dict[str, tuple[str, int]] = {
@@ -30,8 +32,8 @@ ID_ARGUMENTS: dict[str, tuple[str, int]] = {
     "effect": ("mob_effect", 3),
     "enchant": ("enchantment", 2),
 }
-#: commands whose argument is a function id (or a #tag of functions)
-FUNCTION_ARGUMENTS = ("function", "schedule")
+#: what `schedule` can be followed by
+SCHEDULE_SUBCOMMANDS = ("clear", "function")
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,8 @@ def word_at(line: str, cursor: int | None = None) -> tuple[str, int]:
     start = end
     while start > 0 and line[start - 1] not in WORD_BREAKS:
         start -= 1
+    if start == 0 and end > 0 and line[:1] in LINE_PREFIXES:
+        start = 1  # `/` and a macro's `$` are not part of the command name
     return line[start:end], start
 
 
@@ -86,7 +90,22 @@ def _expects_option_value(before: str) -> bool:
 
 
 def _tokens(before: str) -> list[str]:
-    return [token for token in before.split(" ") if token]
+    body = before
+    if body[:1] in LINE_PREFIXES:
+        body = body[1:]
+    return [token for token in body.split(" ") if token]
+
+
+def _in_quotes(before: str) -> bool:
+    """Whether the cursor is inside a string: nothing here is a command."""
+    return before.count('"') % 2 == 1 or before.count("'") % 2 == 1
+
+
+def _wants_function(tokens: list[str]) -> bool:
+    """Whether a function id (or a #tag) is what comes next."""
+    if tokens[-1] == "function":  # `function `, `schedule function `, `run function `
+        return True
+    return len(tokens) > 1 and tokens[-2:] == ["schedule", "clear"]
 
 
 def _executable(tokens: list[str]) -> bool:
@@ -120,19 +139,23 @@ def complete(
             candidates = [
                 Candidate(option, "selector-option") for option in sorted(SELECTOR_OPTIONS)
             ]
-        elif view is not None and before.rstrip().endswith(("type=", "type=!")):
-            candidates = _ids(view, vanilla, "entity_type")
+        elif before.rstrip().endswith(("type=", "type=!")):
+            candidates = _ids(vanilla, "entity_type")
     elif _executable(tokens):
         candidates = [
             Candidate(name, "command", _since(name, parsed))
             for name in sorted(versions.vanilla_commands(parsed))
         ]
-    elif tokens[0] in FUNCTION_ARGUMENTS or tokens[-1] == "function":
+    elif _in_quotes(before):
+        candidates = []
+    elif _wants_function(tokens):
         candidates = _functions(view)
+    elif tokens == ["schedule"]:
+        candidates = [Candidate(name, "subcommand") for name in SCHEDULE_SUBCOMMANDS]
     elif tokens[0] == "execute":
-        candidates = _execute(tokens, parsed, view, vanilla)
+        candidates = _execute(tokens, parsed, vanilla)
     else:
-        candidates = _arguments(tokens, view, vanilla)
+        candidates = _arguments(tokens, vanilla)
 
     wanted = word.lower()
     matching = [item for item in candidates if item.text.lower().startswith(wanted)]
@@ -143,13 +166,12 @@ def complete(
 
 def _since(name: str, version: Version) -> str:
     since = versions.since_of(f"command:{name}")
-    return f"since {since.id}" if since and since <= version else ""
+    return f"since {since.id}" if since else ""
 
 
-def _execute(
-    tokens: list[str], version: Version, view: Any | None, vanilla: Any | None
-) -> list[Candidate]:
+def _execute(tokens: list[str], version: Version, vanilla: Any | None) -> list[Candidate]:
     last = tokens[-1]
+    names = dict(_feature_names("execute", version))
     if last in ("if", "unless"):
         return [
             Candidate(name, "condition", f"since {since}" if since else "")
@@ -162,10 +184,12 @@ def _execute(
             Candidate(name, "store", f"since {since}" if since else "")
             for name, since in sorted(_feature_names("store", version))
         ]
+    if last in names and last != "run":  # its own argument comes first
+        return []
     return [
         Candidate(name, "subcommand", f"since {since}" if since else "")
-        for name, since in sorted(_feature_names("execute", version))
-    ] + [Candidate("run", "subcommand")]
+        for name, since in sorted(names.items())
+    ]
 
 
 def _functions(view: Any | None) -> list[Candidate]:
@@ -179,18 +203,18 @@ def _functions(view: Any | None) -> list[Candidate]:
     return out
 
 
-def _ids(view: Any | None, vanilla: Any | None, registry: str) -> list[Candidate]:
+def _ids(vanilla: Any | None, registry: str) -> list[Candidate]:
     if vanilla is None:
         return []
     known = vanilla.registries.get(registry) or frozenset()
     return [Candidate(name, "id", registry) for name in sorted(known)]
 
 
-def _arguments(tokens: list[str], view: Any | None, vanilla: Any | None) -> list[Candidate]:
+def _arguments(tokens: list[str], vanilla: Any | None) -> list[Candidate]:
     registry_and_place = ID_ARGUMENTS.get(tokens[0])
     if registry_and_place is None:
         return []
     registry, place = registry_and_place
     if len(tokens) != place:
         return []
-    return _ids(view, vanilla, registry)
+    return _ids(vanilla, registry)

@@ -1936,8 +1936,15 @@ def test_the_window_entry_point_reads_its_arguments():
     assert for_qt == ["-platform", "offscreen"] and arguments.open_last is False
 
 
+def _shown(completer) -> list[str]:
+    """What the popup lists, in its order."""
+    model = completer.completionModel()
+    return [model.index(row, 0).data() for row in range(model.rowCount())]
+
+
 def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
     from PySide6.QtWidgets import QInputDialog, QMessageBox
 
     pack = make_pack(
@@ -1958,9 +1965,31 @@ def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
     edit.setTextCursor(cursor)
     edit.ask_completions()
     assert edit.completer.popup().isVisible()
-    assert edit.completer.completionPrefix() == "test:hel"
+    assert _shown(edit.completer) == ["test:helper"]
     edit.insert_completion("test:helper")
     assert edit.toPlainText() == "function test:helper"
+    edit.completer.popup().hide()
+
+    # a word that only appears inside a candidate: the popup shows it too
+    # (the module's own fallback; Qt must not filter the list a second time)
+    edit.setPlainText("function hel")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    assert edit.completer.popup().isVisible()
+    assert _shown(edit.completer) == ["test:helper"]
+    edit.completer.popup().hide()
+
+    # a macro line is a command line: completion reads past the leading $
+    edit.setPlainText("$function test:hel")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    assert _shown(edit.completer) == ["test:helper"]
+    edit.insert_completion("test:helper")
+    assert edit.toPlainText() == "$function test:helper"
     edit.completer.popup().hide()
 
     # nothing to offer: no popup
@@ -1998,4 +2027,24 @@ def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
     )
     assert not window.editor.rename_function()
     assert warned and "resource location" in warned[0]
-    assert Qt.Key_Space  # the popup's keys are handled in SourceEdit.keyPressEvent
+
+    # Enter, Tab and Escape belong to the popup while it is open
+    edit.setPlainText("function wor")  # the function was renamed above
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    assert edit.completer.popup().isVisible()
+    assert _shown(edit.completer) == ["test:deep/worker"]
+    for key in (Qt.Key_Return, Qt.Key_Tab, Qt.Key_Escape):
+        event = QKeyEvent(QKeyEvent.KeyPress, key, Qt.NoModifier)
+        edit.keyPressEvent(event)
+        assert not event.isAccepted()  # the popup takes it, the text is unchanged
+    assert edit.toPlainText() == "function wor"
+    edit.completer.popup().hide()
+    app.processEvents()
+
+    # typing a letter goes to the text and asks again
+    event = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_K, Qt.NoModifier, "k")
+    edit.keyPressEvent(event)
+    assert edit.toPlainText() == "function work"

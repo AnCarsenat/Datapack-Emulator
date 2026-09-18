@@ -456,9 +456,12 @@ datapack-emulator-cli complete "execute as @e[" --json
 The source view's completion popup (Ctrl+Space), on the command line: the
 commands, `execute` subcommands and conditions, `execute store` targets and
 selector options the version knows, and — with `--pack` — the pack's function
-and tag ids, and the client jar's ids after `summon`, `setblock`, `give`,
-`clear`, `playsound`, `particle`, `effect` and `enchant`. Without `--pack`,
-only what the version itself knows (nothing is claimed about ids).
+and tag ids (after `function`, `schedule function`, `schedule clear` and
+`execute … run function`), and the client jar's ids after `summon`,
+`setblock`, `give`, `clear`, `playsound`, `particle`, `effect` and `enchant`.
+Without `--pack`, only what the version itself knows (nothing is claimed about
+ids). A leading `/` and a macro line's `$` are read past, so `"$function "`
+completes like `"function "`; inside a quoted string nothing is offered.
 
 | option | |
 | --- | --- |
@@ -470,7 +473,8 @@ only what the version itself knows (nothing is claimed about ids).
 | `--details` | also print each candidate's kind and hint |
 | `--json` | the candidates as JSON |
 
-Exit `1` when nothing fits there, `2` when the cursor is outside the line.
+Exit `1` when nothing fits there, `2` when the cursor is outside the line or
+the version is unknown.
 
 ## `rename` — a function and its references
 
@@ -480,14 +484,26 @@ datapack-emulator-cli rename samples/hat hat:tick hat:tick/main --apply  # do it
 ```
 
 The source view's *rename function…* (F2): the function's file moves to the
-new id's path, and every reference to the id in the pack's functions, function
-tags and JSON (advancement rewards, enchantment effects…) follows. Ids inside
-longer ids are left alone, so renaming `test:helper` does not touch
-`test:helper_two`.
+new id's path, and every reference to the id follows. References are found by
+searching the text of every `.mcfunction`, `.json` and `.mcmeta` file under
+each layer's `data/` folder (the base pack's, each overlay's, and each pack of
+a set) — function calls, function tags, advancement rewards, enchantment
+effects, and the id written in chat text or a comment too. Nothing outside
+`data/` is read, so `pack.mcmeta` and a project's own files are left alone.
+
+Ids inside longer ids are left alone, so renaming `test:helper` does not touch
+`test:helper_two`, and `#test:helper` is the function *tag* of that name: it
+keeps its id. A `minecraft:` function is also called without its namespace, so
+`function helper` follows `minecraft:helper` too. Every file serving the id
+moves: an overlay's copy, and both folder spellings (`function/` since 1.21,
+`functions/` before).
 
 Nothing is written without `--apply`; the rename is refused (exit `2`) when
 the function is not in the pack in that version, the new id is not a resource
-location (`namespace:path`, lowercase), or something already uses it.
+location (`namespace:path`, lowercase) or would leave the pack, something
+already uses it, or a file it would have to write cannot be written — that
+last one is checked before anything is touched, and a write that fails
+half-way is put back.
 
 ## `check` — problems
 

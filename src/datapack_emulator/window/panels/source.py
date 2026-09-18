@@ -11,6 +11,8 @@ from PySide6.QtCore import QEvent, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QTextCharFormat, QTextCursor, QTextFormat
 from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QTextEdit, QToolTip, QWidget
 
+from datapack_emulator.emulator.analysis.completion import word_at
+
 BREAKPOINT_COLOUR = QColor("#d32f2f")
 DISABLED_COLOUR = QColor("#bdbdbd")
 STOPPED_COLOUR = QColor("#fff59d")
@@ -68,19 +70,18 @@ class SourceEdit(QPlainTextEdit):
 
     def set_completer(self, completer: QCompleter) -> None:
         completer.setWidget(self)
-        completer.setCompletionMode(QCompleter.PopupCompletion)
+        # the list is already what fits here: Qt must not filter it again
+        completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
         completer.setCaseSensitivity(Qt.CaseInsensitive)
         completer.activated.connect(self.insert_completion)
         self.completer = completer
 
     def word_start(self) -> int:
-        """Where the word under the cursor starts, in the line."""
+        """Where the word under the cursor starts, in the line (the same
+        reading as the completion module, so the popup replaces what it
+        completed)."""
         cursor = self.textCursor()
-        line = cursor.block().text()[: cursor.positionInBlock()]
-        start = len(line)
-        while start > 0 and line[start - 1] not in " \t[]{},=\"'":
-            start -= 1
-        return start
+        return word_at(cursor.block().text(), cursor.positionInBlock())[1]
 
     def insert_completion(self, text: str) -> None:
         cursor = self.textCursor()
@@ -104,6 +105,7 @@ class SourceEdit(QPlainTextEdit):
                 Qt.Key_Enter,
                 Qt.Key_Return,
                 Qt.Key_Tab,
+                Qt.Key_Backtab,
                 Qt.Key_Escape,
             )
         ):
