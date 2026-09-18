@@ -56,10 +56,16 @@ Read [docs/architecture.md](docs/architecture.md) first. In short:
 ```sh
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
-.venv/bin/python -m pytest
+.venv/bin/mypy                                   # the Qt-free code (see pyproject.toml)
+.venv/bin/coverage run -m pytest && .venv/bin/coverage report
 ```
 
-CI runs the same checks (plus a CLI smoke run) on every pull request.
+CI runs the same checks (plus the window tests offscreen and a CLI smoke run)
+on every pull request, and puts the coverage table in the run's summary.
+Every Monday a scheduled workflow regenerates `version_data.py` and opens a
+pull request when a release or pre-release changed it (a draft when the
+tests fail on the new table). The generator writes the file exactly as ruff
+would format it, so a refresh differs only where the data did.
 
 * lint and format clean, tests green
 * new behaviour comes with a test in `tests/` — the fixtures in

@@ -364,7 +364,7 @@ def _merge_tags(earlier: Tag, later: Tag) -> Tag:
     merged.overlay = later.overlay
     earlier_values = [] if later.replace else earlier.content.get("values", [])
     merged.content = {"values": [*earlier_values, *later.content.get("values", [])]}
-    merged.sources = [*getattr(earlier, "sources", [earlier]), later]
+    merged.sources = [*getattr(earlier, "sources", [earlier]), later]  # type: ignore[attr-defined]
     return merged
 
 

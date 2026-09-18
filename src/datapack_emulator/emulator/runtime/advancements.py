@@ -37,7 +37,8 @@ class Advancement:
 
     @classmethod
     def from_json(cls, advancement_id: str, data: dict[str, Any]) -> Advancement:
-        criteria = data.get("criteria") if isinstance(data.get("criteria"), dict) else {}
+        raw_criteria = data.get("criteria")
+        criteria: dict[str, Any] = raw_criteria if isinstance(raw_criteria, dict) else {}
         requirements = data.get("requirements")
         if not isinstance(requirements, list) or not requirements:
             requirements = [[name] for name in criteria]
@@ -46,7 +47,10 @@ class Advancement:
             [str(entry) for entry in group] if isinstance(group, list) else [str(group)]
             for group in requirements
         ]
-        display = data.get("display") if isinstance(data.get("display"), dict) else {}
+        raw_display = data.get("display")
+        display: dict[str, Any] = raw_display if isinstance(raw_display, dict) else {}
+        raw_rewards = data.get("rewards")
+        rewards: dict[str, Any] = raw_rewards if isinstance(raw_rewards, dict) else {}
         title = flatten_text_component(display.get("title")) if display.get("title") else ""
         parent = data.get("parent")
         return cls(
@@ -54,7 +58,7 @@ class Advancement:
             normalise_id(parent) if isinstance(parent, str) else None,
             {str(k): v for k, v in criteria.items() if isinstance(v, dict)},
             groups,
-            data.get("rewards") if isinstance(data.get("rewards"), dict) else {},
+            rewards,
             title,
         )
 

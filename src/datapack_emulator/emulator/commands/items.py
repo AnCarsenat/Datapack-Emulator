@@ -92,7 +92,8 @@ def item_tag_members(context: ExecutionContext, tag: str) -> set[str] | None:
     pack_tags = context.emulator.pack.registries.get("tags/item", {})
     for resource in pack_tags.values():
         if getattr(resource, "tag_id", "") == f"#{tag_id}":
-            members |= {normalise_id(entry.value) for entry in resource.entries}
+            entries = getattr(resource, "entries", [])
+            members |= {normalise_id(entry.value) for entry in entries}
             found = True
     return members if found else None
 
@@ -141,7 +142,9 @@ def _container(
     from datapack_emulator.emulator.commands.blocks import container_at, position_at
 
     position = position_at(context, tokens[:3])
-    block = container_at(context, position, key) if position is not None else None
+    if position is None:
+        return None
+    block = container_at(context, position, key)
     return (position, block) if block is not None else None
 
 
@@ -656,18 +659,18 @@ def cmd_loot(command: Command, context: ExecutionContext) -> CommandResult:
             if block.slot_keys(f"container.{slot}") is not None:
                 block.set_item(slot, items[offset].copy() if offset < len(items) else None)
     else:
-        first = slot_number(arguments[3])
-        if first is None:
+        start = slot_number(arguments[3])
+        if start is None:
             context.game_error("slot.unknown", arguments[3])
             return CommandResult.failure()
         count = int(arguments[4]) if width == 4 else len(items)
         for entity in require_targets(context, arguments[2]):
             for offset in range(count):
-                name = SLOT_NAMES.get(first + offset)
+                name = SLOT_NAMES.get(start + offset)
                 keys = entity.inventory.keys_for(name) if name else None
                 if keys and len(keys) == 1:
-                    stack = items[offset].copy() if offset < len(items) else None
-                    entity.inventory.set(keys[0], stack)
+                    placed = items[offset].copy() if offset < len(items) else None
+                    entity.inventory.set(keys[0], placed)
     # vanilla reports and returns the number of stacks
     if len(items) == 1:
         stack = items[0]

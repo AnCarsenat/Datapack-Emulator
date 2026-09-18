@@ -27,7 +27,7 @@ COMMANDS_URL = (
 def fetch(url: str, target: pathlib.Path) -> pathlib.Path:
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(url, timeout=60) as response:
             target.write_bytes(response.read())
     return target
 
@@ -148,17 +148,28 @@ lines += [
     ")",
     "",
     "#: the newest pre-release / release candidate of an unreleased version, if any",
-    "PRERELEASES: tuple[tuple[str, int, int, int], ...] = (",
 ]
-for row in prerelease_rows:
-    lines.append(f'    ("{row[0]}", {row[1]}, {row[2]}, {row[3]}),')
-lines += [")", "", "FEATURE_SINCE: dict[str, str] = {"]
+# written the way ruff formats it, so a refresh only differs where data did
+if prerelease_rows:
+    lines.append("PRERELEASES: tuple[tuple[str, int, int, int], ...] = (")
+    for row in prerelease_rows:
+        lines.append(f'    ("{row[0]}", {row[1]}, {row[2]}, {row[3]}),')
+    lines.append(")")
+else:
+    lines.append("PRERELEASES: tuple[tuple[str, int, int, int], ...] = ()")
+lines += ["", "FEATURE_SINCE: dict[str, str] = {"]
 for name in sorted(since):
     lines.append(f'    "{name}": "{since[name]}",')
-lines += ["}", "", "FEATURE_UNTIL: dict[str, str] = {"]
-for name in sorted(until):
-    lines.append(f'    "{name}": "{until[name]}",')
-lines += ["}", ""]
+lines.append("}")
+lines.append("")
+if until:
+    lines.append("FEATURE_UNTIL: dict[str, str] = {")
+    for name in sorted(until):
+        lines.append(f'    "{name}": "{until[name]}",')
+    lines.append("}")
+else:
+    lines.append("FEATURE_UNTIL: dict[str, str] = {}")
+lines.append("")
 OUT.write_text("\n".join(lines), encoding="utf-8")
 print(
     OUT,

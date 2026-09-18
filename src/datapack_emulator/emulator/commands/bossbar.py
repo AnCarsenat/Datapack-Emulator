@@ -67,8 +67,8 @@ def cmd_bossbar(command: Command, context: ExecutionContext) -> CommandResult:
         if bar_id in bars:
             context.game_error("commands.bossbar.create.failed", bar_id)
             return CommandResult.failure()
-        bar = bars[bar_id] = Bossbar(bar_id, text_argument(" ".join(arguments[2:])))
-        context.feedback("commands.bossbar.create.success", bar.shown)
+        created = bars[bar_id] = Bossbar(bar_id, text_argument(" ".join(arguments[2:])))
+        context.feedback("commands.bossbar.create.success", created.shown)
         return CommandResult(success=True, value=len(bars))
     if len(arguments) < 2:
         return _usage(context)

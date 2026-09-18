@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from datapack_emulator.cli.common import OK, CliError, count, err, parse_version
 from datapack_emulator.cli.runs import parse_test
@@ -240,7 +241,7 @@ def command_set(arguments: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _edit_list(items: list, operations: list[tuple[str, list[str]]], what: str) -> bool:
+def _edit_list(items: list, operations: list[tuple[str, list[Any]]], what: str) -> bool:
     """Apply edits to ``items`` in command-line order; every number refers to the
     list as it was before the edits. Returns whether anything changed."""
     original = list(items)
@@ -324,7 +325,7 @@ class _CheckEdits:
 
 def command_tests(arguments: argparse.Namespace) -> int:
     project = _load(arguments.project)
-    operations = []
+    operations: list[tuple[str, list[Any]]] = []
     check_edits: dict[str, _CheckEdits] = {}
     for action, values in getattr(arguments, "operations", None) or []:
         if action == "add":

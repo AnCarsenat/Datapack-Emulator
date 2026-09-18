@@ -56,6 +56,10 @@ def parse_block_position(
     return (position, "")
 
 
+def _shifted(position: Position, offset) -> Position:
+    return (position[0] + offset[0], position[1] + offset[1], position[2] + offset[2])
+
+
 def position_at(
     context: ExecutionContext, tokens: list[str], dimension: str | None = None
 ) -> Position | None:
@@ -134,7 +138,7 @@ def block_tag_members(context: ExecutionContext, tag: str) -> set[str] | None:
             if getattr(resource, "tag_id", "") != f"#{tag_id}":
                 continue
             found = True
-            for entry in resource.entries:
+            for entry in getattr(resource, "entries", []):
                 if entry.value.startswith("#"):
                     nested = block_tag_members(context, entry.value)
                     members |= nested or set()
@@ -341,7 +345,7 @@ def cmd_clone(command: Command, context: ExecutionContext) -> CommandResult:
     low, high = corners
     offset = tuple(destination[axis] - low[axis] for axis in range(3))
     target_low = destination
-    target_high = tuple(high[axis] + offset[axis] for axis in range(3))
+    target_high = _shifted(high, offset)
     overlaps = source_dimension == target_dimension and all(
         low[axis] <= target_high[axis] and target_low[axis] <= high[axis] for axis in range(3)
     )
@@ -362,7 +366,7 @@ def cmd_clone(command: Command, context: ExecutionContext) -> CommandResult:
             block, context.emulator.version
         ):
             continue
-        target = tuple(position[axis] + offset[axis] for axis in range(3))
+        target = _shifted(position, offset)
         copied.append((position, target, block.copy()))
     if filter_predicate is not None:
         note_unknown_properties(context, filter_predicate)
@@ -424,11 +428,12 @@ def blocks_condition_count(arguments: list[str], context: ExecutionContext) -> i
     blocks = context.world.blocks
     version = context.emulator.version
     compared = 0
+    offset = (destination[0] - low[0], destination[1] - low[1], destination[2] - low[2])
     for position in positions(low, high):
         source = blocks.get(context.dimension, position)
         if mode == "masked" and source.is_air:
             continue
-        target = tuple(position[axis] - low[axis] + destination[axis] for axis in range(3))
+        target = _shifted(position, offset)
         other = blocks.get(context.dimension, target)
         if (
             source.id != other.id

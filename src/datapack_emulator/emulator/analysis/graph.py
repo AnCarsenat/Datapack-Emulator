@@ -112,7 +112,9 @@ class CallGraph:
 
     def roots(self) -> list[str]:
         """Entry points: the vanilla tags, plus anything nothing else calls."""
-        entries = [node for node in ("#minecraft:load", "#minecraft:tick") if node in self.nodes]
+        entries: list[str] = [
+            node for node in ("#minecraft:load", "#minecraft:tick") if node in self.nodes
+        ]
         entries += [
             node for node in self.nodes if not self.predecessors(node) and node not in entries
         ]
@@ -121,7 +123,9 @@ class CallGraph:
     def unreachable(self) -> list[str]:
         """Functions no entry point can reach (dead code in the pack)."""
         seen: set[str] = set()
-        stack = [node for node in ("#minecraft:load", "#minecraft:tick") if node in self.nodes]
+        stack: list[str] = [
+            node for node in ("#minecraft:load", "#minecraft:tick") if node in self.nodes
+        ]
         while stack:
             node = stack.pop()
             if node in seen:

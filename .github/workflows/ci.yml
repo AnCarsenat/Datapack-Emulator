@@ -11,20 +11,33 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # a newer push replaces a pull request's run; runs on main all finish
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - run: pip install "ruff>=0.6"
       - run: ruff check .
       - run: ruff format --check .
+
+  types:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      # the Qt-free code: the emulator, the command line, projects, settings
+      - run: pip install "mypy==2.3.*"
+      - run: mypy
 
   test:
     name: Tests (Python ${{ matrix.python }})
@@ -34,15 +47,26 @@ jobs:
       matrix:
         python: ["3.10", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: requirements-dev.txt
+          cache-dependency-path: pyproject.toml
       # the emulator core is standard library only; the suite needs pytest
-      - run: pip install -e . "pytest>=8"
-      - run: python -m pytest
+      - run: pip install -e . "pytest>=8" "coverage[toml]>=7"
+      - run: coverage run -m pytest
+      - name: Coverage report
+        run: |
+          coverage report
+          coverage xml
+          echo '### Coverage (Python ${{ matrix.python }}, without the window)' >> "$GITHUB_STEP_SUMMARY"
+          coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: matrix.python == '3.13'
+        with:
+          name: coverage
+          path: coverage.xml
 
   gui:
     name: Window tests (offscreen Qt)
@@ -51,8 +75,8 @@ jobs:
       QT_QPA_PLATFORM: offscreen
       QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -69,15 +93,15 @@ jobs:
     name: CLI smoke run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - run: pip install -e .
       - run: datapack-emulator-cli --quiet run samples/hat --ticks 5
       - run: datapack-emulator-cli --quiet matrix samples/hat_v2 --declared --boundaries --ticks 3
       - run: datapack-emulator-cli --quiet test samples/hat --test "function hat:tick" --junit generated/tests.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reports
           path: |

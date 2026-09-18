@@ -295,7 +295,10 @@ def normalise_tagged(value: str) -> str:
 
 def _split_top(body: str, separator: str) -> list[str]:
     """Split on ``separator`` outside brackets and quotes."""
-    parts, depth, current, quote = [], 0, [], None
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    quote: str | None = None
     for char in body:
         if quote:
             current.append(char)

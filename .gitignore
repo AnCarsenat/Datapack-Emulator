@@ -9,6 +9,11 @@ generated/*
 .mcmeta-cache/
 .cache/
 
+# tool output
+.coverage
+coverage.xml
+.mypy_cache/
+
 # user projects (keep the folder, not its contents)
 projects/*
 !projects/.gitkeep

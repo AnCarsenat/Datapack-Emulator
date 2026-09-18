@@ -230,10 +230,10 @@ class Entity:
         """Load NBT back onto the entity, like ``Entity.load``: position,
         rotation and tags follow; the UUID never changes."""
         position = data.get("Pos")
-        if _numbers(position, 3):
+        if isinstance(position, list) and _numbers(position, 3):
             self.position = [float(value) for value in position]
         rotation = data.get("Rotation")
-        if _numbers(rotation, 2):
+        if isinstance(rotation, list) and _numbers(rotation, 2):
             self.rotation = normalise_rotation(rotation)
         tags = data.get("Tags")
         if isinstance(tags, list):  # without the key, Entity.load keeps the tags

@@ -21,7 +21,7 @@ from datapack_emulator.emulator.commands import Command, CommandResult, command_
 from datapack_emulator.emulator.commands.handlers import COSMETIC, UNMODELLED
 from datapack_emulator.emulator.commands.registry import CommandSet
 from datapack_emulator.emulator.common import normalise_id
-from datapack_emulator.emulator.datapack import Datapack, PackView
+from datapack_emulator.emulator.datapack import Datapack, DatapackSet, PackView
 from datapack_emulator.emulator.runtime.advancements import (
     LOCATION_INTERVAL,
     LOCATION_TRIGGER,
@@ -64,7 +64,7 @@ class Emulator:
 
     def __init__(
         self,
-        datapack: Datapack,
+        datapack: Datapack | DatapackSet,
         version: str | Version | None = None,
         players: int = 1,
         output: OutputBus | None = None,
@@ -102,11 +102,11 @@ class Emulator:
     # -- advancements -----------------------------------------------------
 
     def _build_advancements(self) -> AdvancementTree:
-        pack = {
-            resource_id: resource.content
-            for resource_id, resource in self.pack.registries.get("advancement", {}).items()
-            if isinstance(getattr(resource, "content", None), dict)
-        }
+        pack: dict[str, dict[str, Any]] = {}
+        for resource_id, resource in self.pack.registries.get("advancement", {}).items():
+            content = getattr(resource, "content", None)
+            if isinstance(content, dict):
+                pack[resource_id] = content
         vanilla = self.vanilla.advancements if self.vanilla is not None else None
         return AdvancementTree(pack, vanilla)
 
@@ -418,10 +418,10 @@ class Emulator:
         spec = self.commands.spec(command.name)
         if not spec.available:
             # exactly what the game answers for a command it does not know
-            since = spec.since.id if spec.since else "a later version"
+            added = spec.since.id if spec.since else "a later version"
             inner.note(
                 f"'{command.name}' does not exist in {self.version.id}"
-                + (f" (added in {since})" if spec.since else "")
+                + (f" (added in {added})" if spec.since else "")
                 + (f", removed in {spec.removed.id}" if spec.removed else "")
             )
             self.output.log(

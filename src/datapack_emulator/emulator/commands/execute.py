@@ -178,6 +178,7 @@ def related(context: ExecutionContext, entity: Entity, relation: str) -> list[En
         ):
             return []
         return [rider]
+    keys: tuple[str, ...]
     if relation == "owner":
         keys = ("Owner",) if entity.type in OWNABLE else ()
     elif relation == "origin":

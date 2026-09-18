@@ -192,9 +192,9 @@ def cmd_worldborder(command: Command, context: ExecutionContext) -> CommandResul
     border = context.world.state.border
     action = arguments[0]
     if action == "get":
-        size = int(border.size + 0.5)
+        rounded = int(border.size + 0.5)
         context.feedback("commands.worldborder.get", f"{border.size:.0f}")
-        return CommandResult(success=True, value=size)
+        return CommandResult(success=True, value=rounded)
     if action in ("set", "add") and len(arguments) >= 2:
         amount = _number(context, arguments[1], minimum=None if action == "add" else -BORDER_MAX)
         seconds = _border_time(context, arguments[2]) if len(arguments) > 2 else 0
@@ -521,7 +521,8 @@ def _spawn(context: ExecutionContext, arguments: list[str]):
         if block is None:
             return None
     else:
-        block = tuple(math.floor(value) for value in context.position)
+        x, y, z = (math.floor(value) for value in context.position[:3])
+        block = (x, y, z)
     angle = _angle(context, arguments[3], context.rotation[0]) if len(arguments) > 3 else 0.0
     if angle is None:
         return None

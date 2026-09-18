@@ -12,7 +12,8 @@ def test_parse_latest_oldest_and_partial():
     assert versions.parse(None) is versions.LATEST
     assert versions.parse("oldest") is versions.OLDEST
     assert versions.parse("1.20").id == "1.20"  # an exact release id wins
-    assert versions.parse("26").id == "26.2"  # a line with no exact release: newest stable
+    newest_26 = [v for v in versions.VERSIONS if v.stable and v.id.startswith("26.")][-1]
+    assert versions.parse("26").id == newest_26.id  # a line with no exact release: newest stable
 
 
 def test_parse_unknown_raises():
@@ -63,7 +64,7 @@ def test_upcoming_prerelease_sorts_between_releases():
         return
     upcoming = prereleases[-1]
     base = upcoming.id.split("-")[0]
-    assert upcoming > versions.parse("26.2")
+    assert upcoming > versions.LATEST
     assert versions.parse(base) is upcoming  # "26.3" means the rc until 26.3 ships
     assert versions._key(base) > upcoming.sort_key  # the release will sort after it
     assert versions.NEWEST is upcoming and versions.LATEST.stable

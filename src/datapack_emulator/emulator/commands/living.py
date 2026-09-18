@@ -96,9 +96,9 @@ def java_number(value: float, single: bool = False) -> str:
     if value == 0 or 1e-3 <= abs(value) < 1e7:
         text = format(Decimal(shortest), "f")
         return text if "." in text else text + ".0"
-    sign, digits, exponent = Decimal(shortest).normalize().as_tuple()
-    mantissa = "".join(map(str, digits))
-    power = exponent + len(mantissa) - 1
+    sign, number_digits, exponent = Decimal(shortest).normalize().as_tuple()
+    mantissa = "".join(map(str, number_digits))
+    power = int(exponent) + len(mantissa) - 1
     body = mantissa[0] + "." + (mantissa[1:] or "0")
     return ("-" if sign else "") + f"{body}E{power}"
 
@@ -228,31 +228,31 @@ def cmd_effect(command: Command, context: ExecutionContext) -> CommandResult:
         else:
             context.game_error("permissions.requires.entity")
             return CommandResult.failure()
-        effect_id = normalise_id(arguments[2]) if len(arguments) > 2 else None
-        if effect_id is not None and not require_id(context, "mob_effect", effect_id):
+        cleared_id = normalise_id(arguments[2]) if len(arguments) > 2 else None
+        if cleared_id is not None and not require_id(context, "mob_effect", cleared_id):
             return CommandResult.failure()
         cleared = []
         for entity in targets:
             effects = entity.living.effects if entity.living else {}
-            if effect_id is None and effects:
+            if cleared_id is None and effects:
                 effects.clear()
                 cleared.append(entity)
-            elif effect_id is not None and effect_id in effects:
-                del effects[effect_id]
+            elif cleared_id is not None and cleared_id in effects:
+                del effects[cleared_id]
                 cleared.append(entity)
         if not cleared:
             if targets:
-                which = "everything" if effect_id is None else "specific"
+                which = "everything" if cleared_id is None else "specific"
                 context.game_error(f"commands.effect.clear.{which}.failed")
             return CommandResult.failure()
         amount = "single" if len(targets) == 1 else "multiple"
         who = targets[0].display if len(targets) == 1 else len(targets)
-        if effect_id is None:
+        if cleared_id is None:
             context.feedback(f"commands.effect.clear.everything.success.{amount}", who)
         else:
             context.feedback(
                 f"commands.effect.clear.specific.success.{amount}",
-                effect_name(context, effect_id),
+                effect_name(context, cleared_id),
                 who,
             )
         return CommandResult(success=True, value=len(cleared))
@@ -398,12 +398,12 @@ def cmd_attribute(command: Command, context: ExecutionContext) -> CommandResult:
         return None if scale is None else java_int(value * scale)
 
     if rest[0] == "get":
-        value = attribute.sanitized(name)
-        result = scaled(value, 1)
+        current = attribute.sanitized(name)
+        result = scaled(current, 1)
         if result is None:
             return CommandResult.failure()
         context.feedback(
-            "commands.attribute.value.get.success", shown, entity.display, java_number(value)
+            "commands.attribute.value.get.success", shown, entity.display, java_number(current)
         )
         return CommandResult(success=True, value=result)
     if rest[0] == "base" and len(rest) >= 2:
