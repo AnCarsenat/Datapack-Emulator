@@ -85,6 +85,7 @@ class WorldController(Controller):
         """Fill the visible tab from the current world (the others fill when shown)."""
         window = self.window
         self._last_refresh = time.monotonic()
+        window.debug.refresh_values()
         emulator = window.emulator
         if emulator is None or not emulator.started:
             window.world_label.setText("no world yet — run, step or type a command")

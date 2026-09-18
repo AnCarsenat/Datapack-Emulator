@@ -111,6 +111,7 @@ class NavigationController(Controller):
         self._detach_highlighter()
         if path.suffix.lower() == ".png":
             window.source_edit.setPlainText(f"{path.name}: binary image")
+            window.debug.refresh_gutter()
             return
         try:
             text = path.read_text(encoding="utf-8")
@@ -119,12 +120,13 @@ class NavigationController(Controller):
         self._highlighter = highlighter_for(path, window.source_edit.document())
         window.source_edit.setPlainText(text)
         if line > 0:
-            block = window.source_edit.document().findBlockByLineNumber(line - 1)
+            block = window.source_edit.document().findBlockByNumber(line - 1)
             if block.isValid():
                 cursor = window.source_edit.textCursor()
                 cursor.setPosition(block.position())
                 window.source_edit.setTextCursor(cursor)
                 window.source_edit.centerCursor()
+        window.debug.refresh_gutter()
         window.tabs.setCurrentWidget(window.tab_page(TAB_SOURCE))
 
     # -- analysing lines ------------------------------------------------------
@@ -245,6 +247,8 @@ class NavigationController(Controller):
             "add this line as a test", lambda: window.environment.add_from_command(text)
         )
         add_test.setEnabled(runnable)
+        breakpoint = menu.addAction("toggle breakpoint (F9)", window.debug.toggle_at_cursor)
+        breakpoint.setEnabled(function_id is not None)
         menu.addSeparator()
         run_function = menu.addAction(
             "run this function", lambda: window.console.run(f"function {function_id}")

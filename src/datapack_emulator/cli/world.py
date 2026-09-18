@@ -32,6 +32,12 @@ from datapack_emulator.cli.common import (
     printing_bus,
     vanilla_for,
 )
+from datapack_emulator.cli.debug import (
+    DEBUG_HELP,
+    DebugCommands,
+    add_debug_arguments,
+    setup_debugger,
+)
 from datapack_emulator.cli.inspect import print_rows
 from datapack_emulator.cli.runs import (
     TICK_SECONDS,
@@ -52,6 +58,7 @@ from datapack_emulator.emulator.analysis.world_view import (
 )
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.datapack import DatapackSet
+from datapack_emulator.emulator.runtime.debugger import Debugger, DebugStopped
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.testing import (
     CommandTest,
@@ -102,6 +109,12 @@ class Session:
         self.vanilla = vanilla_for(arguments, self.version, inputs)
         #: the last run tests' results, by position in ``tests``
         self.results: dict[int, TestResult] = {}
+        #: breakpoints and watches, kept across new worlds (checked in the shell)
+        self.debugger = Debugger()
+        if project is not None:
+            for entry in self.debugger.load_strings(project.breakpoints):
+                print(f"error: cannot read the project's breakpoint {entry!r}")
+            self.debugger.watches = list(project.watches)
         self.emulator = self.new_world()
 
     @property
@@ -117,13 +130,16 @@ class Session:
             seed=self.seed,
             vanilla=self.vanilla,
         )
+        self.debugger.reset()
+        self.emulator.debugger = self.debugger
         return self.emulator
 
     # -- ticking -----------------------------------------------------------
 
-    def step(self, count: int = 1) -> None:
+    def step(self, count: int = 1) -> bool:
         """``count`` more ticks in this world (tests of those ticks run after them
-        when tests run during runs). ``count`` -1 ticks until Ctrl+C."""
+        when tests run during runs). ``count`` -1 ticks until Ctrl+C. Whether
+        the debugger abandoned a tick."""
         emulator = self.emulator
         emulator.start()
         schedule = None
@@ -151,6 +167,15 @@ class Session:
                     time.sleep(max(0.0, TICK_SECONDS - (time.perf_counter() - started)))
         except KeyboardInterrupt:
             print(f"stopped after {done} tick(s)")
+        except DebugStopped as stop:
+            self.stopped(stop)
+            return True
+        return False
+
+    def stopped(self, stop: DebugStopped) -> None:
+        """A tick abandoned from the debugger: the world keeps what it did."""
+        self.debugger.reset()
+        print(f"stopped at {stop}; the rest of that tick did not run (it still counts)")
 
     def _report(self, schedule: TestSchedule, indexes: list[int]) -> None:
         results = schedule.by_index(include_unreached=False)
@@ -166,7 +191,10 @@ class Session:
         count = self.ticks if ticks is None else ticks
         self.emulator.start()
         if count == 0:
-            self.emulator.run(ticks=0)
+            try:
+                self.emulator.run(ticks=0)
+            except DebugStopped as stop:
+                self.stopped(stop)
         self.step(count)
         if self.tests_during_runs and count >= 0:
             for index, test in enumerate(self.tests):
@@ -181,9 +209,15 @@ class Session:
         if Command.parse(line.strip().removeprefix("/")) is None:
             return
         if self.tests_during_runs and (not self.emulator.started or self.emulator.world.tick == 0):
-            self.step()  # like a server that is up, with that tick's tests
+            # like a server that is up, with that tick's tests
+            if self.step():
+                return
             print("(started the world: ran the first tick)")
-        result, started = self.emulator.run_typed(line)
+        try:
+            result, started = self.emulator.run_typed(line)
+        except DebugStopped as stop:
+            self.stopped(stop)
+            return
         if result is None:
             return
         if started:
@@ -205,7 +239,11 @@ class Session:
             print("no enabled test to run")
             return True
         self.new_world()
-        results = run_tests(self.datapack, tests, emulator=self.emulator)
+        try:
+            results = run_tests(self.datapack, tests, emulator=self.emulator)
+        except DebugStopped as stop:
+            self.stopped(stop)
+            return False
         enabled = [index for index, test in enumerate(tests) if test.enabled]
         self.results = dict(zip(enabled, results, strict=True))
         for result in results:
@@ -266,6 +304,8 @@ class Session:
         if "vanilla" in changed:
             project.vanilla_jar = str(self.vanilla.jar_path) if self.vanilla else ""
         project.tests = [test.to_dict() for test in self.tests]
+        project.breakpoints = self.debugger.to_strings()
+        project.watches = list(self.debugger.watches)
         project.tests_during_runs = self.tests_during_runs
         project.step_on_command = self.step_on_command
         try:
@@ -435,7 +475,8 @@ def register_world(subparsers) -> None:
 # shell
 # ---------------------------------------------------------------------------
 
-SHELL_HELP = """\
+SHELL_HELP = (
+    """\
 Commands are run on the server console, as typed in the logs dock
 (`execute as Player1 run trigger hat` to act as a player; `/` is optional).
 Lines starting with a dot control the session:
@@ -472,6 +513,8 @@ Lines starting with a dot control the session:
   project  .save [FILE]          save the project (.dpemu)
   shell    .help, .quit          (Ctrl+D quits too)
 """
+    + DEBUG_HELP
+)
 
 
 def _flag(text: str) -> bool:
@@ -521,12 +564,14 @@ def session_name(session: Session) -> str:
     return f"{session.datapack.name.replace(' + ', '+')}-{session.version.id}"
 
 
-class Shell:
+class Shell(DebugCommands):
     def __init__(self, session: Session, arguments: argparse.Namespace):
         self.session = session
         self.arguments = arguments
         self.failed = False
         self.quit = False
+        self._lines = iter(())
+        session.debugger.on_pause = self.on_pause
 
     @staticmethod
     def view_arguments(**overrides) -> argparse.Namespace:
@@ -842,8 +887,37 @@ class Shell:
         except CliError as exc:
             print(f"error: {exc}")
             self.failed = True
+        except DebugStopped as stop:  # a stop no command caught (.runtests, …)
+            self.session.stopped(stop)
 
-    def loop(self, lines, interactive: bool) -> None:
+    def next_line(self, prompt: str) -> str | None:
+        """The next line from the keyboard or the script (None at the end);
+        the debugger's prompt reads from the same place."""
+        if self.interactive:
+            while True:
+                try:
+                    return input(prompt)
+                except EOFError:
+                    print()
+                    return None
+                except KeyboardInterrupt:
+                    print()
+        for line in self._lines:
+            if line.strip():
+                print(f"{prompt}{line.rstrip()}")
+                return line
+        return None
+
+    def set_input(self, lines, interactive: bool) -> None:
+        """Where lines (commands, and answers at a stop) come from next."""
+        self._lines = iter(lines)
+        self.interactive = interactive
+        self.muted = False
+
+    def loop(self, lines=None, interactive: bool = False) -> None:
+        if lines is not None:
+            self.set_input(lines, interactive)
+        interactive = self.interactive
         if interactive:
             with contextlib.suppress(ImportError):
                 import readline  # noqa: F401  (line editing and history for input())
@@ -851,23 +925,11 @@ class Shell:
                 f"{self.session.datapack.name} on {self.session.version.id} — "
                 "type a command, or .help"
             )
-            while not self.quit:
-                try:
-                    line = input(f"[{self.session.emulator.world.tick}]> ")
-                except EOFError:
-                    print()
-                    return
-                except KeyboardInterrupt:
-                    print()
-                    continue
-                self.handle(line)
-            return
-        for line in lines:
-            if self.quit:
+        while not self.quit:
+            prompt = f"[{self.session.emulator.world.tick}]> " if interactive else "> "
+            line = self.next_line(prompt)
+            if line is None:
                 return
-            if not line.strip():
-                continue
-            print(f"> {line.rstrip()}")
             self.handle(line)
 
 
@@ -881,15 +943,19 @@ def command_shell(arguments: argparse.Namespace) -> int:
             raise CliError(f"cannot read {script}: {exc}") from exc
     session = Session(arguments, inputs)
     shell = Shell(session, arguments)
+    setup_debugger(session.debugger, session.emulator, arguments)
+    sources = [(lines, False) for lines in scripts] or [(sys.stdin, sys.stdin.isatty())]
+    # a stop during --run answers from the first input, like the rest
+    shell.set_input(*sources[0])
     if arguments.run:
-        session.run()
-    if scripts:
-        for lines in scripts:
-            shell.loop(lines, interactive=False)
-    elif sys.stdin.isatty():
-        shell.loop(sys.stdin, interactive=True)
-    else:
-        shell.loop(sys.stdin, interactive=False)
+        try:
+            session.run()
+        except DebugStopped as stop:  # pragma: no cover - run() handles its own
+            session.stopped(stop)
+    for index, (lines, interactive) in enumerate(sources):
+        if shell.quit:
+            break
+        shell.loop(None if index == 0 else lines, interactive)
     return FAILED if shell.failed and arguments.strict else OK
 
 
@@ -916,6 +982,7 @@ def register_shell(subparsers) -> None:
         "--step-on-command", action="store_true", help="one more tick after every command"
     )
     shell.add_argument("--realtime", action="store_true", help="20 ticks per second")
+    add_debug_arguments(shell)
     shell.add_argument(
         "--strict",
         action="store_true",

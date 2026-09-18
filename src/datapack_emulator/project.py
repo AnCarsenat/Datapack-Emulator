@@ -16,7 +16,9 @@ at the datapack where it is, still open; saving them writes the new layout.
       "engine_versions": ["1.20.4", "1.21.4"],
       "vanilla_jar": "",
       "speed": "fast",
-      "tests": [{"command": "function hat:tick", "at_tick": 5, "expect": "", "enabled": true}]
+      "tests": [{"command": "function hat:tick", "at_tick": 5, "expect": "", "enabled": true}],
+      "breakpoints": ["hat:tick:3", "!hat:give:1 if entity @s[tag=x]"],
+      "watches": ["score @s hat.count"]
     }
 
 An archive is unpacked into the cache when opened; the datapacks are used from
@@ -76,6 +78,10 @@ def _relative(path: Path | None) -> str:
         return str(path)
 
 
+def _strings(value: Any) -> list[str]:
+    return [str(item) for item in value if str(item).strip()] if isinstance(value, list) else []
+
+
 def _absolute(value: str) -> Path | None:
     if not value:
         return None
@@ -107,6 +113,10 @@ class Project:
     #: the user's own notes: about the project, and per function id
     notes: str = ""
     function_notes: dict[str, str] = field(default_factory=dict)
+    #: debugger breakpoints (``ns:function:LINE``, optionally followed by an
+    #: ``if``/``unless`` condition; a leading ``!`` marks a disabled one) and watches
+    breakpoints: list[str] = field(default_factory=list)
+    watches: list[str] = field(default_factory=list)
     #: where it was saved; ``None`` until the first save
     path: Path | None = None
 
@@ -128,6 +138,8 @@ class Project:
             "step_on_command": self.step_on_command,
             "notes": self.notes,
             "function_notes": dict(sorted(self.function_notes.items())),
+            "breakpoints": list(self.breakpoints),
+            "watches": list(self.watches),
         }
 
     @classmethod
@@ -153,6 +165,8 @@ class Project:
             }
             if isinstance(data.get("function_notes"), dict)
             else {},
+            breakpoints=_strings(data.get("breakpoints")),
+            watches=_strings(data.get("watches")),
             path=path,
         )
 

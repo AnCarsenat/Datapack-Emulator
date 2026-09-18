@@ -27,6 +27,7 @@ from datapack_emulator.cli.common import (
     vanilla_for,
     versions_given,
 )
+from datapack_emulator.cli.debug import add_debug_arguments, trace_debugger
 from datapack_emulator.cli.junit import write_junit
 from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.engine import TestEngine, VersionRun
@@ -145,6 +146,7 @@ def command_run(arguments: argparse.Namespace) -> int:
     realtime = arguments.realtime or bool(
         arguments.realtime is None and inputs.project and inputs.project.speed == "realtime"
     )
+    trace = trace_debugger(arguments, emulator)
     emulator.start()
     if ticks == 0:
         emulator.run(ticks=0)
@@ -162,6 +164,8 @@ def command_run(arguments: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         err(f"stopped after {done} tick(s)")
     ticks = done
+    if trace is not None:
+        err(f"debugger: {len(trace.lines)} stop(s)")
     results = schedule.results() if schedule is not None else []
     profiler = emulator.profiler
     datapack = inputs.datapack
@@ -218,7 +222,9 @@ def register_run(subparsers) -> None:
         help="emulate the pack for one version",
         description="Run #minecraft:load and #minecraft:tick for some ticks, print every "
         "record, then the profiler table and call-graph findings. With --tests, the "
-        "project's tests run in their ticks during the run (exit 1 when one fails).",
+        "project's tests run in their ticks during the run (exit 1 when one fails). With "
+        "--break, each stop is printed with the --watch values and the run goes on "
+        "(the shell stops and prompts instead).",
     )
     add_source_arguments(run)
     run.add_argument(
@@ -241,6 +247,7 @@ def register_run(subparsers) -> None:
     )
     run.add_argument("--html", type=Path, default=None, help="default: generated/index.html")
     run.add_argument("--dot", action="store_true", help="also write the call graph (Graphviz)")
+    add_debug_arguments(run)
     add_output_filter(run)
     add_vanilla_arguments(run)
     run.set_defaults(handler=command_run)

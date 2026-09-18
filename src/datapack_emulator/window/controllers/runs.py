@@ -9,6 +9,7 @@ from dataclasses import replace
 from PySide6.QtCore import QTimer, QUrl
 
 from datapack_emulator.emulator.analysis.graph import CallGraph
+from datapack_emulator.emulator.runtime.debugger import DebugStopped
 from datapack_emulator.emulator.runtime.output import LogLevel
 from datapack_emulator.emulator.testing import TestSchedule
 from datapack_emulator.settings import PATHS
@@ -77,7 +78,7 @@ class RunController(Controller):
 
     def start(self, graph: bool) -> None:
         window = self.window
-        if not self.need_datapack():
+        if not self.need_datapack() or window.debug.busy():
             return
         self.stop(refresh=False)
         window.log_view.clear()
@@ -90,7 +91,10 @@ class RunController(Controller):
         self.schedule = self._test_schedule()
         self._set_running(True)
         if self.remaining == 0:
-            window.emulator.run(ticks=0)  # just start the server and run load
+            try:
+                window.emulator.run(ticks=0)  # just start the server and run load
+            except DebugStopped as stop:
+                window.debug.stopped(stop)
             self.finish()
             return
         self.timer.start(self.interval_ms)
@@ -100,7 +104,12 @@ class RunController(Controller):
         )
 
     def stop(self, refresh: bool = True) -> None:
-        """Stop a running emulation (and, by default, show its results)."""
+        """Stop a running emulation (and, by default, show its results).
+        Stopped in the debugger, the tick is abandoned first."""
+        if self.window.debug.paused:
+            from datapack_emulator.emulator.runtime.debugger import Action
+
+            self.window.debug.answer(Action.STOP)
         if not self.running:
             return
         if refresh:
@@ -109,6 +118,7 @@ class RunController(Controller):
         self.timer.stop()
         self._set_running(False)
         self.schedule = None
+        self.window.debug.debugger.cancel_pause()
         self.window.log_view.flush()
         self.show_tick()
         if self.window.emulator is not None:
@@ -122,16 +132,22 @@ class RunController(Controller):
     def step(self) -> None:
         """One more tick in the current world; starts one if there is none."""
         window = self.window
-        if not self.need_datapack():
+        if not self.need_datapack() or window.debug.busy():
             return
         self.stop(refresh=False)
         if window.emulator is None:
             window.datapacks.rebuild_emulator()
         assert window.emulator is not None
         window.emulator.start()
-        tick = window.emulator.world.tick
-        window.emulator.run_tick()
-        self._run_tests_at(tick)
+        emulator = window.emulator
+        tick = emulator.world.tick
+        try:
+            emulator.run_tick()
+            self._run_tests_at(tick)
+        except DebugStopped as stop:
+            window.debug.stopped(stop)
+        if window.emulator is not emulator:
+            return  # replaced (or removed) while the debugger held the tick
         window.log_view.flush()
         self.show_tick()
         window.world_view.refresh()
@@ -149,8 +165,23 @@ class RunController(Controller):
         realtime = self.speed == "realtime" and self.timer.isActive()
         while self.remaining is None or self.remaining > 0:
             tick = emulator.world.tick
-            emulator.run_tick()
-            if self.schedule is not None and self.schedule.after_tick(emulator, tick):
+            try:
+                emulator.run_tick()
+            except DebugStopped as stop:
+                self.window.debug.stopped(stop)
+                if self.running:
+                    self.finish(stopped=True)
+                return
+            if not self.running or emulator is not self.window.emulator:
+                return  # stopped (or replaced) while the debugger held the tick
+            try:
+                ran = self.schedule is not None and self.schedule.after_tick(emulator, tick)
+            except DebugStopped as stop:
+                self.window.debug.stopped(stop)
+                if self.running:
+                    self.finish(stopped=True)
+                return
+            if ran:
                 self.window.environment.show_results(
                     self.schedule.by_index(include_unreached=False), pending="waiting for its tick"
                 )
@@ -166,6 +197,7 @@ class RunController(Controller):
     def finish(self, stopped: bool = False) -> None:
         window = self.window
         self.timer.stop()
+        window.debug.debugger.cancel_pause()
         self._set_running(False)
         window.log_view.flush()
         if self.schedule is not None:

@@ -193,6 +193,7 @@ class DatapackController(Controller):
             seed=window.spin_seed.value(),
             vanilla=window.vanilla,
         )
+        window.debug.attach(window.emulator)
         window.tick_label.setText("idle")
         window.world_view.forget()
         window.log_view.refresh_readers()

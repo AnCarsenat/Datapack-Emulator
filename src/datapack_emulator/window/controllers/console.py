@@ -6,6 +6,7 @@ from PySide6.QtCore import QEvent, QObject, Qt
 
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
+from datapack_emulator.emulator.runtime.debugger import DebugStopped
 from datapack_emulator.window.controllers.base import Controller
 
 
@@ -58,17 +59,41 @@ class ConsoleController(Controller):
         if Command.parse(line, source="<console>") is None:
             self.status("nothing to run: the line is empty or a comment")
             return None
+        stopped = window.debug.current()
+        if window.debug.paused and stopped is None:
+            self.status("the stopped tick is being abandoned; try again")
+            return None
+        if stopped is not None:
+            # stopped in the debugger: run it as the stopped line would
+            window.output.app(f"> {line}  (as {stopped.function_id})")
+            result = window.debug.run_here(line)
+            self._remember(line)
+            if text is None:
+                window.edit_console.clear()
+            window.log_view.flush()
+            window.world_view.refresh()
+            if result is not None:
+                outcome = "succeeded" if result.success else "failed"
+                self.status(f"{line}: {outcome} (value {result.value}) in the stopped function")
+            return result
         if window.emulator is None:
             window.datapacks.rebuild_emulator()
         emulator = window.emulator
         assert emulator is not None
-        if not emulator.started or emulator.world.tick == 0:
-            # like a server that is up: load and the first tick have run
-            emulator.start()
-            emulator.run_tick()
-            window.output.app("started the world (ran the first tick) to run the command")
-        window.output.app(f"> {line}")
-        result, _ = emulator.run_typed(line)
+        try:
+            if not emulator.started or emulator.world.tick == 0:
+                # like a server that is up: load and the first tick have run
+                emulator.start()
+                emulator.run_tick()
+                window.output.app("started the world (ran the first tick) to run the command")
+            window.output.app(f"> {line}")
+            result, _ = emulator.run_typed(line)
+        except DebugStopped as stop:
+            window.debug.stopped(stop)
+            window.log_view.flush()
+            window.runs.show_tick()
+            window.world_view.refresh()
+            return None
         if result is None:  # checked above; kept for safety
             return None
         self._remember(line)

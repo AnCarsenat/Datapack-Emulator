@@ -175,6 +175,8 @@ def run_one(emulator: Emulator, test: CommandTest) -> TestResult:
         result = emulator.run_command(command, emulator.root_context())
     finally:
         emulator.output.listeners.remove(records.append)
+        if emulator.debugger is not None:
+            emulator.debugger.finished()  # a step does not carry out of the test
 
     visible = [r for r in records if r.failure and r.level >= LogLevel.ERROR]
     crashed = [r for r in records if r.source is LogSource.EMULATOR and r.level >= LogLevel.ERROR]

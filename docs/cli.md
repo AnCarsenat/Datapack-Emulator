@@ -16,7 +16,7 @@ logger (records from the emulator still print).
 | [`matrix`](#matrix--many-versions) | run across versions | engine window |
 | [`test`](#test--a-projects-tests) | run a project's tests, exit 1 on failure | run tests (F8), engine *run tests* |
 | [`world`](#world--the-world-after-a-run) | run, then print scores, entities, storage, blocks, a score's history | world dock, *graph over time* |
-| [`shell`](#shell--an-open-world) | type commands in an open world; step, run, tests, views | logs dock command line, step (F7), environment tab |
+| [`shell`](#shell--an-open-world) | type commands in an open world; step, run, tests, views, the debugger | logs dock command line, step (F7), environment tab, debugger dock |
 | [`info`](#info--the-inspector) | what a pack or a resource is | inspector dock, version note |
 | [`explain`](#explain--analyze-a-line) | what a command line does | analyze line (Ctrl+I) |
 | [`search`](#search) | text in functions, or ids | search in pack (Ctrl+Shift+F), quick open (Ctrl+P) |
@@ -97,6 +97,7 @@ datapack-emulator-cli run projects/hat.dpemu --level debug
 | `--vanilla`, `--no-vanilla`, `--download` | installed jar | see [client jars](#client-jars) |
 | `--html` | `generated/index.html` | profiler report |
 | `--dot` | off | also write the call graph as Graphviz, next to the report |
+| `--break FUNC:LINE[ if COND]`, `--watch EXPR` | none | print each [debugger](#the-debugger) stop with the watches and go on; the number of stops goes to standard error |
 
 Prints every record as `[tick] source/level function:line: message`, then a
 per-function table (calls, commands, self and total ms for the run, and ms per
@@ -267,7 +268,8 @@ first tick first. Lines starting with a dot control the session:
 | `.enable N…`, `.disable N…`, `.remove N…`, `.duplicate N`, `.move N up\|down` | edit tests |
 | `.runtests [N …]` | the enabled tests, or those, in a fresh world (F8) |
 | `.records N` | the records test N produced in its last run (*show its records*) |
-| `.save [FILE]` | save the project with the tests and the settings changed in the session (without a project, a FILE is needed) |
+| `.break`, `.unbreak`, `.watch`, `.unwatch`, `.eval` | the [debugger](#the-debugger) |
+| `.save [FILE]` | save the project with the tests, breakpoints, watches and the settings changed in the session (without a project, a FILE is needed) |
 | `.help`, `.quit` | (Ctrl+D quits too; `.quit` also skips later `--script` files) |
 
 Input comes from the keyboard (with line editing and history where Python has
@@ -281,9 +283,64 @@ when a dot-command failed or a test run had a failure.
 | `--run` | run all before reading commands |
 | `--script FILE` | read lines from FILE (repeatable) |
 | `--step-on-command`, `--realtime` | start with those on (a project's settings count too) |
+| `--break FUNC:LINE[ if COND]`, `--watch EXPR` | more breakpoints and watches (repeatable), besides the project's |
 | `--strict` | see above |
 | `--level`, `--sources`, `--seen-by`, `--grep`, `--details` | see [records](#records) |
 | `--vanilla`, `--no-vanilla`, `--download` | see [client jars](#client-jars) |
+
+### The debugger
+
+The window's debugger dock, in the shell. A breakpoint stops **before** a
+function line runs; `FUNC:LINE` on a comment or blank line moves to the next
+command. A condition is an `execute` condition checked in the stopped line's
+context: `.break hat:tick:4 if score @s hat matches 3..` (`if` may be left
+out). Conditions and `if`/`unless` watches only read the world: `if function`
+is refused, and what a check prints is not recorded. A project's breakpoints
+are checked when the shell opens: each moves to its function's first command
+on or after its line, and the ones the version does not have are warned
+about (`project debug` warns the same way).
+
+| line | does |
+| --- | --- |
+| `.break FUNC:LINE [if\|unless COND]` | add a breakpoint (the function must exist in the version) |
+| `.break` | list them, with how often each stopped |
+| `.unbreak FUNC:LINE\|all` | remove |
+| `.enable-break FUNC:LINE`, `.disable-break FUNC:LINE` | a disabled breakpoint never stops |
+| `.watch EXPR` / `.watch` | add a watch / list the watches with their values |
+| `.unwatch N\|all` | remove |
+| `.eval EXPR` | an expression's value now (or where it stopped) |
+
+Expressions: `score HOLDER OBJECTIVE` (a name or a selector such as `@s`),
+`storage ID [PATH]`, `entity SELECTOR [PATH]`, `block X Y Z [PATH]`,
+`if …` / `unless …` (whether the condition passes), `executor`, `position`,
+`rotation`, `dimension`.
+
+A stop (from `.step`, `.run`, `.runtests` or a typed command) prints where
+it is and the watches, then reads answers from the same place as the rest
+of the session — the keyboard or the script:
+
+| answer | |
+| --- | --- |
+| `step` / `s` | run the line; stop at the next function line, inside calls too (into, F11) |
+| `next` / `n` | stop at the next line of this function, or of its caller once it ends (over, F10) |
+| `out` / `o` | stop at the next line of the caller (Shift+F11) |
+| `continue` / `c` | run to the next breakpoint (Ctrl+F5) |
+| `stop` / `q` | abandon the rest of the tick; the world keeps what already ran |
+| `where` / `bt` | the call stack, innermost first |
+| `context` / `ctx` | executor, position, rotation, dimension |
+| `list` / `l [N]` | the source around the line (`●` breakpoints, `->` the line) |
+| a command | runs as the stopped line would (same executor and position); its function calls do not stop. A command named like an answer (`list`, `stop`) needs a leading `/` |
+| `.scores`, `.storage`, `.entities`, `.nbt`, `.blocks`, `.state`, `.world`, `.json`, `.history`, `.tick`, the debugger's own dot-commands, `.help` | as in the shell; the others wait until the tick goes on |
+
+*next* and *out* follow the call stack's depth: past the end of a tick
+function they stop in whatever runs next at that depth (the next function of
+the tag, a schedule). A step ends with its tick (or its test). An abandoned
+tick still counts: the game time moves on, so the next step runs the next
+tick. When a script runs out while stopped, the run goes on and later stops
+are skipped until the next `--script` starts (the breakpoints are kept);
+Ctrl+D at the prompt just continues. With `--run`, the stops read from the
+first script or standard input. `run --break` prints the stops instead of
+asking.
 
 ## `info` — the inspector
 
@@ -360,6 +417,7 @@ datapack-emulator-cli project list
 | `packs FILE` | list; `--add DIR`, `--remove N`, `--move N up\|down` (load order; a project keeps at least one pack) |
 | `tests FILE` | list; `--add [TICK:]COMMAND`, `--expect N TEXT`, `--expect-value N RANGE`, `--tick N TICK`, `--enable N`, `--disable N`, `--duplicate N`, `--move N up\|down`, `--remove N` |
 | `note FILE FUNCTION [TEXT]` | read, write or (with `''`) remove the note on a function or `#tag` (a warning when the packs have no such id) |
+| `debug FILE` | list the debugger's breakpoints and watches; `--break FUNC:LINE[ if COND]`, `--unbreak FUNC:LINE\|all`, `--enable FUNC:LINE`, `--disable FUNC:LINE`, `--watch EXPR`, `--unwatch N\|all` (the debugger dock's lists) |
 | `list` | the projects in the projects folder the window saves to (`projects/` of the checkout, or the per-user data folder) |
 | `recent` | the window's recent projects and datapacks |
 

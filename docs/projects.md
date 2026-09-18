@@ -40,6 +40,8 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
   "tests_during_runs": false,
   "notes": "check the armor stand",
   "function_notes": {"hat:tick": "swaps the hat"},
+  "breakpoints": ["hat:tick:3", "!hat:give:1 if entity @s[tag=x]"],
+  "watches": ["score @s hat.count"],
   "archive_format": 1
 }
 ```
@@ -53,6 +55,7 @@ folder. Rename the file to `.zip` to look inside with any archive tool.
 | `speed` | `fast` or `realtime` |
 | `tests` | the environment tab's tests: `command`, `at_tick`, `expect`, `expect_value`, `enabled` — results are not saved |
 | `notes`, `function_notes` | your notes on the project, and per function id |
+| `breakpoints`, `watches` | the debugger's breakpoints (`function:line`, then an optional `if …`/`unless …` condition; `!` in front: disabled) and watch expressions |
 | `tests_during_runs` | whether runs and steps also run the tests |
 | `step_on_command` | whether a command sent from the logs' command line is followed by one tick |
 | `engine_versions` | versions ticked in the engine window when the project was saved; ticked again when it is opened |

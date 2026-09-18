@@ -96,6 +96,7 @@ class ProjectController(Controller):
         window.check_step_on_command.setChecked(project.step_on_command)
         window.notes.project_notes = project.notes
         window.environment.set_tests([CommandTest.from_dict(test) for test in project.tests])
+        window.debug.load(project.breakpoints, project.watches)
         if project.vanilla_jar and Path(project.vanilla_jar).is_file():
             try:
                 window.jars.use(window.library.load_jar(Path(project.vanilla_jar)))
@@ -125,6 +126,7 @@ class ProjectController(Controller):
         project.notes = window.notes.project_notes
         window.environment.commit_edits()  # a cell still being typed in counts
         project.tests = [test.to_dict() for test in window.environment.tests()]
+        window.debug.capture(project)
         project.vanilla_jar = str(window.vanilla.jar_path) if window.vanilla else ""
         if window.engine_window is not None:
             project.engine_versions = [

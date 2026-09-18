@@ -43,6 +43,7 @@ from datapack_emulator.settings import EMULATION, WINDOW
 from datapack_emulator.window.controllers import (
     ConsoleController,
     DatapackController,
+    DebugController,
     EnvironmentController,
     JarController,
     LogController,
@@ -61,6 +62,7 @@ from datapack_emulator.window.controllers.base import (
 )
 from datapack_emulator.window.engine_window import EngineWindow
 from datapack_emulator.window.panels import FunctionGraphWidget, load_ui_into
+from datapack_emulator.window.panels.source import SourceEdit
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +82,7 @@ class MainWindow(QMainWindow):
         self.engine_window: EngineWindow | None = None
         self.project = Project()
 
-        load_ui_into(self, UI_FILE, custom=[QWebEngineView])
+        load_ui_into(self, UI_FILE, custom=[QWebEngineView, SourceEdit])
         self._bind_widgets()
         self._fill_versions()
 
@@ -95,6 +97,7 @@ class MainWindow(QMainWindow):
         self.console = ConsoleController(self)
         self.notes = NotesController(self)
         self.session = SessionController(self)
+        self.debug = DebugController(self)
         for controller in (
             self.projects,
             self.log_view,
@@ -106,6 +109,7 @@ class MainWindow(QMainWindow):
             self.console,
             self.notes,
             self.session,
+            self.debug,
         ):
             controller.connect()
         self._wire_actions()
@@ -134,7 +138,7 @@ class MainWindow(QMainWindow):
         self.tree: QTreeView = find(QTreeView, "treeView")
         self.inspector: QTreeWidget = find(QTreeWidget, "inspectorTree")
         self.log_table: QTableView = find(QTableView, "logTable")
-        self.source_edit: QPlainTextEdit = find(QPlainTextEdit, "sourceEdit")
+        self.source_edit: SourceEdit = find(SourceEdit, "sourceEdit")
         self.web_view: QWebEngineView = find(QWebEngineView, "webEngineView")
         self.tree_profile: QTreeWidget = find(QTreeWidget, "treeProfile")
         self.profile_summary: QLabel = find(QLabel, "labelProfileSummary")
@@ -178,6 +182,7 @@ class MainWindow(QMainWindow):
         self.dock_inspector: QDockWidget = find(QDockWidget, "dockWidgetInspector")
         self.dock_logs: QDockWidget = find(QDockWidget, "dockWidgetLogs")
         self.dock_world: QDockWidget = find(QDockWidget, "dockWidgetWorld")
+        self.dock_debug: QDockWidget = find(QDockWidget, "dockWidgetDebug")
         self.recent_projects_menu: QMenu = find(QMenu, "menurecent_projects")
         self.recent_datapacks_menu: QMenu = find(QMenu, "menurecent_datapacks")
         self.remove_datapack_menu: QMenu = find(QMenu, "menuremove_datapack")
@@ -280,6 +285,7 @@ class MainWindow(QMainWindow):
             ("actioninspector", self.dock_inspector),
             ("actionlog", self.dock_logs),
             ("actionworld", self.dock_world),
+            ("actiondebugger", self.dock_debug),
         ):
             action = self._action(name)
             if action is None or dock is None:
@@ -312,14 +318,26 @@ class MainWindow(QMainWindow):
 
     @property
     def docks(self) -> tuple[QDockWidget, ...]:
-        return (self.dock_explorer, self.dock_inspector, self.dock_logs, self.dock_world)
+        return (
+            self.dock_explorer,
+            self.dock_inspector,
+            self.dock_logs,
+            self.dock_world,
+            self.dock_debug,
+        )
 
     def show_all_docks(self) -> None:
         """Every panel open and docked — the default layout."""
         for dock in self.docks:
             dock.setFloating(False)
             dock.show()
-        for name in ("actionexplorer", "actioninspector", "actionlog", "actionworld"):
+        for name in (
+            "actionexplorer",
+            "actioninspector",
+            "actionlog",
+            "actionworld",
+            "actiondebugger",
+        ):
             action = self._action(name)
             if action is not None:
                 action.setChecked(True)

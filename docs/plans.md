@@ -6,21 +6,7 @@ Nothing here is promised; cross an entry out (or delete it) once it lands.
 
 ## Recommended next
 
-### 1. Function debugger
-
-Breakpoints on function lines, then step command by command (step into a
-called function, step over, continue) while watching scores, NBT, the
-executor and the position.
-
-* **Touches:** `runtime/emulator.py` (a hook before each command), the source
-  view (a breakpoint gutter), a new debug dock in `window.ui` (call stack,
-  context, watches), `controllers/`.
-* **How:** the emulator already dispatches one command at a time; run it on a
-  worker (a generator or a thread with an event) that pauses at breakpoints and
-  hands the context to the UI.
-* **Size:** medium to large.
-
-### 2. Run the engine window in the background
+### 1. Run the engine window in the background
 
 A large version matrix runs on the UI thread and freezes the window.
 
