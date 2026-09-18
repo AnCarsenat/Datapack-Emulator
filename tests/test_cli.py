@@ -1155,6 +1155,61 @@ def test_shell_snapshots(make_pack, tmp_path, capsys, monkeypatch):
     assert "error: no snapshot 1 (there are 0)" in out
 
 
+def test_run_saves_a_profile_and_compares_a_later_run(make_pack, tmp_path, capsys):
+    saved = tmp_path / "before.json"
+    pack = str(_pack(make_pack))
+    assert main(["run", pack, "--ticks", "2", "--save-profile", str(saved)]) == 0
+    out = capsys.readouterr().out
+    assert "dearest line" in out and "test:tick:1" in out
+    assert saved.is_file()
+
+    bigger = make_pack(  # the same pack with two more lines in its tick function
+        {
+            "data/minecraft/tags/function/load.json": {"values": ["test:load"]},
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/load.mcfunction": "scoreboard objectives add t dummy\n",
+            "data/test/function/tick.mcfunction": (
+                "scoreboard players add #ticks t 1\nsay a\nsay b\n"
+            ),
+        }
+    )
+    assert main(["run", str(bigger), "--ticks", "2", "--baseline", str(saved)]) == 0
+    out = capsys.readouterr().out
+    comparison = out.split("Compared with the saved run", 1)[1]
+    row = next(line for line in comparison.splitlines() if line.startswith("test:tick "))
+    assert row.split()[-1].startswith("+")  # the extra lines cost more
+    assert main(["run", str(bigger), "--baseline", str(tmp_path / "none.json")]) == 2
+    assert "cannot read the profile" in capsys.readouterr().err
+
+
+def test_shell_hot_lines_and_baseline(make_pack, capsys, monkeypatch):
+    import io
+
+    pack = str(_pack(make_pack))
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(
+            "\n".join(
+                [
+                    ".compare",
+                    ".step",
+                    ".baseline",
+                    ".hot 3",
+                    ".run",
+                    ".compare",
+                    "",
+                ]
+            )
+        ),
+    )
+    assert main(["shell", pack]) == 0
+    out = capsys.readouterr().out
+    assert "no baseline yet" in out
+    assert "kept this run as the baseline: 1 tick(s)" in out
+    assert "test:tick:1" in out and "run(s)" in out
+    assert "Compared with the saved run" in out
+
+
 def test_shell_forgets_snapshots_on_a_new_world(make_pack, capsys, monkeypatch):
     import io
 
@@ -1182,6 +1237,70 @@ def test_shell_forgets_snapshots_on_a_new_world(make_pack, capsys, monkeypatch):
     assert "no snapshots (.snapshot [LABEL] takes one)" in out
     assert "usage: .diff N [M]" in out  # a third argument is a mistake, not ignored
     assert out.rstrip().endswith("no snapshots (.snapshot [LABEL] takes one)")  # .unsnapshot ALL
+
+
+def test_run_refuses_a_file_that_is_not_a_profile(make_pack, tmp_path, capsys):
+    import json
+
+    pack = str(_pack(make_pack))
+    other = tmp_path / "pack.mcmeta"
+    other.write_text('{"pack": {"pack_format": 61}}', encoding="utf-8")
+    assert main(["run", pack, "--baseline", str(other)]) == 2
+    assert "cannot read the profile" in capsys.readouterr().err
+
+    listed = tmp_path / "list.json"
+    listed.write_text("[1, 2, 3]", encoding="utf-8")
+    assert main(["run", pack, "--baseline", str(listed)]) == 2
+    assert "cannot read the profile" in capsys.readouterr().err
+
+    empty = tmp_path / "empty.json"
+    assert main(["run", pack, "--ticks", "0", "--save-profile", str(empty)]) == 0
+    capsys.readouterr()
+    assert main(["run", pack, "--baseline", str(empty)]) == 2
+    assert "has no ticks" in capsys.readouterr().err
+
+    saved = tmp_path / "before.json"
+    assert main(["run", pack, "--ticks", "2", "--save-profile", str(saved)]) == 0
+    data = json.loads(saved.read_text(encoding="utf-8"))
+    assert data["kind"] == "datapack-emulator-profile" and data["pack"] == "pack1"
+    assert data["version"] == "1.21.4" and data["saved"]
+    capsys.readouterr()
+    # the profile is read before the run, so a mistake does not cost one
+    assert main(["run", pack, "--ticks", "-1", "--baseline", str(tmp_path / "none.json")]) == 2
+    assert "0 tick" not in capsys.readouterr().out
+
+
+def test_shell_saves_and_reads_back_a_baseline(make_pack, tmp_path, capsys, monkeypatch):
+    import io
+
+    kept = tmp_path / "kept.json"
+    pack = str(_pack(make_pack))
+    monkeypatch.setattr(
+        "sys.stdin",
+        io.StringIO(
+            "\n".join(
+                [
+                    ".baseline",
+                    ".step 2",
+                    f".baseline save {kept}",
+                    ".baseline load {}".format(tmp_path / "missing.json"),
+                    f".baseline load {kept}",
+                    ".run",
+                    ".compare",
+                    ".baseline nonsense",
+                    "",
+                ]
+            )
+        ),
+    )
+    assert main(["shell", pack]) == 0
+    out = capsys.readouterr().out
+    assert "no ticks run yet" in out
+    assert f"profile: {kept}" in out
+    assert "cannot read the profile" in out
+    assert "baseline read from" in out
+    assert "Compared with the saved run" in out and "kept run: pack1 1.21.4" in out
+    assert "usage: .baseline [save FILE | load FILE]" in out
 
 
 def test_check_lines_options_and_unknown_suffixes(make_pack, tmp_path, capsys):

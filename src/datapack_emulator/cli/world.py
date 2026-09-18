@@ -43,11 +43,15 @@ from datapack_emulator.cli.inspect import print_rows
 from datapack_emulator.cli.runs import (
     TICK_SECONDS,
     add_world_arguments,
+    load_profile,
     parse_test,
+    print_comparison,
     print_result,
+    save_profile,
     ticks_setting,
 )
 from datapack_emulator.emulator.analysis.explain import explain_line
+from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.analysis.world_view import (
     blocks_text,
     entities_text,
@@ -115,6 +119,8 @@ class Session:
         self.results: dict[int, TestResult] = {}
         #: worlds kept aside (.snapshot), in the order they were taken
         self.snapshots: list[Snapshot] = []
+        #: a run kept to compare later runs against (.baseline)
+        self.baseline: Profiler | None = None
         #: breakpoints and watches, kept across new worlds (checked in the shell)
         self.debugger = Debugger()
         if project is not None:
@@ -507,6 +513,10 @@ Lines starting with a dot control the session:
            .unsnapshot N|all
   analyze  .explain COMMAND      analyze a command line
            .profile              the per-tick call tree
+           .hot [N]              the lines that cost the most
+           .baseline [save FILE|load FILE]
+                                 keep this run (or write it, or read one back)
+           .compare              what changed since the kept run
            .report [FILE]        write the HTML profiler report
            .dot [FILE]           write the call graph for Graphviz
   settings .version [V]          show or switch the version (a fresh world)
@@ -734,6 +744,49 @@ class Shell(DebugCommands):
                 f"{one['self_us'] / 1000:9.4f} {one['calls']:7.2f} {one['commands']:7.1f}"
             )
 
+    def do_baseline(self, session: Session, rest: str) -> None:
+        words = _words(rest)
+        if words:
+            if len(words) != 2 or words[0] not in ("save", "load"):
+                raise CliError("usage: .baseline [save FILE | load FILE]")
+            if words[0] == "load":
+                session.baseline = load_profile(Path(words[1]))
+                print(f"baseline read from {words[1]}: {session.baseline.ticks} tick(s)")
+                return
+            save_profile(
+                session.emulator.profiler.snapshot(),
+                Path(words[1]),
+                session.datapack.name,
+                session.version.id,
+            )
+            return
+        if session.emulator.profiler.ticks == 0:
+            raise CliError("no ticks run yet: .step or .run first, then .baseline")
+        session.baseline = session.emulator.profiler.snapshot()
+        session.baseline.pack = session.datapack.name
+        session.baseline.version = session.version.id
+        print(
+            f"kept this run as the baseline: {session.baseline.ticks} tick(s), "
+            f"{session.baseline.total_us / 1000:.2f} ms"
+        )
+
+    def do_compare(self, session: Session, rest: str) -> None:
+        if session.baseline is None:
+            raise CliError("no baseline yet: .baseline keeps the current run")
+        print_comparison(session.emulator.profiler, session.baseline)
+
+    def do_hot(self, session: Session, rest: str) -> None:
+        limit = _number(rest, 1) if rest else 10
+        rows = session.emulator.profiler.hot_commands(limit)
+        if not rows:
+            print("no commands run yet")
+        for function_id, line, stats in rows:
+            where = f"{function_id}:{line}"
+            print(
+                f"{where:40} {stats['self_us'] / 1000:8.3f} ms  "
+                f"{int(stats['runs']):5d} run(s)  {str(stats['raw'])[:60]}"
+            )
+
     def do_report(self, session: Session, rest: str) -> None:
         path = Path(rest) if rest else Path("generated") / "index.html"
         try:
@@ -741,6 +794,7 @@ class Shell(DebugCommands):
                 path,
                 f"Function profiler — {session.datapack.name}",
                 f"{session.version.id} (pack_format {session.version.format_string})",
+                baseline=session.baseline,
             )
         except OSError as exc:
             raise CliError(f"cannot write {path}: {exc}") from exc

@@ -120,9 +120,23 @@ current version.
     double-click a function to open it, right-click for its menu. Recursion
     deeper than 32 calls is added up in one `…` row. The summary gives the
     average and worst tick against the 50 ms budget.
-  * *HTML report* (`generated/index.html`): the same call tree, and a table
-    per function (calls, commands, self and total ms per tick, share of a
-    tick, calls and total ms for the whole run).
+  * *keep as baseline* keeps this run's numbers; the report then opens on a
+    table of what each function, and each line, costs per tick before and
+    after, biggest change first. *clear baseline* forgets them. A new pack or
+    version leaves the baseline alone, so a run before a change can be
+    compared with a run after it; the report names the pack and version the
+    kept run came from. The baseline lives in the window and is not saved
+    with the project — the shell's `.baseline save FILE` / `.baseline load
+    FILE` (and `run --save-profile` / `--baseline`) keep one in a file.
+  * *HTML report* (`generated/index.html`): the comparison (when a baseline
+    is kept), a flame graph of the call tree (each bar a call path, its width
+    its share of its caller, the roots' share of the whole run; paths under
+    0.2% of their caller are left in it), the same call tree, the dearest
+    lines (the single commands that cost the most, with how often the line
+    ran and its ms per tick), and a table per function (calls, commands, self
+    and total ms per tick, share of a tick, calls and total ms for the whole
+    run). Right-clicking a bar or a row of any of them gives the same menu as
+    a call-graph node (open the function, callers and calls, note…).
 * **Call graph** — layered DAG of `function`, `schedule`, `execute if function`
   and tag edges. Purple nodes are tags, blue ones come from an overlay, orange
   ones are macros, red ones are called but missing. *Show in call graph*

@@ -9,6 +9,7 @@ from dataclasses import replace
 from PySide6.QtCore import QTimer, QUrl
 
 from datapack_emulator.emulator.analysis.graph import CallGraph
+from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.runtime.debugger import DebugStopped
 from datapack_emulator.emulator.runtime.output import LogLevel
 from datapack_emulator.emulator.testing import TestSchedule
@@ -37,6 +38,8 @@ class RunController(Controller):
         self._rebuild_graph = False
         #: tests waiting for their tick in the current run ("run tests during runs")
         self.schedule: TestSchedule | None = None
+        #: a run kept to compare later ones against (the profiler tab)
+        self.baseline: Profiler | None = None
 
     def connect(self) -> None:
         window = self.window
@@ -47,6 +50,9 @@ class RunController(Controller):
         window.stop_button.clicked.connect(lambda: self.stop())
         window.engine_button.clicked.connect(self.open_engine)
         window.combo_speed.currentIndexChanged.connect(self.on_speed_changed)
+        # clicked(bool) would pass checked=False as the profiler to keep
+        window.profile_baseline_button.clicked.connect(lambda: self.keep_baseline())
+        window.profile_clear_baseline_button.clicked.connect(lambda: self.clear_baseline())
 
     # -- settings -----------------------------------------------------------
 
@@ -286,6 +292,7 @@ class RunController(Controller):
             PATHS.GENERATED / "index.html",
             f"Function profiler — {name}",
             f"{window.version.id} (pack_format {window.version.format_string})",
+            baseline=self.baseline,
         )
         window.output.app(f"wrote {report}")
         window.web_view.setUrl(QUrl.fromLocalFile(str(report)))
@@ -294,6 +301,34 @@ class RunController(Controller):
         window.profile_summary.setText(window.emulator.profiler.summary())
         if switch_tab:
             window.tabs.setCurrentWidget(window.tab_page(TAB_PROFILER))
+
+    def keep_baseline(self) -> None:
+        """Keep this run's numbers, for the report to compare later ones with."""
+        window = self.window
+        if window.emulator is None or window.emulator.profiler.ticks == 0:
+            self.status("run or step first: a run of no ticks has nothing to compare")
+            return
+        baseline = window.emulator.profiler.snapshot()
+        baseline.pack = window.datapack.name if window.datapack is not None else ""
+        baseline.version = window.version.id
+        self._show_baseline(baseline)
+
+    def clear_baseline(self) -> None:
+        """Forget it: the report stops comparing."""
+        self._show_baseline(None)
+
+    def _show_baseline(self, baseline: Profiler | None) -> None:
+        window = self.window
+        self.baseline = baseline
+        if baseline is None:
+            window.profile_baseline_label.setText("no baseline kept")
+        else:
+            window.profile_baseline_label.setText(
+                f"baseline: {baseline.pack} {baseline.version}, {baseline.ticks} tick(s), "
+                f"{baseline.total_us / max(baseline.ticks, 1) / 1000:.4f} ms/tick"
+            )
+        window.profile_clear_baseline_button.setEnabled(baseline is not None)
+        self.run_profiler(switch_tab=False)
 
     def run_graphview(self) -> None:
         window = self.window

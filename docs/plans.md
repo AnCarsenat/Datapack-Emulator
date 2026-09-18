@@ -49,8 +49,6 @@ Nothing is queued here right now; take the next item from the lists below.
 * **Smarter editing** — the source view edits and checks lines as you
   type; completion of commands, ids and selector options, and renaming a
   function across the pack, would come next.
-* **Profiler** — the most expensive individual commands, comparing two runs
-  (before/after a change), and a flame graph of the call tree.
 * **Installed copies** — ship a default pack inside the package (today the
   sample only exists in a source checkout), Windows/macOS builds (PyInstaller),
   and a PyPI release.

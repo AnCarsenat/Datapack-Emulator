@@ -673,6 +673,43 @@ QMenuBar::item:selected {
              </widget>
             </item>
             <item>
+             <layout class="QHBoxLayout" name="profileBaselineLayout">
+              <item>
+               <widget class="QPushButton" name="buttonProfileBaseline">
+                <property name="text">
+                 <string>keep as baseline</string>
+                </property>
+                <property name="toolTip">
+                 <string>keep this run's numbers; the report then shows what the next runs changed</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="buttonProfileClearBaseline">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>clear baseline</string>
+                </property>
+                <property name="toolTip">
+                 <string>forget the kept run</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelProfileBaseline">
+                <property name="text">
+                 <string>no baseline kept</string>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">color: #555;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
              <widget class="QTreeWidget" name="treeProfile">
               <property name="alternatingRowColors">
                <bool>true</bool>

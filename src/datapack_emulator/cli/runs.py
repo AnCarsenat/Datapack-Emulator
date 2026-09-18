@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 from datapack_emulator.cli.common import (
@@ -32,6 +34,7 @@ from datapack_emulator.cli.common import (
 from datapack_emulator.cli.debug import add_debug_arguments, trace_debugger
 from datapack_emulator.cli.junit import write_junit
 from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.engine import TestEngine, VersionRun
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.testing import (
@@ -139,6 +142,10 @@ def build_emulator(arguments: argparse.Namespace, inputs: Inputs, bus) -> Emulat
 
 def command_run(arguments: argparse.Namespace) -> int:
     inputs = load_inputs(arguments.source)
+    # both are checked before the run: a wrong path should not cost a long one
+    baseline = load_profile(arguments.baseline) if arguments.baseline else None
+    if arguments.save_profile:
+        arguments.save_profile.parent.mkdir(parents=True, exist_ok=True)
     bus = printing_bus(arguments)
     emulator = build_emulator(arguments, inputs, bus)
     ticks = ticks_setting(arguments, inputs)
@@ -194,12 +201,24 @@ def command_run(arguments: argparse.Namespace) -> int:
         f"worst tick {profiler.worst_tick_us / 1000:.2f} ms"
     )
 
+    if baseline is not None:
+        print_comparison(profiler, baseline)
+    hottest = profiler.hot_commands(5)
+    if hottest:
+        # the lines themselves are in the report; the records above are filtered
+        print(f"\n{'dearest line':46} {'self ms':>9} {'runs':>7}")
+        for function_id, line, stats in hottest:
+            where = f"{function_id}:{line}"
+            print(f"{where:46} {stats['self_us'] / 1000:9.3f} {int(stats['runs']):7d}")
     report = profiler.write_html(
         report_path(arguments, "index.html"),
         f"Function profiler — {datapack.name}",
         f"{emulator.version.id} (pack_format {emulator.version.format_string})",
+        baseline=baseline,
     )
     print(f"report: {report}")
+    if arguments.save_profile:
+        save_profile(profiler, arguments.save_profile, datapack.name, emulator.version.id)
 
     graph = emulator.call_graph()
     print(f"call graph: {graph}")
@@ -222,6 +241,71 @@ def command_run(arguments: argparse.Namespace) -> int:
         if passed < len(results):
             return FAILED
     return OK
+
+
+def load_profile(path: Path) -> Profiler:
+    """A profile saved earlier. A file that is not one is a usage error, not a
+    crash; a run of no ticks cannot be compared against (its numbers are
+    totals, not per-tick costs)."""
+    try:
+        profiler = Profiler.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError) as exc:
+        raise CliError(f"cannot read the profile {path}: {exc}") from exc
+    if profiler.ticks == 0:
+        raise CliError(f"the profile {path} has no ticks: run some before saving it")
+    return profiler
+
+
+def save_profile(profiler: Profiler, path: Path, pack: str, version: str) -> None:
+    profiler.pack = pack
+    profiler.version = version
+    profiler.saved = datetime.now().replace(microsecond=0).isoformat(" ")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(profiler.to_dict()), encoding="utf-8")
+    except OSError as exc:
+        raise CliError(f"cannot write the profile {path}: {exc}") from exc
+    print(f"profile: {path}")
+
+
+def print_comparison(profiler: Profiler, baseline: Profiler) -> None:
+    """The per-tick cost of each function, and of each line, before and after."""
+    mine = profiler.total_us / max(profiler.ticks, 1) / 1000
+    theirs = baseline.total_us / max(baseline.ticks, 1) / 1000
+    whose = ""
+    if baseline.pack or baseline.version:
+        whose = f" (kept run: {baseline.pack or 'a pack'} {baseline.version}".rstrip()
+        whose += f", saved {baseline.saved})" if baseline.saved else ")"
+    print(
+        f"\nCompared with the saved run: {theirs:.4f} then {mine:.4f} ms/tick "
+        f"({mine - theirs:+.4f}), {baseline.ticks} then {profiler.ticks} tick(s){whose}"
+    )
+    if baseline.pack and profiler.pack and baseline.pack != profiler.pack:
+        print(f"note: the kept run is another pack ({baseline.pack})")
+    if baseline.version and profiler.version and baseline.version != profiler.version:
+        print(f"note: the kept run is another version ({baseline.version})")
+    changed = False
+    print(f"{'function':40} {'before':>10} {'after':>10} {'change':>10}")
+    for row in profiler.compare(baseline)[:15]:
+        if abs(row["delta_us"]) < 1e-6:
+            continue
+        changed = True
+        print(
+            f"{row['function']:40} {row['before_us'] / 1000:10.4f} "
+            f"{row['after_us'] / 1000:10.4f} {row['delta_us'] / 1000:+10.4f}"
+        )
+    lines = [row for row in profiler.compare_commands(baseline)[:10] if abs(row["delta_us"]) > 1e-6]
+    if lines:
+        changed = True
+        print(f"\n{'line that changed':46} {'before':>10} {'after':>10} {'change':>10}")
+        for row in lines:
+            where = f"{row['function']}:{row['line']}"
+            print(
+                f"{where:46} {row['before_us'] / 1000:10.4f} "
+                f"{row['after_us'] / 1000:10.4f} {row['delta_us'] / 1000:+10.4f}"
+            )
+    if not changed:
+        print("nothing changed")
 
 
 def register_run(subparsers) -> None:
@@ -254,6 +338,20 @@ def register_run(subparsers) -> None:
         help="20 ticks per second instead of as fast as possible (default: the project's speed)",
     )
     run.add_argument("--html", type=Path, default=None, help="default: generated/index.html")
+    run.add_argument(
+        "--save-profile",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="write the run's profile as JSON, to compare a later run against",
+    )
+    run.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="a profile saved earlier: the run prints and reports what changed since",
+    )
     run.add_argument("--dot", action="store_true", help="also write the call graph (Graphviz)")
     add_debug_arguments(run)
     add_output_filter(run)

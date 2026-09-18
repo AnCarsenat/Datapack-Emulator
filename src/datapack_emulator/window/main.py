@@ -151,6 +151,11 @@ class MainWindow(QMainWindow):
         self.web_view: QWebEngineView = find(QWebEngineView, "webEngineView")
         self.tree_profile: QTreeWidget = find(QTreeWidget, "treeProfile")
         self.profile_summary: QLabel = find(QLabel, "labelProfileSummary")
+        self.profile_baseline_label: QLabel = find(QLabel, "labelProfileBaseline")
+        self.profile_baseline_button: QPushButton = find(QPushButton, "buttonProfileBaseline")
+        self.profile_clear_baseline_button: QPushButton = find(
+            QPushButton, "buttonProfileClearBaseline"
+        )
         self.pack_label: QLabel = find(QLabel, "labelPack")
         self.vanilla_label: QLabel = find(QLabel, "labelVanilla")
         self.graph_label: QLabel = find(QLabel, "labelGraph")

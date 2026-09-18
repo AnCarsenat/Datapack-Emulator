@@ -94,7 +94,11 @@ def cmd_schedule(command: Command, context: ExecutionContext) -> CommandResult:
 def cmd_return(command: Command, context: ExecutionContext) -> CommandResult:
     if command.arguments and command.arguments[0] == "run":
         inner = Command.parse(" ".join(command.arguments[1:]), context.function_id, command.line)
-        result = context.emulator.run_command(inner, context) if inner else CommandResult.failure()
+        result = (
+            context.emulator.run_command(inner, context, nested=True)
+            if inner
+            else CommandResult.failure()
+        )
         return CommandResult(success=result.success, value=result.value, returned=True)
     if command.arguments and command.arguments[0] == "fail":
         return CommandResult(success=False, value=0, returned=True)
