@@ -22,6 +22,7 @@ import argparse
 import logging
 import traceback
 
+from datapack_emulator import __version__
 from datapack_emulator.cli import check, inspect, jars, projects, runs, world
 from datapack_emulator.cli.common import CRASHED, USAGE, CliError, err
 
@@ -35,6 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
         allow_abbrev=False,
     )
     parser.add_argument("--quiet", action="store_true", help="silence the Python logger")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"{PROG} {__version__}",
+        help="print the version of this copy and stop",
+    )
     subparsers = parser.add_subparsers(dest="mode", required=True, metavar="COMMAND")
     runs.register_run(subparsers)
     runs.register_matrix(subparsers)

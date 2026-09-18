@@ -37,6 +37,10 @@ Nothing reported is waiting right now.
 
 ## Tooling
 
+* **Installed copies, the rest** — the wheel and the Linux PyInstaller folder
+  are built and run here; the Windows and macOS builds (and the `.app` the
+  spec's `BUNDLE` step makes) have not been made on a machine of those
+  platforms yet, and nothing is published to PyPI.
 * **Schema checks** — the problems list checks JSON resources by hand
   (conditions, item functions, loot entries, advancement criteria); validating
   recipes, loot tables, predicates, item modifiers and worldgen against the

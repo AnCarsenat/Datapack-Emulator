@@ -1402,7 +1402,7 @@ def test_complete_and_rename_from_the_command_line(make_pack, tmp_path, capsys):
     assert "is not a function" in capsys.readouterr().err
 
 
-def test_project_samples_lists_the_packs_to_start_from(capsys, monkeypatch):
+def test_project_samples_lists_the_packs_to_start_from(capsys, monkeypatch, tmp_path):
     from datapack_emulator.settings import PATHS
 
     assert main(["project", "samples"]) == 0
@@ -1413,6 +1413,19 @@ def test_project_samples_lists_the_packs_to_start_from(capsys, monkeypatch):
     assert main(["project", "samples"]) == 0  # the packaged starter pack
     assert capsys.readouterr().out.strip().endswith("starter")
 
+    # --install copies the packaged pack where it can be edited; a second run
+    # keeps the copy as it is
+    monkeypatch.setattr(PATHS, "SAMPLES", tmp_path / "mine")
+    (tmp_path / "mine").mkdir()
+    assert main(["project", "samples", "--install"]) == 0
+    copied = Path(capsys.readouterr().out.strip())
+    assert copied == tmp_path / "mine" / "starter"
+    assert (copied / "pack.mcmeta").is_file()
+    (copied / "data/starter/function/tick.mcfunction").write_text("say mine\n")
+    assert main(["project", "samples", "--install"]) == 0
+    assert (copied / "data/starter/function/tick.mcfunction").read_text() == "say mine\n"
+
+    monkeypatch.setattr(PATHS, "SAMPLES", Path("/no/such/folder"))
     monkeypatch.setattr(PATHS, "PACKAGED_SAMPLES", Path("/no/such/folder"))
     assert main(["project", "samples"]) == 1
-    assert "no sample pack found" in capsys.readouterr().out
+    assert "no sample pack in" in capsys.readouterr().err
