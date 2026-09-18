@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from datapack_emulator.cli.common import (
     FAILED,
@@ -14,11 +15,51 @@ from datapack_emulator.cli.common import (
     add_vanilla_arguments,
     add_version_selection,
     chosen_versions,
+    err,
     load_inputs,
     vanilla_for,
     versions_given,
 )
-from datapack_emulator.emulator.analysis.problems import CODES, SEVERITIES, count, find_problems
+from datapack_emulator.emulator.analysis.problems import (
+    CODES,
+    SEVERITIES,
+    count,
+    find_problems,
+    text_problems,
+)
+
+#: the suffixes the per-line check knows (the source view checks the same)
+CHECKED_SUFFIXES = (".mcfunction", ".json", ".mcmeta")
+
+
+def check_lines(arguments: argparse.Namespace, chosen: list) -> int:
+    """``--lines FILE``: what the source view underlines, per file and line."""
+    if arguments.code or arguments.severity != "info":
+        raise CliError("--lines checks one file's lines: it takes no --code or --severity")
+    rows = []
+    for file in arguments.lines:
+        try:
+            text = file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise CliError(f"cannot read {file}: {exc}") from exc
+        if file.suffix.lower() not in CHECKED_SUFFIXES:
+            err(f"{file}: not checked (only {', '.join(CHECKED_SUFFIXES)})")
+            continue
+        for version in chosen:
+            for line, message in sorted(text_problems(text, file.suffix, version).items()):
+                rows.append(
+                    {"file": str(file), "line": line, "version": version.id, "message": message}
+                )
+    if arguments.json:
+        print(json.dumps(rows, indent=2))
+    else:
+        for row in rows:
+            # the path comes first, so an editor or grep can follow it
+            prefix = f"[{row['version']}] " if len(chosen) > 1 else ""
+            print(f"{row['file']}:{row['line']}: {prefix}{row['message']}")
+        if not rows:
+            print("no refused lines")
+    return FAILED if rows else OK
 
 
 def command_check(arguments: argparse.Namespace) -> int:
@@ -32,6 +73,8 @@ def command_check(arguments: argparse.Namespace) -> int:
         chosen = chosen_versions(arguments, inputs, [inputs.version(arguments)])
     else:
         chosen = [inputs.version(arguments)]
+    if arguments.lines:
+        return check_lines(arguments, chosen)
     lowest = SEVERITIES.index(arguments.severity)
     codes = set(arguments.code or [])
     report = []
@@ -99,6 +142,14 @@ def register(subparsers) -> None:
         choices=CODES,
         metavar="CODE",
         help="only these kinds (repeatable): " + ", ".join(CODES),
+    )
+    check.add_argument(
+        "--lines",
+        action="append",
+        type=Path,
+        metavar="FILE",
+        help="instead of the pack: the lines of a .mcfunction or JSON file the version would "
+        "refuse, as the source view underlines them (repeatable; the pack gives the version)",
     )
     check.add_argument("--strict", action="store_true", help="exit with 1 on warnings too")
     check.add_argument("--json", action="store_true", help="print JSON")

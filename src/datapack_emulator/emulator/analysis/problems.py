@@ -20,6 +20,7 @@ check`` show the list.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -36,7 +37,7 @@ from datapack_emulator.emulator.common import (
     normalise_tagged_id,
     parse_snbt,
 )
-from datapack_emulator.emulator.runtime.library import FunctionLibrary
+from datapack_emulator.emulator.runtime.library import FunctionLibrary, line_problems
 from datapack_emulator.emulator.versions import Version
 
 SEVERITIES = ("error", "warning", "info")
@@ -138,6 +139,29 @@ def find_problems(
     order = {severity: index for index, severity in enumerate(SEVERITIES)}
     unique = list(dict.fromkeys(problems))
     return sorted(unique, key=lambda p: (order[p.severity], p.resource, p.line, p.code))
+
+
+def text_problems(text: str, suffix: str, version: str | Version) -> dict[int, str]:
+    """What the version would refuse in one file's text, by line (1-based):
+    function lines for ``.mcfunction``, the parse error for JSON. The source
+    view underlines these as you type; ``check --lines`` prints them."""
+    suffix = suffix.lower()
+    if suffix == ".mcfunction":
+        return line_problems(text, command_set(versions.parse(version)))
+    if suffix in (".json", ".mcmeta"):
+        if not text.strip():  # the game refuses an empty file too
+            return {max(1, len(text.splitlines())): "not valid JSON: the file is empty"}
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as exc:
+            # an error at the end points past the text: mark the last line
+            lines = text.splitlines()
+            line = min(exc.lineno, len(lines))
+            while line > 1 and not lines[line - 1].strip():
+                line -= 1
+            where = f" (line {exc.lineno})" if exc.lineno != line else ""
+            return {line: f"not valid JSON: {exc.msg}{where}"}
+    return {}
 
 
 def count(problems: list[Problem]) -> dict[str, int]:

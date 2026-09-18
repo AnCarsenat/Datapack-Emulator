@@ -8,6 +8,7 @@ area and reaches the others through the window.
 from datapack_emulator.window.controllers.console import ConsoleController
 from datapack_emulator.window.controllers.datapacks import DatapackController
 from datapack_emulator.window.controllers.debug import DebugController
+from datapack_emulator.window.controllers.editor import EditorController
 from datapack_emulator.window.controllers.environment import EnvironmentController
 from datapack_emulator.window.controllers.jars import JarController
 from datapack_emulator.window.controllers.logs import LogController
@@ -23,6 +24,7 @@ __all__ = [
     "ConsoleController",
     "DatapackController",
     "DebugController",
+    "EditorController",
     "EnvironmentController",
     "JarController",
     "LogController",

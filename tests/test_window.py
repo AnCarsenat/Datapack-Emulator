@@ -1550,3 +1550,139 @@ def test_navigation_follows_tags_overlays_and_hubs(app, window, make_pack):
     menu = navigation.path_menu(pack / "data/test/function/f5.mcfunction", in_explorer=True)
     labels = [action.text() for action in menu.actions()]
     assert "show in explorer" not in labels and "show in call graph" in labels
+
+
+def test_source_view_edits_save_and_check_lines(app, window, make_pack, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "say one\n",
+            "data/test/function/other.mcfunction": "say other\n",
+        }
+    )
+    window.datapacks.load(pack)
+    navigation, editor, edit = window.navigation, window.editor, window.source_edit
+    navigation.open_function("test:tick")
+    assert not edit.isReadOnly() and not editor.modified
+    edit.setPlainText("say one\nfrobnicate\nkill @e[tpye=pig]")
+    edit.document().setModified(True)
+    assert editor.modified and window.source_label.text().startswith("● ")
+    editor.check_lines()
+    assert set(edit.line_marks) == {2, 3}
+    assert "tpye" in edit.line_marks[3]
+
+    # leaving the file asks first; cancel stays
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: QMessageBox.Cancel)
+    navigation.open_function("test:other")
+    assert navigation.source_path.name == "tick.mcfunction"
+
+    # Ctrl+S with the focus in the view saves the file and reloads the pack
+    edit.setFocus()
+    monkeypatch.setattr(edit, "hasFocus", lambda: True)
+    edit.setPlainText("say two")
+    edit.document().setModified(True)
+    window._action("actionsave_project").trigger()
+    path = pack / "data/test/function/tick.mcfunction"
+    assert path.read_text() == "say two\n"
+    assert not editor.modified
+    assert "say two" in [
+        c.raw for c in window.datapack.view_for(window.version).function("test:tick").content
+    ]
+    assert not window.source_label.text().startswith("● ")
+
+    # revert throws edits away; discard lets another file open
+    edit.setPlainText("say three")
+    edit.document().setModified(True)
+    window._action("actionrevert_file").trigger()
+    assert edit.toPlainText() == "say two\n" and not editor.modified
+    edit.setPlainText("say four")
+    edit.document().setModified(True)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: QMessageBox.Discard)
+    navigation.open_function("test:other")
+    assert navigation.source_path.name == "other.mcfunction"
+    assert path.read_text() == "say two\n"
+
+    # JSON errors are marked on their line; images stay read-only
+    navigation.show_source(pack / "data/minecraft/tags/function/tick.json")
+    edit.setPlainText('{\n  "values": [\n')
+    editor.check_lines()
+    assert list(edit.line_marks) == [2]  # the error is past the end: the last line
+    edit.document().setModified(False)
+    image = pack / "pack.png"
+    image.write_bytes(b"\x89PNG")
+    navigation.show_source(image)
+    assert edit.isReadOnly()
+
+
+def test_source_view_save_guards_and_breakpoints_follow_edits(app, window, make_pack, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "say one\nsay two\nsay three\n",
+        }
+    )
+    window.datapacks.load(pack)
+    path = pack / "data/test/function/tick.mcfunction"
+    navigation, editor, edit = window.navigation, window.editor, window.source_edit
+    navigation.open_function("test:tick")
+
+    # clicking the file already open keeps the edits and asks nothing
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args, **kw: asked.append(args[2]) or QMessageBox.Discard
+    )
+    edit.setPlainText("say one\nsay two\nsay three\nsay four\n")
+    edit.document().setModified(True)
+    navigation.show_source(path, reveal=False)
+    assert asked == [] and editor.modified
+
+    # a breakpoint on the third line follows a line inserted above it
+    window.debug.debugger.add("test:tick", 3)
+    edit.setPlainText("say zero\nsay one\nsay two\nsay three\nsay four\n")
+    edit.document().setModified(True)
+    assert editor.save()
+    assert window.debug.debugger.lines_of("test:tick") == {4}
+
+    # the file changed on disk: saving asks before it overwrites
+    path.write_text("say from another editor\n", encoding="utf-8")
+    edit.setPlainText("say mine\n")
+    edit.document().setModified(True)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: QMessageBox.Cancel)
+    assert not editor.save()
+    assert path.read_text() == "say from another editor\n"
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kw: QMessageBox.Save)
+    assert editor.save() and path.read_text() == "say mine\n"
+
+    # the debugger stopping never asks, and saving is refused while it is stopped
+    from PySide6.QtCore import QEventLoop
+
+    edit.setPlainText("say mine\nsay more\n")
+    edit.document().setModified(True)
+    window.debug._loop = QEventLoop()
+    try:
+        asked.clear()
+        monkeypatch.setattr(
+            QMessageBox, "question", lambda *args, **kw: asked.append(args[2]) or QMessageBox.Save
+        )
+        navigation.open_function("test:tick", 1, ask=False)
+        assert asked == [] and editor.modified
+        assert not editor.save()
+        assert "stopped in the debugger" in window.statusBar().currentMessage()
+    finally:
+        window.debug._loop = None
+    assert editor.save()  # and once it goes on, the save works
+
+    # windows line endings survive a save, and the tab says there are edits
+    path.write_bytes(b"say a\r\nsay b\r\n")
+    navigation.show_source(path, reveal=False, ask=False)
+    edit.setPlainText("say a\nsay b\nsay c")
+    edit.document().setModified(True)
+    index = window.tabs.indexOf(window.tab_page("source_view"))
+    assert window.tabs.tabText(index).startswith("●")
+    assert editor.save()
+    assert path.read_bytes() == b"say a\r\nsay b\r\nsay c\r\n"
+    assert not window.tabs.tabText(index).startswith("●")

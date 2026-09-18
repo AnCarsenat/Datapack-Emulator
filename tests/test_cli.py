@@ -1095,3 +1095,53 @@ def test_check_reports_problems(make_pack, tmp_path, capsys):
     assert main(["check", bad, "--version", "1.21.4", "--versions", "1.21.4"]) == 2
     code = main(["check", pack, "--versions", "1.21.4", "--json", "--no-vanilla"])
     assert code == 0 and isinstance(json.loads(capsys.readouterr().out), list)
+
+
+def test_check_lines_like_the_editor(make_pack, tmp_path, capsys):
+    pack = str(_pack(make_pack))
+    edited = tmp_path / "draft.mcfunction"
+    edited.write_text("say fine\nfrobnicate\n$say $(x)\n", encoding="utf-8")
+    broken = tmp_path / "tag.json"
+    broken.write_text('{"values": [\n', encoding="utf-8")
+    code = main(
+        ["check", pack, "--version", "1.19", "--lines", str(edited), "--lines", str(broken)]
+    )
+    out = capsys.readouterr().out
+    assert code == 1
+    assert f"{edited}:2: unknown command `frobnicate`" in out
+    assert f"{edited}:3: macro lines need 1.20.2" in out
+    assert f"{broken}:1: not valid JSON" in out
+    fine = tmp_path / "fine.mcfunction"
+    fine.write_text("say hi\n", encoding="utf-8")
+    assert main(["check", pack, "--lines", str(fine)]) == 0
+    assert "no refused lines" in capsys.readouterr().out
+
+
+def test_check_lines_options_and_unknown_suffixes(make_pack, tmp_path, capsys):
+    import json
+
+    pack = str(_pack(make_pack))
+    edited = tmp_path / "draft.mcfunction"
+    edited.write_text("say fine\nexecute on vehicle run say hi\n", encoding="utf-8")
+    code = main(["check", pack, "--versions", "1.19", "1.21.4", "--lines", str(edited), "--json"])
+    rows = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert rows == [
+        {
+            "file": str(edited),
+            "line": 2,
+            "version": "1.19",
+            "message": "the execute subcommand `on` needs 1.19.4; this pack is emulated as 1.19",
+        }
+    ]
+    # the path comes first, so an editor can follow it, with the version in brackets
+    assert main(["check", pack, "--versions", "1.19", "1.21.4", "--lines", str(edited)]) == 1
+    assert f"{edited}:2: [1.19] the execute subcommand" in capsys.readouterr().out
+    # the filters of the pack-wide check make no sense per line
+    assert main(["check", pack, "--lines", str(edited), "--code", "unknown-id"]) == 2
+    assert "no --code or --severity" in capsys.readouterr().err
+    other = tmp_path / "notes.txt"
+    other.write_text("frobnicate\n", encoding="utf-8")
+    assert main(["check", pack, "--lines", str(other)]) == 0
+    out = capsys.readouterr()
+    assert "not checked" in out.err and "no refused lines" in out.out

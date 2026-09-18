@@ -187,6 +187,66 @@ def macro_template_problem(raw: str) -> str:
     return "" if names else "No variables in macro"
 
 
+def line_problems(text: str, commands: CommandSet) -> dict[int, str]:
+    """Every line of function text this version would refuse, by line number
+    (1-based) — what the source view underlines while you type."""
+    from datapack_emulator.emulator.commands.parser import Command
+
+    macros = versions.supports_macros(commands.version)
+    found: dict[int, str] = {}
+    for number, raw in enumerate(text.splitlines(), start=1):
+        command = Command.parse(raw, line=number)
+        if command is None:
+            continue
+        if command.is_macro:
+            if not macros:
+                found[number] = (
+                    f"macro lines need {versions.MACROS_SINCE}: in {commands.version.id} this "
+                    "is an unknown command"
+                )
+            else:
+                problem = macro_template_problem(command.raw)
+                if problem:
+                    found[number] = problem
+            continue
+        option = unknown_selector_option(command)
+        if option:
+            found[number] = f"Unknown option '{option}'"
+            continue
+        missing = commands.missing_features(command.features())
+        if missing:
+            feature, since = missing[0]
+            found[number] = feature_message(feature, since, commands.version)
+    return found
+
+
+#: how a feature key reads in a message
+FEATURE_WORDS = {
+    "command": "the command",
+    "execute": "the execute subcommand",
+    "condition": "the execute condition",
+    "store": "the execute store target",
+    "schedule": "schedule",
+    "return": "return",
+}
+
+
+def feature_message(feature: str, since, version) -> str:
+    """Why the version refuses a line, in the words a player would use."""
+    kind, _, name = feature.partition(":")
+    if feature == "function:with":
+        shown = "function … with (macro arguments)"
+    elif kind in FEATURE_WORDS and name:
+        shown = f"{FEATURE_WORDS[kind]} `{name}`"
+    else:
+        shown = feature
+    if since is not None:
+        return f"{shown} needs {since.id}; this pack is emulated as {version.id}"
+    if kind == "command":
+        return f"unknown command `{name}`"
+    return f"{version.id} has no {shown}"
+
+
 def _parse_failure(
     function: Function, commands: CommandSet, macros_supported: bool
 ) -> LoadFailure | None:

@@ -219,3 +219,28 @@ def test_long_chains_many_functions_and_odd_files(make_pack):
     singular = Datapack.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}))
     messages = [p.message for p in find_problems(singular, "1.20.4") if p.code == "pack"]
     assert any("reads none of the pack's 1 function(s)" in m for m in messages)
+
+
+def test_line_problems_for_the_editor():
+    from datapack_emulator.emulator.commands.registry import command_set
+    from datapack_emulator.emulator.runtime.library import line_problems
+    from datapack_emulator.emulator.versions import parse
+
+    text = (
+        "say fine\n"
+        "# a comment\n"
+        "frobnicate\n"
+        "kill @e[tpye=pig]\n"
+        "$say $(name)\n"
+        "$say nothing\n"
+        "execute on vehicle run say hi\n"
+    )
+    modern = line_problems(text, command_set(parse("1.21.4")))
+    assert set(modern) == {3, 4, 6}
+    assert modern[4] == "Unknown option 'tpye'"
+    assert modern[6] == "No variables in macro"
+    old = line_problems(text, command_set(parse("1.19")))
+    assert "macro lines need" in old[5]
+    assert old[3] == "unknown command `frobnicate`"  # not a feature key
+    assert "execute subcommand `on` needs 1.19.4" in old[7]
+    assert "emulated as 1.19" in old[7]

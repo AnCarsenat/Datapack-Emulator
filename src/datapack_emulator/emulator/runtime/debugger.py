@@ -178,6 +178,21 @@ class Debugger:
     def remove(self, function_id: str, line: int) -> bool:
         return self.breakpoints.pop((normalise_id(function_id), line), None) is not None
 
+    def move(self, function_id: str, lines: dict[int, int]) -> None:
+        """A function's file was edited: put each breakpoint on the line its
+        command is on now (``lines`` maps old line to new; a line that is gone
+        takes its breakpoint with it)."""
+        function_id = normalise_id(function_id)
+        for key, point in list(self.breakpoints.items()):
+            if point.function_id != function_id:
+                continue
+            del self.breakpoints[key]
+            moved = lines.get(point.line)
+            if moved is None:
+                continue
+            point.line = moved
+            self.breakpoints[point.key] = point
+
     def toggle(self, function_id: str, line: int) -> bool:
         """Add or remove; whether there is one now."""
         if self.remove(function_id, line):

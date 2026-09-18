@@ -825,8 +825,8 @@ QMenuBar::item:selected {
           <property name="contextMenuPolicy">
            <enum>Qt::CustomContextMenu</enum>
           </property>
-          <property name="readOnly">
-           <bool>true</bool>
+          <property name="toolTip">
+           <string>hover an underlined line for why this version refuses it</string>
           </property>
           <property name="lineWrapMode">
            <enum>QPlainTextEdit::NoWrap</enum>
@@ -987,6 +987,8 @@ QMenuBar::item:selected {
     <addaction name="actionopen_last_project"/>
     <addaction name="actionsave_project"/>
     <addaction name="actionsave_project_as"/>
+    <addaction name="actionsave_file"/>
+    <addaction name="actionrevert_file"/>
     <addaction name="separator"/>
     <addaction name="actionimport_datapack"/>
     <addaction name="menurecent_datapacks"/>
@@ -2135,7 +2137,7 @@ QMenuBar::item:selected {
     <string>save project</string>
    </property>
    <property name="statusTip">
-    <string>save settings, tests, notes and a copy of the datapack into the project's .dpemu file</string>
+    <string>save settings, tests, notes and a copy of the datapack into the project's .dpemu file (Ctrl+S saves the open file first while it has unsaved edits)</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+S</string>
@@ -2641,6 +2643,25 @@ QMenuBar::item:selected {
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+G</string>
+   </property>
+  </action>
+  <action name="actionsave_file">
+   <property name="text">
+    <string>save file</string>
+   </property>
+   <property name="statusTip">
+    <string>save the file open in the source view and reload the datapacks (Ctrl+S while the source view has the focus)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Alt+S</string>
+   </property>
+  </action>
+  <action name="actionrevert_file">
+   <property name="text">
+    <string>revert file</string>
+   </property>
+   <property name="statusTip">
+    <string>throw away the source view's unsaved edits and read the file again</string>
    </property>
   </action>
  </widget>
