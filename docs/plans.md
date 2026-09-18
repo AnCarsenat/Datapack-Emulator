@@ -46,10 +46,13 @@ Nothing reported is waiting right now.
   function ids; block/item ids outside the eight commands listed there, NBT
   paths, and the arguments of each `execute` subcommand (`as @…`, a block
   position) are still not offered.
-* **Schema checks** — the problems list checks JSON resources by hand
-  (conditions, item functions, loot entries, advancement criteria); validating
-  recipes, loot tables, predicates, item modifiers and worldgen against the
-  version's schemas (Spyglass mcdoc) would catch every field.
+* **Schema checks, further** — JSON fields are now checked against the
+  version's own files, read out of its client jar
+  ([`schema`](cli.md#schema--what-a-versions-own-files-hold)). That says what
+  the game *writes*, not everything it *accepts*, so a field vanilla never
+  uses is only a warning; a real schema (Spyglass mcdoc) would say which
+  fields are optional, what each value's range is, and would work without a
+  jar.
 
 ## Code health
 

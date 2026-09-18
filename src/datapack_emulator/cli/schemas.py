@@ -21,7 +21,13 @@ from datapack_emulator.cli.common import (
     vanilla_for,
 )
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.analysis.schema import ENOUGH, Schema, load_schema, save_schema
+from datapack_emulator.emulator.analysis.schema import (
+    ENOUGH,
+    Schema,
+    Shape,
+    load_schema,
+    save_schema,
+)
 from datapack_emulator.emulator.analysis.schema import schema_for as learned_schema
 from datapack_emulator.settings.main import PATHS
 
@@ -44,7 +50,8 @@ def _schema(arguments: argparse.Namespace) -> Schema:
     return schema
 
 
-def _fields(shape, folder: str, type_id: str) -> list[dict[str, object]]:
+def _fields(shape: Shape, folder: str, type_id: str) -> list[tuple[str, bool, str, int]]:
+    """``(field, every file sets it, what it holds, how many files)``."""
     inner = shape
     if type_id:
         found = shape.for_type(type_id)
@@ -52,14 +59,9 @@ def _fields(shape, folder: str, type_id: str) -> list[dict[str, object]]:
             known = ", ".join(sorted(shape.variants)[:20]) or "none"
             raise CliError(f"{folder} has no {shape.dispatch or 'type'} {type_id}; known: {known}")
         inner = found
-    required = inner.required()
+    always = inner.required()
     return [
-        {
-            "field": name,
-            "required": name in required,
-            "holds": child.describe(),
-            "files": child.seen,
-        }
+        (name, name in always, child.describe(), child.seen)
         for name, child in sorted(inner.fields.items())
     ]
 
@@ -70,57 +72,69 @@ def command_schema(arguments: argparse.Namespace) -> int:
         save_schema(schema, arguments.write)
         print(f"schema: {arguments.write}")
         return OK
-
-    folder = arguments.folder
-    if folder is None:
-        rows = [
-            {"folder": name, "files": shape.seen, "types": sorted(shape.variants)}
-            for name, shape in sorted(schema.folders.items())
-        ]
-        if arguments.json:
-            print(json.dumps({"version": schema.version_id, "folders": rows}, indent=2))
-        else:
-            print(f"{schema.version_id}: the fields of its own files")
-            for row in rows:
-                kinds = f", {len(row['types'])} type(s)" if row["types"] else ""
-                print(f"{row['folder']:32} {row['files']:5d} file(s){kinds}")
-        return OK if rows else FAILED
-
-    shape = schema.shape(folder)
+    if arguments.folder is None:
+        return _print_folders(schema, arguments.json)
+    shape = schema.shape(arguments.folder)
     if shape is None:
         known = ", ".join(sorted(schema.folders)) or "none"
-        raise CliError(f"{schema.version_id} has no {folder} files read; known: {known}")
+        raise CliError(f"{schema.version_id} has no {arguments.folder} files read; known: {known}")
     if arguments.type is None and shape.variants:
-        rows = [
-            {"type": name, "files": held.seen, "fields": sorted(held.fields)}
-            for name, held in sorted(shape.variants.items())
-        ]
-        if arguments.json:
-            print(
-                json.dumps({"folder": folder, "dispatch": shape.dispatch, "types": rows}, indent=2)
-            )
-        else:
-            print(f"{folder}: {shape.seen} file(s), by {shape.dispatch}")
-            for row in rows:
-                print(f"{row['type']:44} {row['files']:5d} file(s), {len(row['fields'])} field(s)")
-        return OK if rows else FAILED
+        return _print_types(shape, arguments.folder, arguments.json)
+    return _print_fields(schema, shape, arguments.folder, arguments.type or "", arguments.json)
 
-    rows = _fields(shape, folder, arguments.type or "")
-    if arguments.json:
-        print(
-            json.dumps({"folder": folder, "type": arguments.type or "", "fields": rows}, indent=2)
-        )
-        return OK if rows else FAILED
-    where = f"{folder} {arguments.type}" if arguments.type else folder
-    print(f"{where} in {schema.version_id}")
+
+def _print_folders(schema: Schema, as_json: bool) -> int:
+    """Every folder read, and how many files each was learned from."""
+    folders = [
+        (name, shape.seen, sorted(shape.variants)) for name, shape in sorted(schema.folders.items())
+    ]
+    if as_json:
+        rows = [
+            {"folder": name, "files": seen, "types": variants} for name, seen, variants in folders
+        ]
+        print(json.dumps({"version": schema.version_id, "folders": rows}, indent=2))
+    else:
+        print(f"{schema.version_id}: the fields of its own files")
+        for name, seen, variants in folders:
+            kinds = f", {len(variants)} type(s)" if variants else ""
+            print(f"{name:32} {seen:5d} file(s){kinds}")
+    return OK if folders else FAILED
+
+
+def _print_types(shape: Shape, folder: str, as_json: bool) -> int:
+    """The types of one folder: recipes by `type`, conditions by `condition`…"""
+    variants = [
+        (name, held.seen, sorted(held.fields)) for name, held in sorted(shape.variants.items())
+    ]
+    if as_json:
+        rows = [{"type": name, "files": seen, "fields": names} for name, seen, names in variants]
+        print(json.dumps({"folder": folder, "dispatch": shape.dispatch, "types": rows}, indent=2))
+    else:
+        print(f"{folder}: {shape.seen} file(s), by {shape.dispatch}")
+        for name, seen, names in variants:
+            print(f"{name:44} {seen:5d} file(s), {len(names)} field(s)")
+    return OK if variants else FAILED
+
+
+def _print_fields(schema: Schema, shape: Shape, folder: str, type_id: str, as_json: bool) -> int:
+    """What one kind of file holds, field by field."""
+    fields = _fields(shape, folder, type_id)
+    if as_json:
+        rows = [
+            {"field": name, "always": always, "holds": holds, "files": seen}
+            for name, always, holds, seen in fields
+        ]
+        print(json.dumps({"folder": folder, "type": type_id, "fields": rows}, indent=2))
+        return OK if fields else FAILED
+    print(f"{folder} {type_id}".strip() + f" in {schema.version_id}")
     if shape.seen < ENOUGH:
-        err(f"only {shape.seen} file(s) read: nothing is claimed about what is required")
-    for row in rows:
-        mark = "required" if row["required"] else "optional"
-        print(f"{row['field']:28} {mark:9} {row['holds']} ({row['files']} file(s))")
-    if not rows:
+        err(f"only {shape.seen} file(s) read: nothing is claimed about what they always hold")
+    for name, always, holds, seen in fields:
+        mark = "required" if always else "optional"
+        print(f"{name:28} {mark:9} {holds} ({seen} file(s))")
+    if not fields:
         print("no fields")
-    return OK if rows else FAILED
+    return OK if fields else FAILED
 
 
 def register(subparsers) -> None:
