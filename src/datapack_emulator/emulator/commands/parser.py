@@ -7,6 +7,7 @@ version is :mod:`datapack_emulator.emulator.commands.registry`'s job.
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -16,6 +17,7 @@ from datapack_emulator.emulator import costs
 from datapack_emulator.emulator.common import (
     normalise_id,
     normalise_tagged_id,
+    parse_number,
     split_arguments,
     tokenize,
     volume_of,
@@ -364,19 +366,25 @@ def resolve_position(tokens: list[str], origin: list[float]) -> list[float]:
     return out
 
 
-def parse_duration(token: str) -> int:
-    """``5``/``5t`` ticks, ``5s`` seconds, ``5d`` Minecraft days."""
+#: ticks per time unit suffix
+TIME_UNITS = {"": 1, "t": 1, "s": 20, "d": 24000}
+
+
+def parse_ticks(token: str) -> int | None:
+    """A time argument in ticks (``5``, ``5t``, ``2.5s``, ``1d``), rounded like
+    vanilla; None when it is not one."""
     token = token.strip()
-    try:
-        if token.endswith("t"):
-            return int(float(token[:-1]))
-        if token.endswith("s"):
-            return int(float(token[:-1]) * 20)
-        if token.endswith("d"):
-            return int(float(token[:-1]) * 24000)
-        return int(float(token))
-    except ValueError:
-        return 1
+    unit = token[-1:] if token[-1:] in ("t", "s", "d") else ""
+    value = parse_number(token[: len(token) - len(unit)])
+    if value is None:
+        return None
+    return math.floor(value * TIME_UNITS[unit] + 0.5)
+
+
+def parse_duration(token: str) -> int:
+    """``5``/``5t`` ticks, ``5s`` seconds, ``5d`` Minecraft days (1 when unreadable)."""
+    ticks = parse_ticks(token)
+    return 1 if ticks is None else ticks
 
 
 __all__ = [

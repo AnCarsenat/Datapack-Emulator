@@ -187,6 +187,16 @@ def split_pair(text: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
+_NUMBER_RE = re.compile(r"-?(\d+\.?\d*|\.\d+)")
+
+
+def parse_number(token: str) -> float | None:
+    """A Brigadier number: digits with an optional point and sign — no
+    ``inf``, ``nan``, exponents or underscores."""
+    token = token.strip()
+    return float(token) if _NUMBER_RE.fullmatch(token) else None
+
+
 def in_range(value: float, expression: str) -> bool:
     """Match a value against a vanilla range: ``1``, ``1..``, ``..5``, ``1..5``."""
     expression = expression.strip()

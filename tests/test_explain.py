@@ -35,9 +35,9 @@ def test_version_support_and_emulator_coverage_are_reported():
     assert old["loads in 1.16.1"].startswith("no")
     assert _rows("item replace entity @s armor.head with air")["in the emulator"] == "emulated"
     assert _rows("fill ~ ~ ~ ~1 ~1 ~1 stone")["in the emulator"] == "emulated"
-    weather = _rows("weather clear")
-    assert weather["in the emulator"] == (
-        "runs without changing the emulated world: the weather is not modelled"
+    bossbar = _rows("bossbar list")
+    assert bossbar["in the emulator"] == (
+        "runs without changing the emulated world: boss bars are not modelled"
     )
     macro = _rows("$function test:x {a:$(a)}", "1.20.1")
     assert "needs the argument(s) a" in macro["macro line"] and "NBT" not in macro
@@ -56,9 +56,9 @@ def test_unmodelled_commands_leave_one_note_per_run(make_pack):
     from datapack_emulator.emulator import Emulator
 
     pack = Datapack.load(
-        make_pack({"data/test/function/tick.mcfunction": "weather rain\nparticle flame\n"})
+        make_pack({"data/test/function/tick.mcfunction": "recipe give @a *\nparticle flame\n"})
     )
     emulator = Emulator(pack, version="1.21.4")
     emulator.run(ticks=3)
     notes = [r.message for r in emulator.output.records if r.key == "emulator.not_modelled"]
-    assert notes == ["'weather' runs, but the weather is not modelled"]
+    assert notes == ["'recipe' runs, but recipes are not modelled"]

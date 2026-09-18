@@ -192,6 +192,34 @@ def blocks_to_list(world: World, version=None) -> list[dict[str, Any]]:
     ]
 
 
+def state_rows(world: World) -> list[tuple[str, str]]:
+    """Time, weather, difficulty, border and teams, as label/value rows."""
+    state = world.state
+    border = state.border
+    rows = [
+        ("game time", str(world.tick)),
+        ("time of day", f"{state.day_time % 24000} (day {state.day_time // 24000})"),
+        ("weather", state.weather),
+        ("difficulty", state.difficulty),
+        ("world border", f"{border.size:g} wide around {border.center[0]:g} {border.center[1]:g}"),
+        ("world spawn", " ".join(str(value) for value in state.spawn)),
+    ]
+    for dimension, chunks in sorted(state.forced_chunks.items()):
+        if chunks:
+            listed = ", ".join(f"[{x}, {z}]" for x, z in sorted(chunks))
+            rows.append((f"force-loaded in {dimension}", listed))
+    for team in state.teams.values():
+        members = ", ".join(team.members) or "no members"
+        rows.append((f"team {team.name}", f"{team.color} · {members}"))
+    return rows
+
+
+def state_text(world: World) -> str:
+    rows = state_rows(world)
+    width = max(len(label) for label, _ in rows)
+    return "\n".join(f"{label:<{width}}  {value}" for label, value in rows)
+
+
 def world_to_dict(world: World, version=None) -> dict[str, Any]:
     """Everything the world dock shows, as plain JSON-ready data."""
     board = world.scoreboard
@@ -221,4 +249,26 @@ def world_to_dict(world: World, version=None) -> dict[str, Any]:
         "storage": {key: world.storage[key] for key in sorted(world.storage)},
         "blocks": blocks_to_list(world, version),
         "gamerules": dict(world.gamerules),
+        "state": {
+            "day_time": world.state.day_time,
+            "weather": world.state.weather,
+            "difficulty": world.state.difficulty,
+            "border": {
+                "center": list(world.state.border.center),
+                "size": world.state.border.size,
+            },
+            "spawn": list(world.state.spawn),
+            "forced_chunks": {
+                dimension: sorted(map(list, chunks))
+                for dimension, chunks in world.state.forced_chunks.items()
+            },
+            "teams": {
+                team.name: {
+                    "display_name": team.display_name or team.name,
+                    "color": team.color,
+                    "members": list(team.members),
+                }
+                for team in world.state.teams.values()
+            },
+        },
     }

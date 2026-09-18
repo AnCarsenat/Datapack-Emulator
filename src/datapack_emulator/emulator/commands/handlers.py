@@ -16,6 +16,9 @@ The handlers live in one module per command group:
 * :mod:`.execute` — execute and its conditions
 * :mod:`.items` — give, clear, item, replaceitem, enchant, loot
 * :mod:`.blocks` — setblock, fill, clone
+* :mod:`.state` — time, weather, difficulty, worldborder, random, seed, list, tick,
+  forceload, setworldspawn, spawnpoint
+* :mod:`.players` — gamemode, defaultgamemode, experience, team, teammsg
 * :mod:`.misc` — commands that only check their ids
 """
 
@@ -45,7 +48,9 @@ from datapack_emulator.emulator.commands.execute import (
 from datapack_emulator.emulator.commands.helpers import Handler, checking
 from datapack_emulator.emulator.commands.items import ITEM_HANDLERS
 from datapack_emulator.emulator.commands.misc import cmd_effect, cmd_noop
+from datapack_emulator.emulator.commands.players import PLAYER_HANDLERS
 from datapack_emulator.emulator.commands.scoreboard import cmd_scoreboard, cmd_trigger
+from datapack_emulator.emulator.commands.state import STATE_HANDLERS
 
 #: commands that run without changing the emulated world, and why — for the
 #: once-per-run emulator note and the line analysis
@@ -54,30 +59,17 @@ UNMODELLED: dict[str, str] = {
     "attribute": "attributes are not modelled (queries return 1)",
     "bossbar": "boss bars are not modelled",
     "damage": "health and damage are not modelled",
-    "difficulty": "the difficulty is not modelled",
     "effect": "status effects are not modelled (the effect id is still checked)",
-    "experience": "experience is not modelled",
     "fillbiome": "biomes are not modelled",
-    "forceload": "chunks are not modelled",
-    "gamemode": "game modes are not modelled (gamemode= in selectors is not checked)",
     "particle": "particles have no effect on the world",
     "place": "features and structures are not modelled",
     "playsound": "sounds have no effect on the world",
-    "random": "random draws are not modelled: the result is always 1",
     "recipe": "recipes are not modelled",
     "ride": "vehicles and passengers are not modelled",
     "rotate": "use tp or data to turn entities: rotate is not modelled",
-    "setworldspawn": "the world spawn is not modelled",
-    "spawnpoint": "spawn points are not modelled",
     "spectate": "spectating is not modelled",
     "spreadplayers": "spreadplayers does not move entities in the emulator",
     "stopsound": "sounds have no effect on the world",
-    "team": "teams are not modelled (team= in selectors is not checked)",
-    "tick": "the tick rate is not modelled",
-    "time": "the time of day is not modelled (queries return 1)",
-    "weather": "the weather is not modelled",
-    "worldborder": "the world border is not modelled",
-    "xp": "experience is not modelled",
 }
 #: unmodelled commands that cannot change what a pack's logic sees: no note
 COSMETIC = frozenset({"particle", "playsound", "stopsound"})
@@ -91,8 +83,6 @@ HANDLERS: dict[str, Handler] = {
     "msg": cmd_msg,
     "tell": cmd_msg,
     "w": cmd_msg,
-    "teammsg": cmd_say,
-    "tm": cmd_say,
     "tellraw": cmd_tellraw,
     "title": cmd_title,
     "scoreboard": cmd_scoreboard,
@@ -114,34 +104,23 @@ HANDLERS: dict[str, Handler] = {
     "bossbar": cmd_noop,
     "clone": cmd_clone,
     "damage": cmd_noop,
-    "difficulty": cmd_noop,
     "effect": cmd_effect,
-    "experience": cmd_noop,
     "fill": cmd_fill,
     "fillbiome": cmd_noop,
-    "forceload": cmd_noop,
-    "gamemode": cmd_noop,
     "particle": checking("particle", 0, "argument.id.unknown"),
     "place": cmd_noop,
     "playsound": cmd_noop,
-    "random": cmd_noop,
     "recipe": cmd_noop,
     "ride": cmd_noop,
     "rotate": cmd_noop,
     "setblock": cmd_setblock,
-    "setworldspawn": cmd_noop,
-    "spawnpoint": cmd_noop,
     "spectate": cmd_noop,
     "spreadplayers": cmd_noop,
     "stopsound": cmd_noop,
-    "team": cmd_noop,
-    "tick": cmd_noop,
-    "time": cmd_noop,
-    "weather": cmd_noop,
-    "worldborder": cmd_noop,
-    "xp": cmd_noop,
 }
 HANDLERS.update(ITEM_HANDLERS)
+HANDLERS.update(STATE_HANDLERS)
+HANDLERS.update(PLAYER_HANDLERS)
 
 __all__ = [
     "COSMETIC",

@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from datapack_emulator.emulator.commands.helpers import find_holders, integer, require_targets
+from datapack_emulator.emulator.commands.helpers import (
+    find_holders,
+    integer,
+    require_targets,
+    text_argument,
+)
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
-from datapack_emulator.emulator.common import flatten_text_component, load_text_component
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.world import wrap_int
 
@@ -88,7 +92,7 @@ def _objectives_add(rest: list[str], context: ExecutionContext) -> CommandResult
         context.game_error("argument.criteria.invalid", criterion)
         return CommandResult.failure()
     board = context.world.scoreboard
-    display = _display_text(" ".join(rest[2:])) if len(rest) > 2 else name
+    display = text_argument(" ".join(rest[2:])) if len(rest) > 2 else name
     if not board.add_objective(name, criterion, display):
         context.game_error("commands.scoreboard.objectives.add.duplicate")
         return CommandResult.failure()
@@ -138,7 +142,7 @@ def _objectives_modify(rest: list[str], context: ExecutionContext) -> CommandRes
         return CommandResult.failure()
     board = context.world.scoreboard
     if rest[1] == "displayname" and len(rest) > 2:
-        board.display_names[name] = _display_text(" ".join(rest[2:]))
+        board.display_names[name] = text_argument(" ".join(rest[2:]))
         context.feedback(
             "commands.scoreboard.objectives.modify.displayname", name, board.display_names[name]
         )
@@ -155,11 +159,6 @@ _SCOREBOARD_OBJECTIVES = {
     "setdisplay": _objectives_setdisplay,
     "modify": _objectives_modify,
 }
-
-
-def _display_text(payload: str) -> str:
-    component = load_text_component(payload)
-    return payload.strip('"') if component is None else flatten_text_component(component)
 
 
 def _objective(context: ExecutionContext, name: str, writable: bool = False) -> str | None:
