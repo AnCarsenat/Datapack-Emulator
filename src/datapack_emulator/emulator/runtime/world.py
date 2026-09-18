@@ -26,6 +26,7 @@ from datapack_emulator.emulator.common import (
     parse_snbt,
     split_arguments,
 )
+from datapack_emulator.emulator.runtime.advancements import Progress
 from datapack_emulator.emulator.runtime.blocks import Blocks
 from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory, has_equipment
 from datapack_emulator.emulator.runtime.living import LIVING_KEYS, Living, is_living
@@ -357,6 +358,8 @@ class World:
         self.random = random.Random(seed)
         #: time of day, weather, difficulty, world border, teams, …
         self.state = ServerState(seed=seed)
+        #: each player's advancement progress (the emulator sets the tree)
+        self.advancements = Progress()
         for index in range(players):
             self.spawn(Entity(type="minecraft:player", name=f"Player{index + 1}", is_player=True))
 
@@ -497,6 +500,17 @@ class World:
             level = entity.nbt.get("XpLevel", 0) if entity.is_player else None
             if level is None or not in_range(level, raw):
                 return False
+        if "predicate" in arguments or "advancements" in arguments:
+            from datapack_emulator.emulator.commands.conditions import (
+                selector_advancements,
+                selector_predicates,
+            )
+
+            if not selector_predicates(entity, arguments.get("predicate", []), context):
+                return False
+            for raw in arguments.get("advancements", []):
+                if not selector_advancements(entity, raw, context):
+                    return False
         for key, axis in (("x_rotation", 1), ("y_rotation", 0)):
             for raw in arguments.get(key, []):
                 if not _in_wrapped_range(entity.rotation[axis], raw):
@@ -546,7 +560,7 @@ class World:
 
 
 #: selector arguments the world model has nothing to check against
-UNMODELLED_SELECTOR_ARGUMENTS = frozenset({"advancements", "predicate"})
+UNMODELLED_SELECTOR_ARGUMENTS: frozenset[str] = frozenset()
 
 
 def _game_mode(entity: Entity) -> str:

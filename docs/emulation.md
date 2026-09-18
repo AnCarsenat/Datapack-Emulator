@@ -42,6 +42,17 @@ Deliberately small: no chunks, physics or block updates.
   0 kills the entity (players drop their items and respawn with full
   health); `health` criteria follow. No regeneration, hunger, AI or
   movement.
+* **advancements** (`runtime/advancements.py`) — the pack's advancements and,
+  with a client jar, the vanilla ones, with each player's granted criteria.
+  `minecraft:tick` criteria are checked every tick and `minecraft:location`
+  every 20 ticks against their `player` conditions (and, before 1.19, their
+  `location`), until the advancement is done; other triggers need gameplay
+  and never fire. Completing an advancement gives its rewards: the function
+  runs as the player, experience is given and loot goes straight into the
+  inventory without a message (recipes are not modelled). `advancement
+  grant` skips advancements that are already done, and `from`/`through`/
+  `until` go parents first (nearest first), then children depth first, like
+  vanilla.
 * **riding** — vehicles and passengers (`Passengers` when summoning, and in
   `data get entity`); killing or teleporting an entity gets it off its
   vehicle, teleporting a vehicle moves its riders.
@@ -117,10 +128,11 @@ Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
 `y_rotation` (ranges wrap around), `distance`,
 `x`/`y`/`z` (move the origin), `dx`/`dy`/`dz` (box from the origin),
 `nbt` (vanilla subset matching against `Entity.data()`), `limit`/`c`, `sort`.
+`predicate` (and `predicate=!`), `advancements` (`{id=true}`,
+`{id={criterion=false}}`).
 `@s[...]` applies its arguments to the executor.
 
-Not evaluated: `advancements` and `predicate` match every entity, and `nbt`
-keys the emulator does
+`nbt` keys the emulator does
 not store (effects, attributes, …) fail the check. Both produce one emulator
 note per run.
 
@@ -136,7 +148,7 @@ setting through a filter with no match adds the element).
 | command | notes |
 | --- | --- |
 | `execute` | `as at positioned rotated in align if unless store run summon on`; `anchored facing` pass through. `on vehicle\|passengers\|controller\|owner\|origin\|leasher` follow the entity's links (`controller`: a mob with AI ridden by a mob; `owner`: tamed animals' `Owner`; `origin`: a projectile's `Owner` or an item's `Thrower`; `leash`); `on attacker\|target` end the branch (no combat or AI). `store` (score, storage, entity, block, bossbar) binds its target where it appears in the chain; `run return` leaves the function on the first branch that reaches it |
-| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `block <pos> <predicate>` (id or `#tag` from the jar or the pack, properties, NBT subset), `blocks <start> <end> <destination> all\|masked` (the count is the number of blocks compared), `data` (entity, block, storage), `items entity\|block <…> <slots> <predicate>` (slot wildcards like `container.*`; the count is the number of matching items), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
+| `if` / `unless` conditions | `score` (matches and comparisons), `entity`, `predicate <id>` (or, from 1.20.5, an inline predicate; before, a missing one is "Unknown predicate"), `block <pos> <predicate>` (id or `#tag` from the jar or the pack, properties, NBT subset), `blocks <start> <end> <destination> all\|masked` (the count is the number of blocks compared), `data` (entity, block, storage), `items entity\|block <…> <slots> <predicate>` (slot wildcards like `container.*`; the count is the number of matching items), `dimension`, `loaded`, `function` (passes only when a function returns a non-zero value); others are noted and fail. With no `run`, a trailing `if entity` reports how many entities matched |
 | `setblock` | `replace`, `keep`, `destroy`, `strict` (1.21.5+). As in vanilla a container there is emptied first, and "Could not set the block" when the block state is already the same (the NBT is then not applied) |
 | `fill` | `replace [filter]`, `keep`, `hollow`, `outline`, `destroy`, `strict`, and from 1.21.5 `replace <filter> destroy\|hollow\|outline\|strict`; counts the blocks that changed; limited to 32 768 blocks, or `commandModificationBlockLimit` from 1.19.4 ("Too many blocks in the specified area") |
 | `clone` | `[strict]` (1.21.5+) then `replace`, `masked`, `filtered <predicate>` with `normal`, `force` and `move`; `from`/`to` dimensions (1.20.2+); overlapping regions need `force`; counts every block placed |
@@ -150,10 +162,10 @@ setting through a filter with no match adds the element).
 | `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z> [<yaw> <pitch>]` |
 | `give` | players only; stacks onto matching stacks (selected slot, offhand, container order), then empty slots; what does not fit drops as item entities; at most 100 stacks |
 | `clear` | `[targets] [item predicate] [maxCount]`: removes matching items (not the ender chest); `maxCount 0` only counts. Predicates: an id, `*`, `#tag` (from the client jar or the pack), `[component=value]`, `[component]`, `!` negation, `|` alternatives, and the old `{nbt}` subset; `~` sub-predicates and `count` are noted and not checked. Items are taken in slot order; a negative count is rejected |
-| `item` | counts must be 1–99 (1–64 before 1.20.5) and fit the item's stack; `replace entity\|block <…> <slot> with <item> [count]` (`air` empties the slot), `replace … from entity\|block <source> <slot> [modifier]`, `modify entity\|block <…> <slot> <modifier>` (pack item modifiers: `set_count`, `set_components`, `set_nbt`); a block must be a container with that slot ("Target position 1, 2, 3 is not a container", "The target does not have slot container.30") |
+| `item` | counts must be 1–99 (1–64 before 1.20.5) and fit the item's stack; `replace entity\|block <…> <slot> with <item> [count]` (`air` empties the slot), `replace … from entity\|block <source> <slot> [modifier]`, `modify entity\|block <…> <slot> <modifier>` (pack item modifiers, with their conditions and the functions listed under *Predicates*); a block must be a container with that slot ("Target position 1, 2, 3 is not a container", "The target does not have slot container.30") |
 | `replaceitem` | `entity\|block <…> <slot> <item> [count]` (before 1.17) |
 | `enchant` | adds the enchantment to the held item in the version's format (`Enchantments`, `enchantments.levels`, `enchantments`); which items accept it is not checked |
-| `loot` | targets `give` (what does not fit is lost), `spawn`, `insert <pos>` (into a container, like a hopper) and `replace entity\|block <…> <slot> [count]` (numbered slots from that one); sources `loot <table>`, `fish <table> <pos> [tool]`, `kill <entity>` (its `entities/<type>` table) and `mine <pos> [tool]` (the block's `blocks/<id>` table; a shulker box's `minecraft:contents` dynamic entry gives its items); `insert` goes through the slots once like vanilla (merging, stopping at the first empty slot) and counts the stacks that went in, from the pack or the client jar: rolls (uniform ranges inclusive), weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`, stacks split to their limit; returns the number of stacks. Conditions count as passing and other functions are skipped (noted); the tool and the fishing context are not modelled |
+| `loot` | targets `give` (what does not fit is lost), `spawn`, `insert <pos>` (into a container, like a hopper) and `replace entity\|block <…> <slot> [count]` (numbered slots from that one); sources `loot <table>`, `fish <table> <pos> [tool]`, `kill <entity>` (its `entities/<type>` table) and `mine <pos> [tool]` (the block's `blocks/<id>` table; a shulker box's `minecraft:contents` dynamic entry gives its items); `insert` goes through the slots once like vanilla (merging, stopping at the first empty slot) and counts the stacks that went in, from the pack or the client jar: rolls (uniform ranges inclusive), weights, nested tables, `alternatives`/`group`/`sequence`, `set_count`, `set_components`, `set_nbt`, stacks split to their limit; returns the number of stacks. Conditions are evaluated (see *Predicates* below); the `mine` tool (an item or the executor's `mainhand`/`offhand`) is what `match_tool` sees; the fishing context is not modelled |
 | `data` | on one entity, block entity or storage: `get [path] [scale]` (prints the SNBT like vanilla; floored, saturated to int), deep `merge`, `remove`, `modify` with set / merge / append / prepend / insert from `value`, `from` or `string` (sliced). Player data can be read but not modified ("Unable to modify player data"); a block without a block entity cannot be read ("The target block is not a block entity") |
 | `say me msg tell w tellraw title teammsg` | logged as `game` output, one record per player who reads it: `[Player1] hi` / `* Player1 waves` for everyone (say, me), `to Player2: text` (tellraw), `to Player1 (actionbar): text` (title), `Server whispers to Player2: text` (msg). Each record names its reader (`recipient`). Text components in JSON or (1.21.5+) SNBT, with `score`, `selector`, `nbt` (storage, entity and block) and `translate` (with its `with` arguments, from the client jar's language file, else the fallback) resolved per reader |
 | `gamerule` | |
@@ -195,6 +207,65 @@ emulator note, not a game error.
 Tick order follows vanilla: `#minecraft:tick` runs, then the game time
 advances and due schedules run, so `schedule … 1t` from a tick function runs
 later in the same server tick.
+
+## Predicates, loot conditions and item functions
+
+`runtime/predicates.py` evaluates the conditions of predicate files, loot
+tables, item modifiers and advancement criteria, for `execute if predicate`,
+`predicate=` and the `loot` and `item modify` commands:
+
+* **conditions** — `all_of`, `any_of` (and the older `alternative`),
+  `inverted`, `reference`, `random_chance`, `value_check`, `entity_scores`,
+  `entity_properties` (on `this`), `time_check`, `weather_check`,
+  `location_check`, `block_state_property`, `match_tool`, `table_bonus`,
+  `survives_explosion` (passes); `random_chance_with_enchanted_bonus` uses the
+  unenchanted chance;
+* **number providers** — constants, `uniform`, `binomial`, `score`, `storage`;
+  whole numbers are rounded (floored before 1.17), and a uniform range
+  whose low end is not below the high one gives the low end;
+* **entity predicates** — `type` (and tags), `nbt`, `location`, `distance`,
+  `flags` (on fire, baby — `IsBaby` or a negative `Age`, living entities
+  only —, flying, on ground), `equipment` and `slots` (an empty slot is an
+  empty stack, so `{}` and `minecraft:air` match it), `effects`, `team`, the
+  player part (`gamemode`, `level`, `advancements`; an unknown criterion
+  never matches), `vehicle`, `passenger`. `predicate=` checks each entity
+  where it is, in its own dimension;
+* **location and block predicates** — position ranges, dimension, block ids,
+  tags, states and NBT (block states only compare the properties a block was
+  given: default states are not known). The 26.x `clock` of `time_check` is
+  not read: the day time is used;
+* **item predicates** — `items` (ids and tags), `count`, exact `components`,
+  `nbt`.
+
+What needs gameplay — killers, attackers, damage sources, enchantment
+checks, biomes, structures, light, recipes, statistics — fails, and a note
+names it once per run.
+
+Entries follow vanilla's rules: `alternatives` stops at the first child
+whose conditions pass, `sequence` at the first whose conditions fail, and a
+`group` always counts as passing. A `tag` entry gives all its items, or with
+`expand` makes each item a candidate with the entry's weight. Malformed
+numbers and lists in a pack's JSON count as 0 or empty instead of stopping
+the run.
+
+The item functions are `set_count`, `limit_count` (a plain number is an exact
+count), `set_components`, `set_nbt` and `set_custom_data` (merged deeply),
+`set_name` and `set_lore` (JSON strings before 1.21.5; an `insert` or
+`replace_section` offset past the end changes nothing), `set_damage` (in
+Java floats; durability of the vanilla tools and armour, or `max_damage`),
+`set_enchantments` (levels 0–255, 0 removes), `enchant_randomly` (from its
+options, level 1), `set_item`, `copy_name` (`this` or `block_entity`),
+`copy_nbt` and `copy_custom_data` (from the mined block entity, `this` or a
+storage, with `replace`/`append`/`merge`), `set_contents` (the entries'
+candidates, into `container` or the `component` named), `set_potion`,
+`filtered`, `sequence`, `discard` — in the version's item format. `item
+modify` caps the count to the stack size once, at the end. The `mine` tool
+is an empty stack when none is given, so `match_tool` with `{}` passes and
+`apply_bonus` works at enchantment level 0 (only
+`binomial_with_bonus_count` adds its `extra` trials). Functions that need a
+killer or an explosion (`enchanted_count_increase`, `explosion_decay`, …)
+leave the item as it is, as vanilla does without them; the rest (including
+`reference`) are skipped and noted.
 
 ## Output
 

@@ -21,6 +21,14 @@ from datapack_emulator.emulator.commands.handlers import COSMETIC, UNMODELLED
 from datapack_emulator.emulator.commands.registry import CommandSet
 from datapack_emulator.emulator.common import normalise_id
 from datapack_emulator.emulator.datapack import Datapack, PackView
+from datapack_emulator.emulator.runtime.advancements import (
+    LOCATION_INTERVAL,
+    LOCATION_TRIGGER,
+    PLAYER_LOCATION_SINCE,
+    TICK_TRIGGER,
+    Advancement,
+    AdvancementTree,
+)
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.library import FunctionLibrary
 from datapack_emulator.emulator.runtime.living import tick_entities
@@ -74,6 +82,8 @@ class Emulator:
         self.players = players
         self.seed = seed
         self.world = World(players=players, seed=seed)
+        self._advancement_tree = self._build_advancements()
+        self._attach(self.world)
         self.profiler = Profiler()
         self.commands_run = 0
         self.schedules: list[tuple[int, str]] = []  # (absolute tick, function id)
@@ -82,11 +92,112 @@ class Emulator:
         #: diagnostics already reported this run (see ExecutionContext.note_once)
         self.noted: set[str] = set()
 
+    # -- advancements -----------------------------------------------------
+
+    def _build_advancements(self) -> AdvancementTree:
+        pack = {
+            resource_id: resource.content
+            for resource_id, resource in self.pack.registries.get("advancement", {}).items()
+            if isinstance(getattr(resource, "content", None), dict)
+        }
+        vanilla = self.vanilla.advancements if self.vanilla is not None else None
+        return AdvancementTree(pack, vanilla)
+
+    def _attach(self, world: World) -> None:
+        world.advancements.tree = self._advancement_tree
+        world.advancements.on_complete = self._reward
+
+    def _reward(self, holder: str, advancement: Advancement) -> None:
+        """An advancement was completed: its function runs as the player,
+        experience and loot are given."""
+        player = self.world.entity_by_id(holder)
+        if player is None:
+            return
+        rewards = advancement.rewards
+        context = self.root_context().branch(
+            executor=player, position=list(player.position), dimension=player.dimension
+        )
+        experience = rewards.get("experience")
+        if isinstance(experience, int) and experience:
+            from datapack_emulator.emulator.commands.players import give_points
+
+            give_points(context, player, experience)
+        tables = rewards.get("loot")
+        for table_id in tables if isinstance(tables, list) else []:
+            if isinstance(table_id, str):
+                self._reward_loot(player, table_id, context)
+        function = rewards.get("function")
+        if isinstance(function, str):
+            self.run_function(function, context)
+
+    def _reward_loot(self, player, table_id: str, context) -> None:
+        """A reward table's items go straight into the inventory, silently."""
+        from datapack_emulator.emulator.commands.conditions import predicate_context
+        from datapack_emulator.emulator.commands.items import loot_table, split_stacks
+        from datapack_emulator.emulator.runtime.loot import evaluate
+
+        table = loot_table(context, table_id)
+        if table is None:
+            context.note_once(f"advancement reward: no loot table {normalise_id(table_id)}")
+            return
+        result = evaluate(
+            table,
+            lambda name: loot_table(context, name),
+            context=predicate_context(context, entity=player, position=player.position),
+        )
+        for stack in split_stacks(result.items):
+            player.inventory.add(stack)
+
+    def _advancement_triggers(self) -> None:
+        """``minecraft:tick`` every tick, ``minecraft:location`` every 20."""
+        from datapack_emulator.emulator.commands.conditions import predicate_context
+        from datapack_emulator.emulator.runtime.predicates import (
+            check,
+            entity_matches,
+            location_matches,
+        )
+
+        progress = self.world.advancements
+        location_tick = self.world.tick % LOCATION_INTERVAL == 0
+        old_location = self.version < versions.parse(PLAYER_LOCATION_SINCE)
+        for advancement in progress.tree.pack_advancements():
+            for name, criterion in advancement.criteria.items():
+                trigger = normalise_id(str(criterion.get("trigger", "")))
+                if trigger != TICK_TRIGGER and not (location_tick and trigger == LOCATION_TRIGGER):
+                    continue
+                conditions = criterion.get("conditions")
+                if not isinstance(conditions, dict):
+                    conditions = {}
+                for player in self.world.players:
+                    # vanilla stops listening once an advancement is done
+                    if progress.done(player.id, advancement):
+                        continue
+                    if name in progress.criteria(player.id, advancement.id):
+                        continue
+                    context = predicate_context(
+                        self.root_context(),
+                        entity=player,
+                        position=player.position,
+                        dimension=player.dimension,
+                    )
+                    wanted = conditions.get("player")
+                    if isinstance(wanted, list):
+                        passed = check(wanted, context)
+                    else:
+                        passed = entity_matches(wanted, player, context)
+                    if passed and old_location and trigger == LOCATION_TRIGGER:
+                        passed = location_matches(
+                            conditions.get("location"), player.position, player.dimension, context
+                        )
+                    if passed:
+                        progress.grant(player.id, advancement, name)
+
     # -- lifecycle --------------------------------------------------------
 
     def reset(self, players: int | None = None) -> None:
         self.players = players if players is not None else self.players
         self.world = World(players=self.players, seed=self.seed)
+        self._attach(self.world)
         self.profiler.reset()
         self.commands_run = 0
         self.schedules.clear()
@@ -160,6 +271,7 @@ class Emulator:
             for _, target in due:
                 self.run_scheduled(target)
             tick_entities(self.world, self.version, self._instant_effect)
+            self._advancement_triggers()
 
         elapsed = self.profiler.total_us - start
         self.profiler.record_tick(elapsed)

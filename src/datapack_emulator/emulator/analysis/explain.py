@@ -137,7 +137,18 @@ CONDITION_SUMMARIES: dict[str, str] = {
 
 #: conditions the emulator evaluates (the others are noted and fail)
 EMULATED_CONDITIONS = frozenset(
-    {"score", "entity", "data", "dimension", "loaded", "function", "items", "block", "blocks"}
+    {
+        "score",
+        "entity",
+        "data",
+        "dimension",
+        "loaded",
+        "function",
+        "items",
+        "block",
+        "blocks",
+        "predicate",
+    }
 )
 
 SELECTOR_KINDS = {
