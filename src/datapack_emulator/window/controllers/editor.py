@@ -6,10 +6,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import QStringListModel, Qt, QTimer
+from PySide6.QtWidgets import QCompleter, QInputDialog, QMessageBox
 
+from datapack_emulator.emulator.analysis.completion import complete
 from datapack_emulator.emulator.analysis.problems import text_problems
+from datapack_emulator.emulator.analysis.rename import RenameError, rename_function
 from datapack_emulator.window.controllers.base import Controller
 
 #: how long typing must pause before the lines are checked again
@@ -32,6 +34,8 @@ class EditorController(Controller):
         self._line = 0
         #: the text as it was written or read, to move the breakpoints of an edit
         self._saved_text = ""
+        #: the completion popup's model (analysis.completion fills it)
+        self._completions = QStringListModel(window)
 
     def connect(self) -> None:
         window = self.window
@@ -40,6 +44,20 @@ class EditorController(Controller):
         edit.textChanged.connect(self._check_timer.start)
         # the marks are anchored to lines: a new or removed line moves them
         edit.document().blockCountChanged.connect(lambda _: self.check_lines())
+        completer = QCompleter(self._completions, window)
+        edit.set_completer(completer)
+        edit.completion_wanted.connect(self.show_completions)
+        for name, slot in (
+            ("actionrename_function", self.rename_function),
+            ("actioncomplete", lambda: edit.ask_completions()),
+        ):
+            action = window._action(name)
+            if action is not None:
+                action.triggered.connect(slot)
+                # the menu entries stay; their shortcuts belong to the source
+                # view (F2 renames a row in a tree, Ctrl+Space is a text key)
+                action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+                edit.addAction(action)
         for name, slot in (
             ("actionsave_file", self.save),
             ("actionrevert_file", self.revert),
@@ -197,6 +215,101 @@ class EditorController(Controller):
             self.window.source_edit.document().setModified(False)
             return True
         return False
+
+    # -- completing ------------------------------------------------------------
+
+    def candidates(self, line: str, cursor: int) -> list:
+        """What could be typed at ``cursor`` in ``line``, for this pack."""
+        window = self.window
+        path = self.path
+        if path is None or path.suffix.lower() != ".mcfunction":
+            return []
+        view = window.datapack.view_for(window.version) if window.datapack is not None else None
+        return complete(line, cursor, window.version, view=view, vanilla=window.vanilla)
+
+    def show_completions(self, line: str, cursor: int) -> None:
+        """Fill and show the popup under the cursor (Ctrl+Space, or typing)."""
+        edit = self.window.source_edit
+        completer = edit.completer
+        if completer is None:
+            return
+        found = self.candidates(line, cursor)
+        if not found:
+            completer.popup().hide()
+            return
+        self._completions.setStringList([candidate.text for candidate in found])
+        # complete() already kept what fits (including its contains fallback):
+        # a prefix here would filter those candidates straight back out
+        completer.setCompletionPrefix("")
+        rectangle = edit.cursorRect()
+        rectangle.setWidth(
+            completer.popup().sizeHintForColumn(0)
+            + completer.popup().verticalScrollBar().sizeHint().width()
+            + 20
+        )
+        completer.complete(rectangle)
+
+    # -- renaming ---------------------------------------------------------------
+
+    def rename_function(self) -> bool:
+        """Rename the function in the view, and every reference to its id."""
+        window = self.window
+        function_id = window.navigation.function_at(self.path)
+        if function_id is None or window.datapack is None:
+            self.status("open a function of a loaded pack first")
+            return False
+        if window.debug.busy():  # the stopped run reads the file where it is
+            return False
+        new_id, chosen = QInputDialog.getText(
+            window, "rename function", "The function's new id:", text=function_id
+        )
+        if not chosen or not new_id.strip() or new_id.strip() == function_id:
+            return False
+        try:
+            edits = rename_function(window.datapack, function_id, new_id.strip(), window.version)
+        except RenameError as exc:
+            QMessageBox.warning(window, "rename function", str(exc))
+            return False
+        lines = sum(edit.kind == "line" for edit in edits)
+        answer = QMessageBox.question(
+            window,
+            "rename function",
+            f"Rename {function_id} to {new_id.strip()}?\n"
+            f"Its file moves and {lines} line(s) in the pack follow it.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return False
+        if not self.maybe_discard():  # the file is about to move
+            return False
+        try:
+            edits = rename_function(
+                window.datapack, function_id, new_id.strip(), window.version, apply=True
+            )
+        except RenameError as exc:  # a file that cannot be written: nothing moved
+            QMessageBox.warning(window, "rename function", str(exc))
+            return False
+        moved = next(Path(edit.after) for edit in edits if edit.kind == "move")
+        window.output.app(f"renamed {function_id} to {new_id.strip()} ({lines} line(s))")
+        self._follow_rename(function_id, new_id.strip())
+        window.datapacks.reload()
+        window.navigation.show_source(moved, ask=False)
+        self.status(f"renamed {function_id} to {new_id.strip()}: {lines} line(s) followed")
+        return True
+
+    def _follow_rename(self, old_id: str, new_id: str) -> None:
+        """What the window keeps under the old id: the function's note and its
+        breakpoints (``shift_breakpoints`` does the same for moved lines)."""
+        window = self.window
+        notes = window.project.function_notes
+        note = notes.pop(old_id, "")
+        if note:
+            notes[new_id] = note
+        moved = window.debug.debugger.rename(old_id, new_id)
+        if note or moved:
+            window.projects.mark_modified()
+        window.debug.fill_breakpoints()
 
     # -- checking as you type --------------------------------------------------
 

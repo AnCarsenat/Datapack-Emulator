@@ -29,7 +29,7 @@ layout changes are made in Qt Designer, never in code.
 
 | menu | entries |
 | --- | --- |
-| file | new / open / save / save as project ([projects](projects.md)) · save file / revert file (the source view) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · open the last project on launch (a tick: the window starts on that project instead of the sample datapack) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
+| file | new / open / save / save as project ([projects](projects.md)) · save file / revert file / rename function… / complete here (the source view) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · open the last project on launch (a tick: the window starts on that project instead of the sample datapack) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor · show in call graph (the source view's function) |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · check pack (the problems dock) · version engine… · export call graph (.dot) |
 | debug | toggle breakpoint · remove all breakpoints · continue · step into · step over · step out · pause (see the [debugger](#debugger-dock)) |
@@ -166,7 +166,22 @@ current version.
   before 1.20.2), JSON that does not parse — and hovering one says why; the
   problems dock reports the first line that stops each function from loading,
   so it shows fewer of them ([`check --lines`](cli.md#check--problems) prints
-  the same list as the view). Images are shown read-only. Right-click a line to:
+  the same list as the view). **Ctrl+Space** completes what is being typed:
+  the version's commands, `execute` subcommands and conditions, `execute
+  store` targets and selector options, the pack's function and `#tag` ids
+  after `function`, `schedule function`, `schedule clear` and `execute … run
+  function` (a leading `/` and a macro line's `$` are read past), and the
+  client jar's ids after
+  `summon`, `setblock`, `give`, `clear`, `playsound`, `particle`, `effect`
+  and `enchant` when a jar is loaded (the same list as
+  [`complete`](cli.md#complete--what-can-be-typed-next)). **F2** renames the
+  function shown: its file moves to the new id's path and every reference to
+  the id in the pack's `data/` follows, after a confirmation saying how many
+  lines change ([`rename`](cli.md#rename--a-function-and-its-references) does
+  the same, and says what it reads and what it leaves alone). The function's
+  note and its breakpoints follow the new id. It is refused while the debugger
+  is stopped, and unsaved edits are only asked about once the rename is
+  agreed. Images are shown read-only. Right-click a line to:
   * **analyze this line** (also Ctrl+I): the inspector explains it without
     running it — what the command does, each `execute` step in words (who,
     where, which condition), what each selector matches, the functions and
@@ -325,7 +340,7 @@ All six are open by default and can be toggled from *view*.
 | call-graph node | same, plus *show in explorer* and *show in inspector*; tags open their `.json` |
 | profiler row | same as a graph node |
 | explorer file, call-graph node, profiler row of a function | also *edit note…* |
-| source view | the editor's own menu · analyze this line · run this line · add this line as a test · toggle breakpoint · run this function · show callers and calls · show in call graph · show in inspector · edit note on this function |
+| source view | the editor's own menu · save file · revert file · rename function… (F2) · complete here (Ctrl+Space) · analyze this line · run this line · add this line as a test · toggle breakpoint · run this function · show callers and calls · show in call graph · show in inspector · edit note on this function |
 | source view gutter | click: set or remove a breakpoint |
 | log record | copy error message (or copy message) · copy with details · open file in source view, at the line the record came from (double-click too) · analyze the command · add the command as a test |
 | test | run this test · show its records in the logs · analyze the command · edit checks… · duplicate · move up / down · remove · add test |
@@ -366,6 +381,8 @@ file type or folders.
 | Ctrl+F5 | continue (debugger) |
 | F10 / F11 / Shift+F11 | step over / into / out (debugger) |
 | Ctrl+F6 | pause a running emulation (debugger) |
+| Ctrl+Space | complete what is being typed (the source view) |
+| F2 | rename the function in the source view |
 | Ctrl+1 … Ctrl+4 | environment / profiler / call graph / source tab |
 | Ctrl+Shift+K | check the pack (problems dock) |
 | Alt+1 … Alt+6 | show or hide explorer / inspector / logs / world / debugger / problems |

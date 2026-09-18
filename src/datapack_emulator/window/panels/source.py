@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QTextCharFormat, QTextCursor, QTextFormat
-from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QToolTip, QWidget
+from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QTextEdit, QToolTip, QWidget
+
+from datapack_emulator.emulator.analysis.completion import word_at
 
 BREAKPOINT_COLOUR = QColor("#d32f2f")
 DISABLED_COLOUR = QColor("#bdbdbd")
@@ -46,6 +48,8 @@ class _Gutter(QWidget):
 class SourceEdit(QPlainTextEdit):
     #: a line number (1-based) whose gutter was clicked
     gutter_clicked = Signal(int)
+    #: the line so far, when completions are wanted for it (Ctrl+Space, typing)
+    completion_wanted = Signal(str, int)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -56,9 +60,63 @@ class SourceEdit(QPlainTextEdit):
         #: line -> why the version refuses it (underlined while editing)
         self.line_marks: dict[int, str] = {}
         self._gutter = _Gutter(self)
+        #: fed by the editor controller (analysis.completion); None until then
+        self.completer: QCompleter | None = None
         self.blockCountChanged.connect(self._update_width)
         self.updateRequest.connect(self._update_gutter)
         self._update_width()
+
+    # -- completion ----------------------------------------------------------
+
+    def set_completer(self, completer: QCompleter) -> None:
+        completer.setWidget(self)
+        # the list is already what fits here: Qt must not filter it again
+        completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.activated.connect(self.insert_completion)
+        self.completer = completer
+
+    def word_start(self) -> int:
+        """Where the word under the cursor starts, in the line (the same
+        reading as the completion module, so the popup replaces what it
+        completed)."""
+        cursor = self.textCursor()
+        return word_at(cursor.block().text(), cursor.positionInBlock())[1]
+
+    def insert_completion(self, text: str) -> None:
+        cursor = self.textCursor()
+        typed = cursor.positionInBlock() - self.word_start()
+        cursor.movePosition(QTextCursor.Left, QTextCursor.KeepAnchor, typed)
+        cursor.insertText(text)
+        self.setTextCursor(cursor)
+
+    def ask_completions(self) -> None:
+        """Ask for what could be typed here (the controller answers)."""
+        cursor = self.textCursor()
+        self.completion_wanted.emit(cursor.block().text(), cursor.positionInBlock())
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt API)
+        popup = self.completer.popup() if self.completer is not None else None
+        if (
+            popup is not None
+            and popup.isVisible()
+            and event.key()
+            in (
+                Qt.Key_Enter,
+                Qt.Key_Return,
+                Qt.Key_Tab,
+                Qt.Key_Backtab,
+                Qt.Key_Escape,
+            )
+        ):
+            event.ignore()  # the popup takes it (Escape closes it)
+            return
+        if event.key() == Qt.Key_Space and event.modifiers() & Qt.ControlModifier:
+            self.ask_completions()
+            return
+        super().keyPressEvent(event)
+        if self.completer is not None and popup is not None and popup.isVisible():
+            self.ask_completions()  # keep the list in step with what is typed
 
     # -- state ---------------------------------------------------------------
 
