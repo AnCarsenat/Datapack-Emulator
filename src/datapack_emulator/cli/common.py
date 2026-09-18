@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TextIO
 
 from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.analysis.schema import Schema, load_schema
+from datapack_emulator.emulator.analysis.schema import schema_for as learned_schema
 from datapack_emulator.emulator.datapack import DatapackSet, preferred_version
 from datapack_emulator.emulator.engine import TestEngine
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSource, OutputBus
@@ -22,6 +24,7 @@ from datapack_emulator.emulator.testing import CommandTest
 from datapack_emulator.emulator.vanilla import VanillaAssets, VanillaLibrary, default_library
 from datapack_emulator.emulator.versions import Version
 from datapack_emulator.project import SUFFIXES, Project, recent_projects
+from datapack_emulator.settings.main import PATHS
 
 LEVELS = {
     "debug": LogLevel.DEBUG,
@@ -184,6 +187,39 @@ def add_vanilla_arguments(parser: argparse.ArgumentParser, per_version: bool = F
         )
     group.add_argument("--no-vanilla", action="store_true", help="use no client jar")
     group.add_argument("--download", action="store_true", help="fetch missing jars from Mojang")
+
+
+def add_schema_arguments(parser: argparse.ArgumentParser) -> None:
+    """Checking a pack's JSON fields against the version's own files."""
+    group = parser.add_argument_group("field checks")
+    group.add_argument(
+        "--no-schema",
+        action="store_true",
+        help="do not check JSON fields against the client jar's own files",
+    )
+    group.add_argument(
+        "--schema",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="a schema written by `schema --write` instead of the jar's",
+    )
+
+
+def schema_for(arguments: argparse.Namespace, assets: VanillaAssets | None) -> Schema | None:
+    """The field schema a check reads: a written one, else the jar's own
+    (learned once per version and kept in the cache); None without a jar."""
+    if getattr(arguments, "no_schema", False):
+        return None
+    given = getattr(arguments, "schema", None)
+    if given is not None:
+        try:
+            return load_schema(given)
+        except ValueError as exc:
+            raise CliError(str(exc)) from exc
+    if assets is None:
+        return None
+    return learned_schema(assets, PATHS.CACHE)
 
 
 def _read_jar(library: VanillaLibrary, path: Path) -> VanillaAssets:
