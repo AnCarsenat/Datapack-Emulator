@@ -145,6 +145,39 @@ class Profiler:
 
     # -- reporting --------------------------------------------------------
 
+    def summary(self) -> str:
+        """One sentence on the average and worst tick against the budget."""
+        if not self.ticks:
+            return (
+                "no ticks run yet — the numbers below are totals (load, typed commands), "
+                "not per tick: run or step the emulator"
+            )
+        average = self.average_tick_us / 1000
+        worst = self.worst_tick_us / 1000
+        budget = costs.TICK_BUDGET_US / 1000
+        return (
+            f"average of {self.ticks} tick(s): {average:.3f} ms per tick "
+            f"({average / budget:.1%} of the {budget:.0f} ms budget) · worst tick {worst:.3f} ms · "
+            "estimates from a cost model, not measurements"
+        )
+
+    def tree_rows(self) -> list[tuple[CallPath, dict[str, float]]]:
+        """Every call path, depth first and costliest first, with its per-tick
+        numbers plus ``share`` (of an average tick) — the profiler tab's tree."""
+        index = self.children_index()
+        tick_cost = self.total_us / max(self.ticks, 1) or 1.0
+        rows: list[tuple[CallPath, dict[str, float]]] = []
+
+        def walk(path: CallPath) -> None:
+            for child in index.get(path, []):
+                one = self.per_tick(self.tree[child])
+                one["share"] = one["total_us"] / tick_cost
+                rows.append((child, one))
+                walk(child)
+
+        walk(())
+        return rows
+
     def to_html(self, title: str = "Function profiler", subtitle: str = "") -> str:
         # titles and function ids come from the pack: escape them, the report
         # is shown in the app's web view

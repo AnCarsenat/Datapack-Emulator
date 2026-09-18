@@ -55,8 +55,7 @@ class ConsoleController(Controller):
             return None
         if not self.need_datapack():
             return None
-        command = Command.parse(line, source="<console>")
-        if command is None:
+        if Command.parse(line, source="<console>") is None:
             self.status("nothing to run: the line is empty or a comment")
             return None
         if window.emulator is None:
@@ -69,7 +68,9 @@ class ConsoleController(Controller):
             emulator.run_tick()
             window.output.app("started the world (ran the first tick) to run the command")
         window.output.app(f"> {line}")
-        result = emulator.run_command(command, emulator.root_context())
+        result, _ = emulator.run_typed(line)
+        if result is None:  # checked above; kept for safety
+            return None
         self._remember(line)
         if text is None:
             window.edit_console.clear()

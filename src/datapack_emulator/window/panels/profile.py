@@ -5,7 +5,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
 
-from datapack_emulator.emulator import costs
 from datapack_emulator.emulator.analysis.profiler import CallPath, Profiler
 
 #: the function id of a row (empty for tags, schedules and "…")
@@ -33,22 +32,6 @@ class _Row(QTreeWidgetItem):
         if mine is not None and theirs is not None:
             return mine < theirs
         return self.text(column).lower() < other.text(column).lower()
-
-
-def summary(profiler: Profiler) -> str:
-    if not profiler.ticks:
-        return (
-            "no ticks run yet — the numbers below are totals (load, typed commands), "
-            "not per tick: run or step the emulator"
-        )
-    average = profiler.average_tick_us / 1000
-    worst = profiler.worst_tick_us / 1000
-    budget = costs.TICK_BUDGET_US / 1000
-    return (
-        f"average of {profiler.ticks} tick(s): {average:.3f} ms per tick "
-        f"({average / budget:.1%} of the {budget:.0f} ms budget) · worst tick {worst:.3f} ms · "
-        "estimates from a cost model, not measurements"
-    )
 
 
 def fill_profile_tree(tree: QTreeWidget, profiler: Profiler) -> None:

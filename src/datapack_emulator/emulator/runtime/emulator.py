@@ -241,6 +241,24 @@ class Emulator:
 
     # -- execution --------------------------------------------------------
 
+    def run_typed(self, line: str) -> tuple[CommandResult | None, bool]:
+        """A command typed on the server console: ``(result, started)``.
+
+        A leading ``/`` is optional. A world that has not ticked yet runs its
+        first tick first, like a server that is up (``started`` says so). The
+        result is ``None`` for an empty line or a comment.
+        """
+        command = Command.parse(line.strip().removeprefix("/"), source="<console>")
+        if command is None:
+            return (None, False)
+        started = False
+        if not self.started or self.world.tick == 0:
+            self.start()
+            self.run_tick()
+            started = True
+        with self._stack_headroom():
+            return (self.run_command(command, self.root_context()), started)
+
     def run_command(self, command: Command, context: ExecutionContext) -> CommandResult:
         """Dispatch one command, after checking it exists in this version."""
         inner = context.branch(line=command.line)

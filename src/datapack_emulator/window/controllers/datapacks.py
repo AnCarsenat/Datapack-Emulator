@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, QModelIndex, QObject
 from PySide6.QtWidgets import QFileDialog, QTreeWidgetItem
 
-from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.analysis.inspector import version_note
 from datapack_emulator.emulator.datapack import Datapack, DatapackSet, preferred_version
 from datapack_emulator.emulator.resources import Resource
 from datapack_emulator.emulator.runtime.emulator import Emulator
@@ -31,31 +31,6 @@ COMPATIBILITY_NOTES = {
     "too_new": "  (pack is marked incompatible: made for a newer version)",
     "unknown": "  (pack.mcmeta is invalid for this version)",
 }
-
-
-def version_note(datapack: Datapack, version: versions.Version) -> str:
-    """What the selected version makes of the pack, in a sentence or two."""
-    compatibility = datapack.compatibility(version)
-    notes = []
-    if not version.stable:
-        notes.append("pre-release")
-    if compatibility.status == "compatible":
-        notes.append("lists the pack as compatible")
-    elif compatibility.status in ("too_old", "too_new"):
-        age = "an older" if compatibility.status == "too_old" else "a newer"
-        notes.append(f"lists the pack as made for {age} version (it still loads)")
-    else:
-        detail = compatibility.server_log[0] if compatibility.server_log else compatibility.reason
-        notes.append(f"cannot read pack.mcmeta: {detail} (the pack still loads)")
-    notes.append(
-        "reads function/ folders"
-        if versions.uses_singular_registries(version)
-        else "reads functions/ folders"
-    )
-    overlays = datapack.view_for(version).active_overlays
-    if overlays:
-        notes.append("overlays " + ", ".join(overlays))
-    return f"{version.id}: " + " · ".join(notes)
 
 
 class DatapackController(Controller):

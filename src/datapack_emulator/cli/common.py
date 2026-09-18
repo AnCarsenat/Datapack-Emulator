@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import sys
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TextIO
 
 from datapack_emulator.emulator import versions
 from datapack_emulator.emulator.datapack import DatapackSet, preferred_version
@@ -16,7 +18,7 @@ from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, LogSo
 from datapack_emulator.emulator.testing import CommandTest
 from datapack_emulator.emulator.vanilla import VanillaAssets, VanillaLibrary, default_library
 from datapack_emulator.emulator.versions import Version
-from datapack_emulator.project import SUFFIXES, Project
+from datapack_emulator.project import SUFFIXES, Project, recent_projects
 
 LEVELS = {
     "debug": LogLevel.DEBUG,
@@ -83,12 +85,21 @@ def add_source_arguments(parser: argparse.ArgumentParser) -> None:
         "source",
         type=Path,
         nargs="+",
-        help="datapack folders in load order, or one .dpemu / .json project",
+        help="datapack folders in load order, or one .dpemu / .json project "
+        "(@last: the project the window opened last)",
     )
+
+
+LAST_PROJECT = "@last"
 
 
 def load_inputs(paths: list[Path]) -> Inputs:
     """Datapack folders, or one project whose packs and settings are used."""
+    if [str(path) for path in paths] == [LAST_PROJECT]:
+        recent = [path for path in recent_projects() if path.is_file()]
+        if not recent:
+            raise CliError("no recent project: open one in the window first")
+        paths = [recent[0]]
     projects = [path for path in paths if is_project(path)]
     if projects and len(paths) > 1:
         raise CliError("give either one project or datapack folders, not both")
@@ -254,17 +265,51 @@ def add_output_filter(parser: argparse.ArgumentParser, default_level: str = "inf
         default=[source.value for source in LogSource],
         help="which records to print: what this program, the emulator or the game says",
     )
+    parser.add_argument(
+        "--seen-by",
+        default="",
+        metavar="PLAYER",
+        help="only the chat PLAYER reads (the logs dock's 'seen by')",
+    )
+    parser.add_argument(
+        "--grep", default="", metavar="TEXT", help="only records whose message contains TEXT"
+    )
+    parser.add_argument(
+        "--details",
+        action="store_true",
+        help="print each record's command, translation key, version and reader",
+    )
 
 
-def printing_bus(arguments: argparse.Namespace, bus: OutputBus | None = None) -> OutputBus:
-    """A bus that prints the records ``--level`` and ``--sources`` ask for."""
-    bus = bus or OutputBus()
+def record_filter(arguments: argparse.Namespace) -> Callable[[LogRecord], bool]:
+    """The logs dock's filters, from ``add_output_filter``'s options."""
     minimum = LEVELS[arguments.level]
     wanted = {LogSource(name) for name in arguments.sources}
+    needle = (getattr(arguments, "grep", "") or "").lower()
+    reader = getattr(arguments, "seen_by", "") or ""
+    return lambda record: (
+        record.source in wanted
+        and record.level >= minimum
+        and (not needle or needle in record.message.lower())
+        and record.seen_by(reader)
+    )
+
+
+def format_record(arguments: argparse.Namespace, record: LogRecord) -> str:
+    return record.details() if getattr(arguments, "details", False) else record.format()
+
+
+def printing_bus(
+    arguments: argparse.Namespace, bus: OutputBus | None = None, stream: TextIO | None = None
+) -> OutputBus:
+    """A bus that prints the records the output options ask for (to ``stream``,
+    standard output by default)."""
+    bus = bus or OutputBus()
+    passes = record_filter(arguments)
 
     def show(record: LogRecord) -> None:
-        if record.source in wanted and record.level >= minimum:
-            print(record.format())
+        if passes(record):
+            print(format_record(arguments, record), file=stream or sys.stdout)
 
     bus.listeners.append(show)
     return bus

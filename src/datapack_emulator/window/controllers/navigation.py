@@ -189,18 +189,7 @@ class NavigationController(Controller):
         if window.datapack is None:
             return
         graph = window.call_graph or CallGraph.from_pack(window.datapack.view_for(window.version))
-        callers = graph.predecessors(function_id)
-        calls = graph.successors(function_id)
-        rows = [
-            ("function", function_id),
-            ("called by", ", ".join(callers) or "nothing (only #minecraft:load/tick or commands)"),
-            ("calls", ", ".join(calls) or "nothing"),
-        ]
-        rows += [
-            (f"edge {edge.source} → {edge.target}", edge.kind)
-            for edge in graph.edges
-            if function_id in (edge.source, edge.target)
-        ]
+        rows = graph.relations(function_id)
         window.datapacks.fill_inspector(rows + window.notes.rows_for(function_id))
         window.dock_inspector.show()
         window.dock_inspector.raise_()

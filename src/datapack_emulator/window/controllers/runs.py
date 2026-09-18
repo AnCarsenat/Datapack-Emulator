@@ -15,7 +15,6 @@ from datapack_emulator.settings import PATHS
 from datapack_emulator.window.controllers.base import TAB_GRAPH, TAB_PROFILER, Controller
 from datapack_emulator.window.engine_window import EngineWindow
 from datapack_emulator.window.panels.profile import fill_profile_tree
-from datapack_emulator.window.panels.profile import summary as profile_summary
 
 #: speed combo entries in window.ui, in order
 SPEEDS = ("fast", "realtime")
@@ -260,7 +259,7 @@ class RunController(Controller):
         window.web_view.setUrl(QUrl.fromLocalFile(str(report)))
         window.web_view.reload()
         fill_profile_tree(window.tree_profile, window.emulator.profiler)
-        window.profile_summary.setText(profile_summary(window.emulator.profiler))
+        window.profile_summary.setText(window.emulator.profiler.summary())
         if switch_tab:
             window.tabs.setCurrentWidget(window.tab_page(TAB_PROFILER))
 

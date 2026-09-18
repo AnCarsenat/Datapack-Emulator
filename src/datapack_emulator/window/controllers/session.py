@@ -10,17 +10,13 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray
 from PySide6.QtWidgets import QMenu
 
-from datapack_emulator.settings import PATHS
+from datapack_emulator.project import state_file
 from datapack_emulator.window.controllers.base import Controller
 
 log = logging.getLogger(__name__)
 
 #: entries kept in each recent list
 MAX_RECENT = 10
-
-
-def state_file() -> Path:
-    return PATHS.CACHE / "window-state.json"
 
 
 def _paths(value) -> list[str]:

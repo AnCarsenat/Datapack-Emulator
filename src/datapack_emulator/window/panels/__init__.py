@@ -4,6 +4,13 @@ The window layout lives in the ``.ui`` files next to ``datapack_emulator.window`
 nothing here creates docks or menus.
 """
 
+from datapack_emulator.emulator.analysis.inspector import (
+    describe_datapack,
+    describe_resource,
+    describe_run,
+    describe_version,
+    row_help,
+)
 from datapack_emulator.window.panels.explorer import (
     OVERLAY_ROLE,
     PACK_INDEX_ROLE,
@@ -16,13 +23,6 @@ from datapack_emulator.window.panels.highlight import (
     JsonHighlighter,
     McFunctionHighlighter,
     highlighter_for,
-)
-from datapack_emulator.window.panels.inspector import (
-    describe_datapack,
-    describe_resource,
-    describe_run,
-    describe_version,
-    row_help,
 )
 from datapack_emulator.window.panels.logs import LEVELS, LogTableModel
 from datapack_emulator.window.panels.results import ResultsTableModel

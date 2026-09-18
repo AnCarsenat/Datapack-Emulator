@@ -343,6 +343,31 @@ def _safe_name(name: str) -> str:
     return cleaned.strip().strip(".") or "untitled"
 
 
+def state_file() -> Path:
+    """What the window remembers between sessions (recent lists, layout)."""
+    return PATHS.CACHE / "window-state.json"
+
+
+def _recent(key: str) -> list[Path]:
+    try:
+        data = json.loads(state_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    entries = data.get(key) if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return []
+    return [Path(entry) for entry in entries if isinstance(entry, str)]
+
+
+def recent_projects() -> list[Path]:
+    """The window's *open recent project* list, most recent first."""
+    return _recent("recent_projects")
+
+
+def recent_datapacks() -> list[Path]:
+    return _recent("recent_datapacks")
+
+
 def default_sample() -> Path | None:
     """The datapack to open on a cold start: the first one in ``samples/``."""
     if not PATHS.SAMPLES.is_dir():

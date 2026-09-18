@@ -32,13 +32,16 @@ python -m venv .venv
 Or, from a checkout, `src/main.sh` (uses `.venv/` or `src/.venv/` if present,
 no install needed beyond the requirements).
 
-The first pack in `samples/` opens on startup. The [command line](docs/cli.md) runs, tests and profiles packs or saved
-projects, like the window:
+The first pack in `samples/` opens on startup. The [command line](docs/cli.md) does what the window does — run, test,
+profile, inspect, explain, search, the call graph, the world, an interactive
+console and project editing — on packs or saved projects:
 
 ```sh
 .venv/bin/datapack-emulator-cli run    samples/hat_v2 --version 1.21.4 --vanilla
 .venv/bin/datapack-emulator-cli matrix samples/hat_v2 --declared --boundaries
 .venv/bin/datapack-emulator-cli test   projects/hat.dpemu --junit generated/tests.xml
+.venv/bin/datapack-emulator-cli shell  samples/hat          # type commands, .step, .scores, .help
+.venv/bin/datapack-emulator-cli world  samples/hat --ticks 5 --scores
 src/main.sh --cli run samples/hat_v2 --version 26.3      # same runner through the script
 ```
 
