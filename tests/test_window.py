@@ -1936,8 +1936,15 @@ def test_the_window_entry_point_reads_its_arguments():
     assert for_qt == ["-platform", "offscreen"] and arguments.open_last is False
 
 
+def _shown(completer) -> list[str]:
+    """What the popup lists, in its order."""
+    model = completer.completionModel()
+    return [model.index(row, 0).data() for row in range(model.rowCount())]
+
+
 def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
     from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
     from PySide6.QtWidgets import QInputDialog, QMessageBox
 
     pack = make_pack(
@@ -1958,9 +1965,31 @@ def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
     edit.setTextCursor(cursor)
     edit.ask_completions()
     assert edit.completer.popup().isVisible()
-    assert edit.completer.completionPrefix() == "test:hel"
+    assert _shown(edit.completer) == ["test:helper"]
     edit.insert_completion("test:helper")
     assert edit.toPlainText() == "function test:helper"
+    edit.completer.popup().hide()
+
+    # a word that only appears inside a candidate: the popup shows it too
+    # (the module's own fallback; Qt must not filter the list a second time)
+    edit.setPlainText("function hel")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    assert edit.completer.popup().isVisible()
+    assert _shown(edit.completer) == ["test:helper"]
+    edit.completer.popup().hide()
+
+    # a macro line is a command line: completion reads past the leading $
+    edit.setPlainText("$function test:hel")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    assert _shown(edit.completer) == ["test:helper"]
+    edit.insert_completion("test:helper")
+    assert edit.toPlainText() == "$function test:helper"
     edit.completer.popup().hide()
 
     # nothing to offer: no popup
@@ -1998,4 +2027,78 @@ def test_source_view_completes_and_renames(app, window, make_pack, monkeypatch):
     )
     assert not window.editor.rename_function()
     assert warned and "resource location" in warned[0]
-    assert Qt.Key_Space  # the popup's keys are handled in SourceEdit.keyPressEvent
+
+    # Enter, Tab and Escape belong to the popup while it is open
+    edit.setPlainText("function wor")  # the function was renamed above
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.ask_completions()
+    assert edit.completer.popup().isVisible()
+    assert _shown(edit.completer) == ["test:deep/worker"]
+    for key in (Qt.Key_Return, Qt.Key_Tab, Qt.Key_Escape):
+        event = QKeyEvent(QKeyEvent.KeyPress, key, Qt.NoModifier)
+        edit.keyPressEvent(event)
+        assert not event.isAccepted()  # the popup takes it, the text is unchanged
+    assert edit.toPlainText() == "function wor"
+    edit.completer.popup().hide()
+    app.processEvents()
+
+    # typing a letter goes to the text and asks again
+    event = QKeyEvent(QKeyEvent.KeyPress, Qt.Key_K, Qt.NoModifier, "k")
+    edit.keyPressEvent(event)
+    assert edit.toPlainText() == "function work"
+
+    # Ctrl+Space through the key handler, and the menu entry itself, both work
+    edit.setPlainText("function wor")
+    cursor = edit.textCursor()
+    cursor.movePosition(cursor.MoveOperation.End)
+    edit.setTextCursor(cursor)
+    edit.keyPressEvent(QKeyEvent(QKeyEvent.KeyPress, Qt.Key_Space, Qt.ControlModifier, " "))
+    assert edit.completer.popup().isVisible()
+    assert edit.toPlainText() == "function wor"  # no space typed
+    edit.completer.popup().hide()
+    app.processEvents()
+    window._action("actioncomplete").trigger()  # the File menu entry
+    assert edit.completer.popup().isVisible()
+    edit.completer.popup().hide()
+    app.processEvents()
+
+
+def test_renaming_a_function_carries_its_note_and_breakpoints(app, window, make_pack, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+    pack = make_pack(
+        {
+            "data/minecraft/tags/function/tick.json": {"values": ["test:tick"]},
+            "data/test/function/tick.mcfunction": "function test:helper\n",
+            "data/test/function/helper.mcfunction": "say hi\nsay more\n",
+        }
+    )
+    window.datapacks.load(pack)
+    window.navigation.open_function("test:helper")
+    window.project.function_notes["test:helper"] = "mine"
+    window.debug.debugger.add("test:helper", 2)
+    window.debug.fill_breakpoints()
+
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **kw: ("test:worker", True))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **kw: QMessageBox.Yes)
+    assert window.editor.rename_function()
+
+    assert window.project.function_notes == {"test:worker": "mine"}
+    assert [(p.function_id, p.line) for p in window.debug.debugger.breakpoints.values()] == [
+        ("test:worker", 2)
+    ]
+    assert window.source_edit.breakpoints  # the gutter of the reopened file shows it
+
+    # an unsaved edit is only discarded once the rename is agreed
+    window.navigation.open_function("test:tick")
+    window.source_edit.appendPlainText("say mine")
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **kw: ("", False))
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **kw: asked.append(a[2]) or QMessageBox.Discard
+    )
+    assert not window.editor.rename_function()
+    assert asked == []  # cancelled before anything was asked about the edit
+    assert window.source_edit.document().isModified()

@@ -2,8 +2,10 @@
 
 A project remembers what you were working on: the datapacks it analyzes, the
 environment tab's settings, its tests and your notes. It is saved as one **`.dpemu` file** in
-`projects/`, next to `samples/` (in the per-user data folder when the package
-is installed without a checkout, see [architecture](architecture.md)).
+`projects/` — the checkout's, or the per-user data folder's when the package
+is installed without a checkout (see [architecture](architecture.md); an
+installed copy has no `samples/` folder of its own until one is made by
+opening the [packaged starter pack](releases.md)).
 
 ## The `.dpemu` format
 

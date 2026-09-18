@@ -7,16 +7,19 @@ name = "datapack-emulator"
 version = "0.1.0"
 description = "Run, profile and version-test Minecraft datapacks outside the game."
 readme = "readme.md"
+license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Ancar" }]
 keywords = ["minecraft", "datapack", "mcfunction", "emulator", "profiler"]
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "Environment :: X11 Applications :: Qt",
     "Environment :: Console",
@@ -49,7 +52,7 @@ include = ["datapack_emulator*"]
 [tool.setuptools.package-data]
 "datapack_emulator.window" = ["*.ui"]
 # the starter pack an installed copy opens with (there is no samples/ folder)
-"datapack_emulator" = ["samples/**/*.mcmeta", "samples/**/*.mcfunction", "samples/**/*.json"]
+"datapack_emulator" = ["samples/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

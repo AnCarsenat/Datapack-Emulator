@@ -1,0 +1,15 @@
+# What a source release carries besides the package itself (docs/releases.md).
+# The wheel ships only src/; this makes the sdist buildable and testable.
+include readme.md
+include LICENSE
+include CONTRIBUTING.md
+include requirements.txt
+include requirements-dev.txt
+recursive-include docs *.md
+recursive-include packaging *.spec
+recursive-include samples *
+recursive-include tests *.py
+recursive-include tools *.py
+global-exclude __pycache__/* *.pyc
+prune generated
+prune projects

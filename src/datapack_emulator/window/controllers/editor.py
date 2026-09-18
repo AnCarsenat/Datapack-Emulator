@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QStringListModel, QTimer
+from PySide6.QtCore import QStringListModel, Qt, QTimer
 from PySide6.QtWidgets import QCompleter, QInputDialog, QMessageBox
 
 from datapack_emulator.emulator.analysis.completion import complete
@@ -36,8 +36,6 @@ class EditorController(Controller):
         self._saved_text = ""
         #: the completion popup's model (analysis.completion fills it)
         self._completions = QStringListModel(window)
-        #: the candidates behind the words shown, by word
-        self._candidates: dict[str, str] = {}
 
     def connect(self) -> None:
         window = self.window
@@ -56,6 +54,10 @@ class EditorController(Controller):
             action = window._action(name)
             if action is not None:
                 action.triggered.connect(slot)
+                # the menu entries stay; their shortcuts belong to the source
+                # view (F2 renames a row in a tree, Ctrl+Space is a text key)
+                action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+                edit.addAction(action)
         for name, slot in (
             ("actionsave_file", self.save),
             ("actionrevert_file", self.revert),
@@ -236,8 +238,9 @@ class EditorController(Controller):
             completer.popup().hide()
             return
         self._completions.setStringList([candidate.text for candidate in found])
-        typed = line[edit.word_start() : cursor]
-        completer.setCompletionPrefix(typed)
+        # complete() already kept what fits (including its contains fallback):
+        # a prefix here would filter those candidates straight back out
+        completer.setCompletionPrefix("")
         rectangle = edit.cursorRect()
         rectangle.setWidth(
             completer.popup().sizeHintForColumn(0)
@@ -255,7 +258,7 @@ class EditorController(Controller):
         if function_id is None or window.datapack is None:
             self.status("open a function of a loaded pack first")
             return False
-        if not self.maybe_discard():  # the file is about to move
+        if window.debug.busy():  # the stopped run reads the file where it is
             return False
         new_id, chosen = QInputDialog.getText(
             window, "rename function", "The function's new id:", text=function_id
@@ -278,15 +281,35 @@ class EditorController(Controller):
         )
         if answer != QMessageBox.Yes:
             return False
-        edits = rename_function(
-            window.datapack, function_id, new_id.strip(), window.version, apply=True
-        )
+        if not self.maybe_discard():  # the file is about to move
+            return False
+        try:
+            edits = rename_function(
+                window.datapack, function_id, new_id.strip(), window.version, apply=True
+            )
+        except RenameError as exc:  # a file that cannot be written: nothing moved
+            QMessageBox.warning(window, "rename function", str(exc))
+            return False
         moved = next(Path(edit.after) for edit in edits if edit.kind == "move")
         window.output.app(f"renamed {function_id} to {new_id.strip()} ({lines} line(s))")
+        self._follow_rename(function_id, new_id.strip())
         window.datapacks.reload()
         window.navigation.show_source(moved, ask=False)
         self.status(f"renamed {function_id} to {new_id.strip()}: {lines} line(s) followed")
         return True
+
+    def _follow_rename(self, old_id: str, new_id: str) -> None:
+        """What the window keeps under the old id: the function's note and its
+        breakpoints (``shift_breakpoints`` does the same for moved lines)."""
+        window = self.window
+        notes = window.project.function_notes
+        note = notes.pop(old_id, "")
+        if note:
+            notes[new_id] = note
+        moved = window.debug.debugger.rename(old_id, new_id)
+        if note or moved:
+            window.projects.mark_modified()
+        window.debug.fill_breakpoints()
 
     # -- checking as you type --------------------------------------------------
 

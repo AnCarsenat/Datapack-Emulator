@@ -193,6 +193,20 @@ class Debugger:
             point.line = moved
             self.breakpoints[point.key] = point
 
+    def rename(self, old_id: str, new_id: str) -> int:
+        """A function was renamed: its breakpoints follow its id. Returns how
+        many moved."""
+        old_id, new_id = normalise_id(old_id), normalise_id(new_id)
+        moved = 0
+        for key, point in list(self.breakpoints.items()):
+            if point.function_id != old_id:
+                continue
+            del self.breakpoints[key]
+            point.function_id = new_id
+            self.breakpoints[point.key] = point
+            moved += 1
+        return moved
+
     def toggle(self, function_id: str, line: int) -> bool:
         """Add or remove; whether there is one now."""
         if self.remove(function_id, line):

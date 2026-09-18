@@ -419,19 +419,61 @@ def samples() -> list[Path]:
     """The packs to start from: the checkout's ``samples/`` when there is one,
     else the starter pack shipped inside the package."""
     for folder in (PATHS.SAMPLES, PATHS.PACKAGED_SAMPLES):
-        if not folder.is_dir():
+        try:
+            if not folder.is_dir():
+                continue
+            found = [
+                candidate
+                for candidate in sorted(folder.iterdir())
+                if candidate.is_dir() and (candidate / "pack.mcmeta").is_file()
+            ]
+        except OSError as exc:  # unreadable: the next folder still answers
+            log.warning("cannot read the samples folder %s: %s", folder, exc)
             continue
-        found = [
-            candidate
-            for candidate in sorted(folder.iterdir())
-            if candidate.is_dir() and (candidate / "pack.mcmeta").is_file()
-        ]
         if found:
             return found
     return []
 
 
-def default_sample() -> Path | None:
-    """The datapack to open on a cold start (the first of :func:`samples`)."""
+def is_packaged(path: Path) -> bool:
+    """Whether a pack is the copy shipped inside the package (read-only: an
+    installed copy's files belong to pip, and an update replaces them)."""
+    try:
+        return path.resolve().is_relative_to(PATHS.PACKAGED_SAMPLES.resolve())
+    except OSError:
+        return False
+
+
+def install_sample(pack: Path, where: Path | None = None) -> Path:
+    """Copy a packaged pack into the user's own ``samples/`` so it can be
+    edited; returns the copy (or the pack itself when it cannot be copied).
+
+    An existing copy is kept as it is: this never overwrites an edit.
+    """
+    target = (where or PATHS.SAMPLES) / pack.name
+    if target.is_dir():
+        return target
+    try:
+        shutil.copytree(pack, target)
+    except OSError as exc:  # a read-only home: the packaged pack still opens
+        log.warning("cannot copy %s to %s: %s", pack, target, exc)
+        return pack
+    log.info("copied the packaged pack %s to %s", pack.name, target)
+    return target
+
+
+def default_sample(copy: bool = False) -> Path | None:
+    """The datapack to open on a cold start (the first of :func:`samples`).
+
+    With ``copy``, a pack that lives inside the package is copied into the
+    user's ``samples/`` first, so editing it does not write into the
+    installation (the window opens it for editing; the command line does not
+    unless ``project samples --install`` is used).
+    """
     found = samples()
-    return found[0] if found else None
+    if not found:
+        return None
+    pack = found[0]
+    if copy and is_packaged(pack):
+        return install_sample(pack)
+    return pack

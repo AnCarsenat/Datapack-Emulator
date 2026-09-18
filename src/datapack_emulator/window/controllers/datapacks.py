@@ -45,14 +45,9 @@ class DatapackController(Controller):
 
     def import_(self) -> None:
         """file › add datapack: another pack analyzed alongside the others."""
-        sample = default_sample()
-        start = (
-            PATHS.SAMPLES
-            if PATHS.SAMPLES.is_dir()
-            else sample.parent
-            if sample is not None
-            else Path.home()
-        )
+        # never the installation's own folder: what is browsed there is
+        # read-only and belongs to pip
+        start = PATHS.SAMPLES if PATHS.SAMPLES.is_dir() else Path.home()
         chosen = QFileDialog.getExistingDirectory(
             self.window, "select a datapack folder (the one holding pack.mcmeta)", str(start)
         )
@@ -60,8 +55,11 @@ class DatapackController(Controller):
             self.add(Path(chosen))
 
     def open_default(self) -> None:
-        """Cold start: open the first pack in samples/ so there is something to run."""
-        sample = default_sample()
+        """Cold start: open the first pack in samples/ so there is something to
+        run. A pack shipped inside the package is copied into the user's own
+        ``samples/`` first, so editing it does not write into the
+        installation (``project samples --install`` does the same)."""
+        sample = default_sample(copy=True)
         if sample is None:
             self.status("no datapack loaded — file › add datapack")
             return

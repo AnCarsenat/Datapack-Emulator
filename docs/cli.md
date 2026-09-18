@@ -456,9 +456,15 @@ datapack-emulator-cli complete "execute as @e[" --json
 The source view's completion popup (Ctrl+Space), on the command line: the
 commands, `execute` subcommands and conditions, `execute store` targets and
 selector options the version knows, and — with `--pack` — the pack's function
-and tag ids, and the client jar's ids after `summon`, `setblock`, `give`,
-`clear`, `playsound`, `particle`, `effect` and `enchant`. Without `--pack`,
-only what the version itself knows (nothing is claimed about ids).
+and tag ids (after `function`, `schedule function`, `schedule clear` and
+`execute … run function`), and the client jar's ids after `summon`,
+`setblock`, `give`, `clear`, `playsound`, `particle`, `effect` and `enchant`.
+Without `--pack`, only what the version itself knows (nothing is claimed about
+ids). A leading `/` and a macro line's `$` are read past, so `"$function "`
+completes like `"function "`; inside a quoted string, in a comment, and where
+an `execute` subcommand's own arguments go (`execute as `, a coordinate),
+nothing is offered. What a condition or `store` target takes is not known, so
+subcommands are still offered there.
 
 | option | |
 | --- | --- |
@@ -470,7 +476,8 @@ only what the version itself knows (nothing is claimed about ids).
 | `--details` | also print each candidate's kind and hint |
 | `--json` | the candidates as JSON |
 
-Exit `1` when nothing fits there, `2` when the cursor is outside the line.
+Exit `1` when nothing fits there, `2` when the cursor is outside the line or
+the version is unknown.
 
 ## `rename` — a function and its references
 
@@ -480,14 +487,32 @@ datapack-emulator-cli rename samples/hat hat:tick hat:tick/main --apply  # do it
 ```
 
 The source view's *rename function…* (F2): the function's file moves to the
-new id's path, and every reference to the id in the pack's functions, function
-tags and JSON (advancement rewards, enchantment effects…) follows. Ids inside
-longer ids are left alone, so renaming `test:helper` does not touch
-`test:helper_two`.
+new id's path, and every reference to the id follows. References are found by
+searching the text of every `.mcfunction`, `.json` and `.mcmeta` file under
+each layer's `data/` folder (the base pack's, each overlay's, and each pack of
+a set) — function calls, function tags, advancement rewards, enchantment
+effects, and the id written in chat text or a comment too. Nothing outside
+`data/` is read, so `pack.mcmeta` and a project's own files are left alone,
+and a symlink is not followed out of the pack. Each file keeps the line
+endings it was written with.
+
+Ids inside longer ids are left alone, so renaming `test:helper` does not touch
+`test:helper_two`, and `#test:helper` is the function *tag* of that name: it
+keeps its id. A `minecraft:` function is also called without its namespace, so
+`function helper` follows `minecraft:helper` in a command — but not a bare
+`"helper"` in JSON, which is any string at all.
+
+Every file of that pack serving the id moves: an overlay's copy, and both
+folder spellings (`function/` since 1.21, `functions/` before). Another pack of
+a set that declares the same id keeps its own file (only the pack the version
+reads the function from is moved); references follow in every pack.
 
 Nothing is written without `--apply`; the rename is refused (exit `2`) when
 the function is not in the pack in that version, the new id is not a resource
-location (`namespace:path`, lowercase), or something already uses it.
+location (`namespace:path`, lowercase) or would leave the pack, something
+already uses it, or a file it would have to write cannot be written — that
+last one is checked before anything is touched, and a write that fails
+half-way is put back.
 
 ## `check` — problems
 
@@ -571,7 +596,8 @@ datapack-emulator-cli project list
 | `debug FILE` | list the debugger's breakpoints and watches; `--break FUNC:LINE[ if COND]`, `--unbreak FUNC:LINE\|all`, `--enable FUNC:LINE`, `--disable FUNC:LINE`, `--watch EXPR`, `--unwatch N\|all` (the debugger dock's lists) |
 | `list` | the projects in the projects folder the window saves to (`projects/` of the checkout, or the per-user data folder) |
 | `recent` | the window's recent projects and datapacks, and what it will start on; `--on-launch on\|off` changes *open the last project on launch* |
-| `samples` | the sample packs to start from: the checkout's `samples/`, else the starter pack inside the package ([releases](releases.md)); exit `1` when there is none |
+| `samples` | the sample packs to start from: the samples folder, else the starter pack inside the package ([releases](releases.md)); exit `1` when there is none |
+| `samples --install` | copy a packaged pack into the samples folder first, so it can be edited (what the window's cold start does); an existing copy is kept as it is |
 
 `packs` and `tests` options can be repeated and mixed; they apply in the
 order given, and every number refers to the list **as it was before the

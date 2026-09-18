@@ -1,5 +1,6 @@
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -229,3 +230,48 @@ def test_the_packaged_starter_pack_is_used_when_there_is_no_samples_folder(tmp_p
     emulator.run(ticks=100)
     assert emulator.world.scoreboard.get("#ticks", "ticks") == 0  # reset after five seconds
     assert any("five seconds" in record.message for record in emulator.output.records)
+
+
+def test_a_packaged_pack_is_copied_before_it_is_edited(tmp_path, monkeypatch):
+    """An installed copy's files belong to pip: opening the starter for
+    editing copies it into the user's own samples/ first."""
+    from datapack_emulator.project import default_sample, install_sample, is_packaged
+
+    monkeypatch.setattr(PATHS, "SAMPLES", tmp_path / "mine")
+    (tmp_path / "mine").mkdir()
+    packaged = PATHS.PACKAGED_SAMPLES / "starter"
+    assert is_packaged(packaged) and not is_packaged(tmp_path / "elsewhere")
+
+    assert default_sample() == packaged  # printed as it is
+    copied = default_sample(copy=True)  # opened from a copy
+    assert copied == tmp_path / "mine" / "starter"
+    assert (copied / "data/starter/function/tick.mcfunction").is_file()
+    assert (packaged / "data/starter/function/tick.mcfunction").is_file()  # untouched
+
+    # an edit of the copy survives opening it again
+    (copied / "data/starter/function/tick.mcfunction").write_text("say mine\n", encoding="utf-8")
+    assert default_sample(copy=True) == copied
+    assert (copied / "data/starter/function/tick.mcfunction").read_text() == "say mine\n"
+
+    # a folder that cannot be written: the packaged pack is opened as it is
+    monkeypatch.setattr(PATHS, "SAMPLES", tmp_path / "read-only")
+    (tmp_path / "read-only").mkdir(mode=0o500)
+    try:
+        assert install_sample(packaged) == packaged
+    finally:
+        (tmp_path / "read-only").chmod(0o700)
+
+
+def test_the_pyinstaller_spec_ships_the_starter_where_it_is_read():
+    """A frozen build reads the starter from the package folder, so the spec's
+    destination is the pack's own path under src/ (no extra prefix)."""
+    root = Path(__file__).resolve().parents[1]
+    spec = (root / "packaging" / "datapack-emulator.spec").read_text(encoding="utf-8")
+    assert 'Path("datapack_emulator") / path.parent' not in spec  # the doubled prefix
+    assert "str(path.parent.relative_to(SOURCE))" in spec
+
+    source = root / "src"
+    if not (source / "datapack_emulator" / "samples").is_dir():  # an installed copy
+        pytest.skip("not a source checkout")
+    sample = source / "datapack_emulator/samples/starter/pack.mcmeta"
+    assert sample.parent.relative_to(source).as_posix() == "datapack_emulator/samples/starter"

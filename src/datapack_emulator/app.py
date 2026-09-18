@@ -11,6 +11,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from datapack_emulator import __version__
+
 #: Qt's own options that take a value (``-platform offscreen``)
 QT_WITH_VALUE = (
     "-platform",
@@ -72,6 +74,12 @@ def parse_arguments(argv: list[str] | None = None) -> tuple[argparse.Namespace, 
         action="store_false",
         help="start on the sample datapack instead",
     )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"datapack-emulator {__version__}",
+        help="print the version of this copy and stop",
+    )
     mine, for_qt = split_qt_arguments(sys.argv[1:] if argv is None else argv)
     return parser.parse_args(mine), for_qt
 
@@ -80,10 +88,19 @@ def main(argv: list[str] | None = None) -> int:
     # parsed before Qt is imported, so --help and a typo answer at once
     arguments, for_qt = parse_arguments(argv)
 
-    from PySide6.QtCore import QTimer
-    from PySide6.QtWidgets import QApplication
+    try:
+        from PySide6.QtCore import QTimer
+        from PySide6.QtWidgets import QApplication
 
-    from datapack_emulator.window import MainWindow
+        from datapack_emulator.window import MainWindow
+    except ImportError as exc:  # installed without the gui extra
+        print(
+            f"the window needs PySide6: {exc}\n"
+            '  pip install "datapack-emulator[gui]"\n'
+            "the command line (datapack-emulator-cli) needs nothing else.",
+            file=sys.stderr,
+        )
+        return 2
 
     app = QApplication([sys.argv[0], *for_qt])
     window = MainWindow(start_path=arguments.path, open_last=arguments.open_last, defer_start=True)

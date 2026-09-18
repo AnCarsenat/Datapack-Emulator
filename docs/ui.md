@@ -169,14 +169,19 @@ current version.
   the same list as the view). **Ctrl+Space** completes what is being typed:
   the version's commands, `execute` subcommands and conditions, `execute
   store` targets and selector options, the pack's function and `#tag` ids
-  after `function` and `schedule function`, and the client jar's ids after
+  after `function`, `schedule function`, `schedule clear` and `execute … run
+  function` (a leading `/` and a macro line's `$` are read past), and the
+  client jar's ids after
   `summon`, `setblock`, `give`, `clear`, `playsound`, `particle`, `effect`
   and `enchant` when a jar is loaded (the same list as
   [`complete`](cli.md#complete--what-can-be-typed-next)). **F2** renames the
   function shown: its file moves to the new id's path and every reference to
-  the id in the pack follows, after a confirmation saying how many lines
-  change ([`rename`](cli.md#rename--a-function-and-its-references) does the
-  same). Images are shown read-only. Right-click a line to:
+  the id in the pack's `data/` follows, after a confirmation saying how many
+  lines change ([`rename`](cli.md#rename--a-function-and-its-references) does
+  the same, and says what it reads and what it leaves alone). The function's
+  note and its breakpoints follow the new id. It is refused while the debugger
+  is stopped, and unsaved edits are only asked about once the rename is
+  agreed. Images are shown read-only. Right-click a line to:
   * **analyze this line** (also Ctrl+I): the inspector explains it without
     running it — what the command does, each `execute` step in words (who,
     where, which condition), what each selector matches, the functions and
