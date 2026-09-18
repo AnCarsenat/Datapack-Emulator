@@ -29,7 +29,7 @@ layout changes are made in Qt Designer, never in code.
 
 | menu | entries |
 | --- | --- |
-| file | new / open / save / save as project ([projects](projects.md)) · save file / revert file (the source view) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
+| file | new / open / save / save as project ([projects](projects.md)) · save file / revert file (the source view) · open recent project (numbered, with *clear the list*) · open last project (Ctrl+Alt+O) · open the last project on launch (a tick: the window starts on that project instead of the sample datapack) · add datapack… · add a recent datapack · remove datapack · reload datapacks · load client jar… · download client jar for this version · quit |
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor · show in call graph (the source view's function) |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · check pack (the problems dock) · version engine… · export call graph (.dot) |
 | debug | toggle breakpoint · remove all breakpoints · continue · step into · step over · step out · pause (see the [debugger](#debugger-dock)) |

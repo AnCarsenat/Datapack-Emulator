@@ -92,6 +92,7 @@ made before several datapacks were supported (`"archive_format": 1`, one
 | file › new project (Ctrl+N) | asks for a name, saves the current state under it |
 | file › open recent project | the last ten projects opened or saved that still exist (*clear the list* empties it) |
 | file › open last project (Ctrl+Alt+O) | the most recent of them |
+| file › open the last project on launch | a tick, on by default: the window starts on that project (the sample datapack when there is none, or when it is off). A project that cannot be read is dropped from the list and reported in the log, not in a dialog |
 | file › open project… (Ctrl+Shift+O) | restores settings, tests and notes, then opens the project's datapacks in place of the open ones |
 | file › add datapack… (Ctrl+O) | adds a pack to the ones analyzed; it loads after them |
 | file › remove datapack | removes one pack (also: right-click its root in the explorer); with no project open, removing the last one opens the default pack |
@@ -99,6 +100,26 @@ made before several datapacks were supported (`"archive_format": 1`, one
 | file › save project as… (Ctrl+Shift+S) | same, under another name or path; if it fails, the project keeps its current file |
 
 The shortcuts work while the main window has focus.
+
+The window itself takes a path, so a project (or a pack) can be opened from a
+shell, a shortcut or a file manager, and the launch behaviour can be chosen
+for one run:
+
+```sh
+datapack-emulator projects/<name>.dpemu  # open this project
+datapack-emulator samples/hat            # open this datapack folder
+datapack-emulator --no-last-project      # the sample datapack, whatever the setting says
+datapack-emulator --last-project         # the last project, whatever the setting says
+```
+
+A path that is neither a project nor a folder with a `pack.mcmeta` is
+reported in the log dock and the status bar, and the window falls back to what
+it would have opened. Qt's own options (`-platform offscreen`, `-style …`) are
+passed through. The window appears before the project is opened, so a big one
+does not leave the screen empty.
+
+`datapack-emulator-cli project recent` prints the recent lists and what the
+window will start on; `project recent --on-launch on|off` is the menu entry.
 
 The title bar shows the project name, `(unsaved)` until the first save, the
 file it lives in, and a `*` when settings, tests, notes, the datapacks or the

@@ -18,8 +18,10 @@ from datapack_emulator.project import (
     SUFFIX,
     Project,
     list_projects,
+    opens_last_project,
     recent_datapacks,
     recent_projects,
+    set_opens_last_project,
 )
 from datapack_emulator.settings import EMULATION, PATHS
 
@@ -145,13 +147,24 @@ def command_list(arguments: argparse.Namespace) -> int:
 
 
 def command_recent(arguments: argparse.Namespace) -> int:
-    """The window's open recent project / add a recent datapack lists."""
+    """The window's open recent project / add a recent datapack lists, and
+    what it starts on (*open the last project on launch*)."""
+    if arguments.on_launch is not None:
+        set_opens_last_project(arguments.on_launch)
     for title, paths in (("projects", recent_projects()), ("datapacks", recent_datapacks())):
         print(f"recent {title}:")
         for path in paths:
             print(f"  {path}" + ("" if path.exists() else "  (missing)"))
         if not paths:
             print("  none")
+    openable = [path for path in recent_projects() if path.is_file()]
+    if not opens_last_project():
+        starts_on = "the sample datapack (open the last project on launch is off)"
+    elif openable:
+        starts_on = str(openable[0])
+    else:
+        starts_on = "the sample datapack (no recent project)"
+    print(f"the window starts on {starts_on}")
     return OK
 
 
@@ -495,6 +508,14 @@ def register(subparsers) -> None:
 
     recent = actions.add_parser(
         "recent", help="the window's recent projects and datapacks (@last opens the first)"
+    )
+    recent.add_argument(
+        "--on-launch",
+        type=_on_off,
+        default=None,
+        metavar="on|off",
+        help="whether the window opens the last project on launch "
+        "(its file > open the last project on launch)",
     )
     recent.set_defaults(handler=command_recent)
 

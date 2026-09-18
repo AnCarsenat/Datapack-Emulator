@@ -73,7 +73,12 @@ UI_FILE = Path(__file__).with_name("window.ui")
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(
+        self,
+        start_path: Path | None = None,
+        open_last: bool | None = None,
+        defer_start: bool = False,
+    ):
         super().__init__(parent=None)
         # shared state, read and written by the controllers
         self.datapack: Datapack | None = None
@@ -128,8 +133,18 @@ class MainWindow(QMainWindow):
         self.show_all_docks()
         self.datapacks.show(None)
         self.session.restore()
-        self.datapacks.open_default()
-        self.projects.mark_saved()  # the default pack is not a change to save
+        #: what to open once the window is on screen (see ``start_session``)
+        self._start = (start_path, open_last)
+        if not defer_start:
+            self.start_session()
+
+    def start_session(self) -> None:
+        """Open what the launch asked for (a path, the last project, or the
+        sample). The entry point shows the window first and calls this, so a
+        big project does not keep the screen empty."""
+        start_path, open_last = self._start
+        self.session.start(start_path, open_last=open_last)
+        self.projects.mark_saved()  # what was opened is not a change to save
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt API)
         if self.editor.maybe_discard() and self.projects.confirm_close():

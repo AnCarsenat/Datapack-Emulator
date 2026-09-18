@@ -186,3 +186,20 @@ def test_archives_hold_several_datapacks_in_order_and_old_ones_still_open(repo, 
         )
         archive.writestr("datapack/pack.mcmeta", "{}")
     assert Project.load(old).datapacks == [unpacked_dir(old) / "datapack"]
+
+
+def test_a_project_archive_that_unpacks_to_far_more_is_refused(tmp_path):
+    import zipfile
+
+    import pytest
+
+    from datapack_emulator.project import Project
+
+    path = tmp_path / "bomb.dpemu"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("project.json", '{"name": "bomb", "archive_format": 2}')
+        archive.writestr("big.txt", "0" * (40 * 1024 * 1024))  # compresses to nothing
+    with pytest.raises(ValueError) as error:
+        Project.load(path, unpack_to=tmp_path / "unpacked")
+    assert "refusing to unpack it" in str(error.value)
+    assert not (tmp_path / "unpacked").exists()

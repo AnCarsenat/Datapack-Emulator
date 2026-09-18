@@ -40,7 +40,8 @@ checked against the real base game read out of a `client.jar`.
 python -m venv .venv
 .venv/bin/pip install -e ".[gui]"
 
-.venv/bin/datapack-emulator          # the window; press F5
+.venv/bin/datapack-emulator          # the window; press F5 (it reopens the last project)
+.venv/bin/datapack-emulator samples/hat   # or open this pack; --no-last-project for the sample
 ```
 
 Or, from a checkout, `src/main.sh` (uses `.venv/` or `src/.venv/` if present,

@@ -1331,3 +1331,33 @@ def test_check_lines_options_and_unknown_suffixes(make_pack, tmp_path, capsys):
     assert main(["check", pack, "--lines", str(other)]) == 0
     out = capsys.readouterr()
     assert "not checked" in out.err and "no refused lines" in out.out
+
+
+def test_project_recent_says_what_the_window_starts_on(make_pack, tmp_path, capsys):
+    import json
+
+    from datapack_emulator.project import state_file
+
+    path = _project(tmp_path, make_pack, [])
+    state_file().parent.mkdir(parents=True, exist_ok=True)
+    state_file().write_text(
+        json.dumps({"recent_projects": [str(path)], "open_last_on_launch": True}),
+        encoding="utf-8",
+    )
+    assert main(["project", "recent"]) == 0
+    out = capsys.readouterr().out
+    assert f"the window starts on {path}" in out
+
+    # a project that is gone is not what the window would start on
+    state_file().write_text(
+        json.dumps({"recent_projects": [str(tmp_path / "gone.dpemu")]}), encoding="utf-8"
+    )
+    assert main(["project", "recent"]) == 0
+    assert "the sample datapack (no recent project)" in capsys.readouterr().out
+
+    # and the setting can be changed from here, as the window's menu entry does
+    assert main(["project", "recent", "--on-launch", "off"]) == 0
+    assert "open the last project on launch is off" in capsys.readouterr().out
+    assert json.loads(state_file().read_text())["open_last_on_launch"] is False
+    assert main(["project", "recent", "--on-launch", "on"]) == 0
+    assert json.loads(state_file().read_text())["open_last_on_launch"] is True
