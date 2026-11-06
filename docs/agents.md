@@ -214,7 +214,7 @@ scripts do not break: one object `{version, client_jar, schema, counts,
 problems}` for one version, a **list** of them when versions were given as a
 list (`--versions`, `--declared`, …). There is no `ok`/`summary`: `ok` is
 `counts.error == 0` (or the exit code). `agent.check` wraps the same data as
-`{ok, summary, versions, load_errors, results: [...]}`. `run` still writes its HTML
+`{ok, summary, pack, versions, load_errors, results: [...]}`. `run` still writes its HTML
 report (`--html`, default `generated/index.html`).
 
 ## Recipes
