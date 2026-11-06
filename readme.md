@@ -72,12 +72,38 @@ world, an interactive console with a debugger and project editing — on packs o
 src/main.sh --cli run samples/hat_v2 --version 26.3      # same runner through the script
 ```
 
+## For scripts and AI agents
+
+The core installs with no dependencies (`pip install datapack-emulator`) and
+answers in JSON, from Python or the command line:
+
+```python
+from datapack_emulator import agent
+
+agent.check("my_pack", version="1.21.4")              # what the version refuses to load
+agent.run("my_pack", version="1.21.4", ticks=40,      # tick it, then ask the world
+          commands=["scoreboard players get #game timer"])
+agent.test("my_pack", ["5:"], checks=["score #game timer = 5"])
+agent.matrix("my_pack", declared=True, boundaries=True)
+```
+
+```sh
+datapack-emulator-cli --quiet run my_pack --version 1.21.4 --json
+```
+
+Every result has `ok` and a one-line `summary`; `ok` is false for the silent
+failures a real server only warns about (a function that does not parse,
+`functions/` folders on 1.21+). See [docs/agents.md](docs/agents.md). The
+[minecode-mcp](https://github.com/AnCarsenat/minecode-mcp) server exposes it
+as MCP tools.
+
 ## Documentation
 
 Everything is in [`docs/`](docs/README.md):
 
 * [getting started](docs/getting-started.md) · [the window](docs/ui.md) ·
-  [projects](docs/projects.md) · [command line](docs/cli.md)
+  [projects](docs/projects.md) · [command line](docs/cli.md) ·
+  [scripts and AI agents](docs/agents.md)
 * [versions & overlays](docs/versions.md) ·
   [base game from client.jar](docs/vanilla-assets.md) ·
   [what is emulated](docs/emulation.md) · [version engine](docs/engine.md) ·

@@ -6,6 +6,7 @@
 | [ui.md](ui.md) | know what every panel, menu, shortcut and right-click does |
 | [projects.md](projects.md) | save and reopen your work |
 | [cli.md](cli.md) | run packs and version matrices from a terminal or CI |
+| [agents.md](agents.md) | drive the emulator from a script or an AI agent: the JSON API and `--json` |
 | [versions.md](versions.md) | understand how versions, pack formats and overlays are handled |
 | [vanilla-assets.md](vanilla-assets.md) | check a pack against the real base game via `client.jar` |
 | [emulation.md](emulation.md) | know what is emulated, what is not, and how output is split |

@@ -66,6 +66,7 @@ files = [
     "src/datapack_emulator/emulator",
     "src/datapack_emulator/cli",
     "src/datapack_emulator/project.py",
+    "src/datapack_emulator/agent.py",
     "src/datapack_emulator/settings",
 ]
 ignore_missing_imports = true
