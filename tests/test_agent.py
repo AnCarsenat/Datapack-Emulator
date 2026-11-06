@@ -147,6 +147,18 @@ def test_matrix_rows_per_version(make_pack):
     "arguments",
     [
         ["run", "{pack}", "--version", "1.21.4", "--ticks", "3", "--json"],
+        # the debugger prints its breakpoints and stops: not on standard output
+        [
+            "run",
+            "{pack}",
+            "--version",
+            "1.21.4",
+            "--ticks",
+            "3",
+            "--json",
+            "--break",
+            "test:tick:1",
+        ],
         ["matrix", "{pack}", "--versions", "1.21", "1.21.4", "--ticks", "2", "--json"],
         [
             "test",
@@ -167,6 +179,8 @@ def test_cli_json_keeps_standard_output_for_the_json(make_pack, capsys, argument
     out = capsys.readouterr().out
     data = json.loads(out)  # nothing but the JSON document
     assert code == 0 and data["ok"] and data["exit_code"] == 0
+    if arguments[0] == "run":
+        assert any("loaded" in line for line in data["chat"])  # the shape of agent.run
 
 
 def test_cli_test_json_failure_sets_exit_code(make_pack, capsys):

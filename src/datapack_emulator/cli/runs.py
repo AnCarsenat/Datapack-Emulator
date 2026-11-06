@@ -187,23 +187,25 @@ def command_run(arguments: argparse.Namespace) -> int:
     realtime = arguments.realtime or bool(
         arguments.realtime is None and inputs.project and inputs.project.speed == "realtime"
     )
-    trace = trace_debugger(arguments, emulator)
-    emulator.start()
-    if ticks == 0:
-        emulator.run(ticks=0)
-    done = 0
-    try:
-        while ticks < 0 or done < ticks:
-            started = time.perf_counter()
-            tick = emulator.world.tick
-            emulator.run_tick()
-            done += 1
-            if schedule is not None:
-                schedule.after_tick(emulator, tick)
-            if realtime:
-                time.sleep(max(0.0, TICK_SECONDS - (time.perf_counter() - started)))
-    except KeyboardInterrupt:
-        err(f"stopped after {done} tick(s)")
+    # the debugger prints its breakpoints and stops: off standard output with --json
+    with human_output(arguments):
+        trace = trace_debugger(arguments, emulator)
+        emulator.start()
+        if ticks == 0:
+            emulator.run(ticks=0)
+        done = 0
+        try:
+            while ticks < 0 or done < ticks:
+                started = time.perf_counter()
+                tick = emulator.world.tick
+                emulator.run_tick()
+                done += 1
+                if schedule is not None:
+                    schedule.after_tick(emulator, tick)
+                if realtime:
+                    time.sleep(max(0.0, TICK_SECONDS - (time.perf_counter() - started)))
+        except KeyboardInterrupt:
+            err(f"stopped after {done} tick(s)")
     ticks = done
     if trace is not None:
         err(f"debugger: {len(trace.lines)} stop(s)")
@@ -243,6 +245,11 @@ def run_json(arguments, inputs: Inputs, emulator: Emulator, bus, ticks, results,
         "failed_functions": failed_functions,
         "failed_tags": failed_tags,
         "ignored_folders": ignored,
+        "chat": [
+            record.message
+            for record in bus.records
+            if record.source.value == "game" and record.level < LogLevel.ERROR and record.recipient
+        ][-50:],
         **agent.records_to_list(bus.records, arguments.level, arguments.max_records),
         "call_graph": graph,
         "profile": agent.profile_summary(emulator.profiler),
