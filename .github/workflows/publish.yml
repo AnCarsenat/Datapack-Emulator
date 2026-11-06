@@ -1,0 +1,95 @@
+name: Publish to PyPI
+
+# PyPI Trusted Publishing (OIDC): no API token, no secret to create or leak.
+# GitHub proves its identity to PyPI directly. One-time setup on pypi.org is
+# described in docs/releases.md ("Publishing to PyPI").
+#
+# Release: bump `version` in pyproject.toml, merge, then
+#     git tag v0.2.0 && git push origin v0.2.0
+# The tag must match pyproject.toml or the build stops before anything ships.
+# A PyPI version can never be replaced, only superseded.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Tag matches pyproject.toml
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "tag=$TAG pyproject=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG does not match pyproject.toml version $PKG"
+            exit 1
+          fi
+
+      - name: Tests
+        run: |
+          pip install -e . "pytest>=8"
+          python -m pytest -q
+
+      - name: Build
+        run: |
+          pip install "build>=1.2" "twine>=5"
+          python -m build
+          python -m twine check --strict dist/*
+
+      - name: The wheel carries the starter pack and the window's .ui files
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          need = ["datapack_emulator/agent.py",
+                  "datapack_emulator/samples/starter/pack.mcmeta",
+                  "datapack_emulator/window/window.ui"]
+          missing = [n for n in need if n not in names]
+          print("\n".join(f"{'MISSING' if n in missing else 'ok'}: {n}" for n in need))
+          sys.exit(1 if missing else 0)
+          PY
+
+      - name: Smoke test the installed wheel
+        run: |
+          python -m venv /tmp/try
+          /tmp/try/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/try/bin/datapack-emulator-cli --version
+          STARTER=$(/tmp/try/bin/datapack-emulator-cli project samples | head -1)
+          /tmp/try/bin/datapack-emulator-cli --quiet run "$STARTER" --ticks 5 --no-vanilla --json > run.json
+          /tmp/try/bin/python -c "import json; d=json.load(open('run.json')); print(d['summary']); assert d['ok'], d"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/datapack-emulator
+    permissions:
+      id-token: write  # trusted publishing; must be on this job
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -55,7 +55,7 @@ python -m venv /tmp/try && /tmp/try/bin/pip install dist/datapack_emulator-*.whl
 On Windows the venv's programs are in `Scripts\` instead of `bin/`:
 
 ```bat
-py -m venv C:\try && C:\try\Scripts\pip install dist\datapack_emulator-0.1.0-py3-none-any.whl
+py -m venv C:\try && C:\try\Scripts\pip install dist\datapack_emulator-0.2.0-py3-none-any.whl
 C:\try\Scripts\datapack-emulator-cli project samples
 ```
 
@@ -114,6 +114,47 @@ dist/datapack-emulator/datapack-emulator --no-last-project       # the window op
 one matters: `window.ui` holds a `QWebEngineView`, which Qt builds through its
 *designer* plugins — the spec carries them because PySide6's PyInstaller hook
 does not, and without them the window starts with a missing widget and dies.
+
+## Publishing to PyPI
+
+`.github/workflows/publish.yml` publishes on a `v*.*.*` tag with PyPI
+**Trusted Publishing**: GitHub proves who it is to PyPI, so there is no API
+token anywhere. Before it publishes it checks that the tag matches
+`pyproject.toml`, runs the tests, builds, runs `twine check --strict`, checks
+the wheel carries `agent.py`, the starter pack and the `.ui` files, and runs
+the installed wheel's CLI on the starter pack.
+
+One-time setup (the project does not exist on PyPI yet, so this is a
+*pending* publisher):
+
+1. Sign in at <https://pypi.org> (create an account and turn on 2FA if needed).
+2. *Your account → Publishing → Add a new pending publisher → GitHub*:
+
+   | field | value |
+   | --- | --- |
+   | PyPI project name | `datapack-emulator` |
+   | Owner | `AnCarsenat` |
+   | Repository name | `Datapack-Emulator` |
+   | Workflow name | `publish.yml` |
+   | Environment name | `pypi` |
+
+3. On GitHub: *Settings → Environments → New environment* `pypi`
+   (optionally add yourself as a required reviewer, so every publish waits
+   for a click).
+
+Each release:
+
+```sh
+# bump `version` in pyproject.toml in a pull request, merge it, then:
+git checkout main && git pull
+git tag v0.2.0
+git push origin v0.2.0        # the workflow builds, checks and publishes
+```
+
+A version on PyPI can never be replaced or reused, only superseded: a wrong
+release is fixed by the next version number. To rehearse, add a second
+pending publisher on <https://test.pypi.org> and point a copy of the
+workflow's last step at it with `repository-url: https://test.pypi.org/legacy/`.
 
 ## Version numbers
 
