@@ -6,7 +6,7 @@ way a server of a chosen version would, runs `#minecraft:load` and
 datapack, that closes the loop: **write → run → read the result → fix**, in
 seconds, with no Minecraft install.
 
-There are three ways in, all returning the same JSON:
+There are three ways in, returning the same JSON (one exception: `check --json`, below):
 
 | way in | use it when |
 | --- | --- |
@@ -189,7 +189,8 @@ which version did the missing ones arrive.
 
 `run`, `matrix`, `test` and `check` take `--json`. Standard output then holds
 **one JSON document and nothing else**; progress, tables and notes go to
-standard error. The exit code is in the document too (`exit_code`).
+standard error. For `run`, `matrix` and `test` the exit code is in the
+document too (`exit_code`).
 
 ```sh
 datapack-emulator-cli --quiet check  my_pack --version 1.21.4 --json
@@ -198,12 +199,22 @@ datapack-emulator-cli --quiet test   my_pack --version 1.21.4 --test "5:" --chec
 datapack-emulator-cli --quiet matrix my_pack --declared --boundaries --json
 ```
 
-Exit codes: `0` ok, `1` a test failed / an error was found (with `--strict`
-for `matrix` and `check` warnings), `2` usage error (bad path, version or
-option), `3` internal error (a bug — report it), `130` interrupted.
+Exit codes: `0` ok; `1` a test failed, `check` found an error (or a warning,
+with `--strict`), or `matrix --strict` saw errors or failed tests; `2` usage
+error (bad path, version or option, or `test` with nothing to run); `3`
+internal error (a bug — report it); `130` interrupted.
 
 `run --json` reports the same shape as `agent.run` minus `commands` (use the
-API, or `shell`, to type commands into the world). `run` still writes its HTML
+API, or `shell`, to type commands into the world); its `summary` is shorter.
+Its `ok` can be false while `exit_code` is `0`: the exit code keeps its old
+meaning (tests and usage), `ok` adds the silent failures described above.
+
+`check --json` predates the agent API and keeps its own shape, so existing
+scripts do not break: one object `{version, client_jar, schema, counts,
+problems}` for one version, a **list** of them when versions were given as a
+list (`--versions`, `--declared`, …). There is no `ok`/`summary`: `ok` is
+`counts.error == 0` (or the exit code). `agent.check` wraps the same data as
+`{ok, summary, pack, versions, load_errors, results: [...]}`. `run` still writes its HTML
 report (`--html`, default `generated/index.html`).
 
 ## Recipes

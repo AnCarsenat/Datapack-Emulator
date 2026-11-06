@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datapack-emulator"
-version = "0.1.0"
+version = "0.2.0"
 description = "Run, profile and version-test Minecraft datapacks outside the game."
 readme = "readme.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Ancar" }]
-keywords = ["minecraft", "datapack", "mcfunction", "emulator", "profiler"]
+keywords = ["minecraft", "datapack", "mcfunction", "emulator", "profiler", "testing", "ai-agents"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
@@ -41,6 +41,7 @@ datapack-emulator = "datapack_emulator.app:main"
 datapack-emulator-cli = "datapack_emulator.cli:main"
 
 [project.urls]
+Homepage = "https://github.com/AnCarsenat/Datapack-Emulator"
 Repository = "https://github.com/AnCarsenat/Datapack-Emulator"
 Issues = "https://github.com/AnCarsenat/Datapack-Emulator/issues"
 Documentation = "https://github.com/AnCarsenat/Datapack-Emulator/blob/main/docs/README.md"
