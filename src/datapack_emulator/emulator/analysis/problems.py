@@ -45,6 +45,7 @@ SEVERITIES = ("error", "warning", "info")
 #: every kind of problem, for filters
 CODES = (
     "pack",
+    "ignored-folder",
     "function-not-loaded",
     "tag-not-loaded",
     "unknown-id",
@@ -193,18 +194,67 @@ def _pack(scan: _Scan) -> Iterator[Problem]:
             f"{version.id} lists the pack as {compatibility.status.replace('_', ' ')} "
             f"({compatibility.reason}); it still loads",
         )
-    if not scan.functions:
-        try:
-            written = scan.datapack.view().functions
-        except Exception:  # a pack that cannot be read another way
-            written = {}
-        if written:
-            yield Problem(
-                "warning",
-                "pack",
-                f"{version.id} reads none of the pack's {len(written)} function(s): their "
-                "folder is spelled for other versions (function/ from 1.21, functions/ before)",
-            )
+    yield from _ignored_folders(scan)
+
+
+def ignored_folders(datapack: Any, version: str | Version) -> list[Problem]:
+    """Only the ``ignored-folder`` and "reads none" problems: cheap enough to
+    run before every emulation."""
+    return list(_ignored_folders(_Scan(datapack, versions.parse(version), None)))
+
+
+def _ignored_folders(scan: _Scan) -> Iterator[Problem]:
+    """Resources only in folders this version does not read.
+
+    1.21 renamed the registry folders (``functions/`` to ``function/``,
+    ``tags/functions/`` to ``tags/function/``, ...). A server reads one
+    spelling and ignores the other without a word, so a pack written with the
+    wrong one loads, logs nothing and does nothing. A pack that ships both
+    spellings (one per version range) is fine: only resources found *only* in
+    the ignored spelling are reported. Inside the versions the pack declares
+    this is an error when the version reads *no* resource of that kind (the
+    usual mistake), a note when it reads others of the kind (a pack that
+    ships both spellings on purpose), and a warning outside them.
+    """
+    version = scan.version
+    singular = versions.uses_singular_registries(version)
+    try:
+        other = scan.datapack.view(
+            version.format, versions.supports_overlays(version), not singular
+        )
+    except Exception:  # a pack that cannot be read another way
+        return
+    try:
+        claimed = bool(scan.datapack.supports(version))
+    except Exception:
+        claimed = True
+    severity = "error" if claimed else "warning"
+    spelling = (
+        "singular (function/, tags/function/ ...) from 1.21"
+        if singular
+        else ("plural (functions/, tags/functions/ ...) before 1.21")
+    )
+    if not scan.functions and other.functions:
+        yield Problem(
+            severity,
+            "pack",
+            f"{version.id} reads none of the pack's {len(other.functions)} function(s): their "
+            "folder is spelled for other versions (function/ from 1.21, functions/ before)",
+        )
+    for registry, bucket in sorted(other.registries.items()):
+        read = scan.view.registries.get(registry, {})
+        lost = sorted(key for key in bucket if key not in read)
+        if not lost or (registry == "function" and not scan.functions):
+            continue
+        level = severity if not read else ("info" if claimed else "warning")
+        shown = ", ".join(lost[:5]) + (f" and {len(lost) - 5} more" if len(lost) > 5 else "")
+        yield Problem(
+            level,
+            "ignored-folder",
+            f"{version.id} ignores {len(lost)} {registry} resource(s) in folders spelled for "
+            f"other versions ({shown}); {version.id} reads {spelling}",
+            lost[0],
+        )
 
 
 # ---------------------------------------------------------------------------
