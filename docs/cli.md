@@ -7,7 +7,9 @@ src/main.sh --cli     [--quiet] COMMAND ...   # from a checkout
 ```
 
 The command line does what the window does, so a pack can be checked from a
-terminal or in CI. `--quiet` goes *before* the command and silences the Python
+terminal or in CI. `run`, `matrix`, `test` and `check` take `--json`: standard
+output then holds one JSON document and nothing else — the format scripts and
+AI agents read, described in [agents.md](agents.md). `--quiet` goes *before* the command and silences the Python
 logger (records from the emulator still print).
 
 | command | does | window equivalent |
@@ -104,6 +106,8 @@ datapack-emulator-cli run projects/hat.dpemu --level debug
 | `--baseline FILE` | off | a profile saved earlier: print and report what changed since (read before the run) |
 | `--dot` | off | also write the call graph as Graphviz, next to the report |
 | `--break FUNC:LINE[ if COND]`, `--watch EXPR` | none | print each [debugger](#the-debugger) stop with the watches and go on; the number of stops goes to standard error |
+| `--json` | off | print one JSON document (records, world, call graph, profile, tests; see [agents.md](agents.md#run)); the usual output goes to standard error |
+| `--max-records N` | 200 | with `--json`: at most N records, errors kept first |
 
 Prints every record as `[tick] source/level function:line: message`, then a
 per-function table (calls, commands, self and total ms for the run, and ms per
@@ -147,6 +151,7 @@ a project ticked in the engine window, otherwise every known version.
 | `--no-vanilla`, `--download` | see [client jars](#client-jars) (`--vanilla` is accepted and is the default) |
 | `--html` | matrix report, default `generated/matrix.html` |
 | `--verbose` | print every version's records as they come (the engine window's lower pane), filtered as in [records](#records) |
+| `--json` | print one JSON document, one row per version (see [agents.md](agents.md#matrix)); tables and `--verbose` records go to standard error |
 
 Output is one row per version: format, status, ticks (`7/20` for a
 cancelled run), commands, total ms, worst ms, warnings, errors, tests
@@ -199,6 +204,7 @@ hold.
 | `--junit PATH` | write a JUnit XML report: one test suite per version, the records of each test in its `system-out` |
 | `--show-records [failed\|all]` | print the records of failed (default) or all tests |
 | `--verbose` | print every record while the tests run (filtered as in [records](#records)) |
+| `--json` | print one JSON document with each test's result (see [agents.md](agents.md#test)); PASS/FAIL lines go to standard error |
 | `--vanilla`, `--no-vanilla`, `--download` | see [client jars](#client-jars) |
 
 Exit status `0` when every test passed, `1` when one failed, `2` when there

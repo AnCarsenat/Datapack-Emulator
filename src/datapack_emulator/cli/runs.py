@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
+from datapack_emulator import agent
 from datapack_emulator.cli.common import (
     FAILED,
     INTERRUPTED,
@@ -34,9 +37,11 @@ from datapack_emulator.cli.common import (
 from datapack_emulator.cli.debug import add_debug_arguments, trace_debugger
 from datapack_emulator.cli.junit import write_junit
 from datapack_emulator.emulator import versions
+from datapack_emulator.emulator.analysis.problems import ignored_folders
 from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.engine import TestEngine, VersionRun
 from datapack_emulator.emulator.runtime.emulator import Emulator
+from datapack_emulator.emulator.runtime.output import LogLevel, OutputBus
 from datapack_emulator.emulator.testing import (
     CommandTest,
     TestResult,
@@ -120,6 +125,27 @@ def warn_unreached(tests: list[CommandTest], ticks: int) -> None:
         )
 
 
+def add_json_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print one JSON document on standard output (everything else goes to "
+        "standard error); see docs/agents.md for its shape",
+    )
+
+
+def human_output(arguments: argparse.Namespace):
+    """With ``--json`` the tables and notes go to standard error, so standard
+    output holds the JSON alone."""
+    if getattr(arguments, "json", False):
+        return contextlib.redirect_stdout(sys.stderr)
+    return contextlib.nullcontext()
+
+
+def print_json(data: dict) -> None:
+    print(json.dumps(data, indent=2, default=str))
+
+
 # ---------------------------------------------------------------------------
 # run
 # ---------------------------------------------------------------------------
@@ -146,7 +172,7 @@ def command_run(arguments: argparse.Namespace) -> int:
     baseline = load_profile(arguments.baseline) if arguments.baseline else None
     if arguments.save_profile:
         arguments.save_profile.parent.mkdir(parents=True, exist_ok=True)
-    bus = printing_bus(arguments)
+    bus = OutputBus() if arguments.json else printing_bus(arguments)
     emulator = build_emulator(arguments, inputs, bus)
     ticks = ticks_setting(arguments, inputs)
     with_tests = arguments.tests
@@ -182,6 +208,53 @@ def command_run(arguments: argparse.Namespace) -> int:
     if trace is not None:
         err(f"debugger: {len(trace.lines)} stop(s)")
     results = schedule.results() if schedule is not None else []
+    with human_output(arguments):
+        code = report_run(arguments, inputs, emulator, ticks, results, baseline)
+    if arguments.json:
+        print_json(run_json(arguments, inputs, emulator, bus, ticks, results, code))
+    return code
+
+
+def run_json(arguments, inputs: Inputs, emulator: Emulator, bus, ticks, results, code) -> dict:
+    """``run --json``: the same shape as ``agent.run`` (without console commands)."""
+    errors = sum(1 for record in bus.records if record.level >= LogLevel.ERROR)
+    failed = sum(1 for result in results if not result.passed and not result.skipped)
+    graph = agent.graph_summary(emulator.call_graph())
+    failed_functions = sorted(emulator.library.function_failures)
+    failed_tags = sorted(emulator.library.tag_failures)
+    ignored = [
+        problem.to_dict()
+        for problem in ignored_folders(inputs.datapack, emulator.version)
+        if problem.severity == "error"
+    ]
+    broken = errors or failed_functions or failed_tags or graph["missing_functions"] or ignored
+    data = {
+        "ok": code == OK and not broken,
+        "exit_code": code,
+        "summary": f"{emulator.version.id}: {ticks} tick(s), {errors} error(s), "
+        f"{len(failed_functions)} function(s) not loaded"
+        + (f", tests {len(results) - failed}/{len(results)} passed" if results else ""),
+        "pack": inputs.datapack.name,
+        "version": emulator.version.id,
+        "pack_format": emulator.version.format_string,
+        "client_jar": emulator.vanilla.version_id if emulator.vanilla else None,
+        "ticks": ticks,
+        "load_errors": list(inputs.datapack.errors),
+        "failed_functions": failed_functions,
+        "failed_tags": failed_tags,
+        "ignored_folders": ignored,
+        **agent.records_to_list(bus.records, arguments.level, arguments.max_records),
+        "call_graph": graph,
+        "profile": agent.profile_summary(emulator.profiler),
+        "world": agent.world_summary(emulator.world, emulator.version),
+    }
+    if results:
+        data["tests"] = [agent.test_result_to_dict(emulator.version, r) for r in results]
+    return data
+
+
+def report_run(arguments, inputs: Inputs, emulator: Emulator, ticks, results, baseline) -> int:
+    """The profiler table, report, call graph and tests of a finished run."""
     profiler = emulator.profiler
     datapack = inputs.datapack
 
@@ -353,6 +426,14 @@ def register_run(subparsers) -> None:
         help="a profile saved earlier: the run prints and reports what changed since",
     )
     run.add_argument("--dot", action="store_true", help="also write the call graph (Graphviz)")
+    add_json_argument(run)
+    run.add_argument(
+        "--max-records",
+        type=count,
+        default=agent.MAX_RECORDS,
+        help=f"with --json: at most this many records (errors kept first; default "
+        f"{agent.MAX_RECORDS})",
+    )
     add_debug_arguments(run)
     add_output_filter(run)
     add_vanilla_arguments(run)
@@ -404,12 +485,36 @@ def command_matrix(arguments: argparse.Namespace) -> int:
     ticks = ticks_setting(arguments, inputs)
     warn_unreached(tests, ticks)
     engine = engine_for(arguments, inputs, tests, ticks)
-    bus = printing_bus(arguments) if arguments.verbose else None
+    bus = (
+        printing_bus(arguments, stream=sys.stderr if arguments.json else None)
+        if arguments.verbose
+        else None
+    )
     with interruptible() as interrupt:
         results = engine.run(chosen, progress=progress, output=bus, cancelled=interrupt)
     if not results and interrupt():
         err("stopped before the first version ran")
         return INTERRUPTED
+    with human_output(arguments):
+        code = report_matrix(arguments, inputs, chosen, results)
+    if arguments.json:
+        bad = [run.version.id for run in results if run.status in ("errors", "tests failed")]
+        print_json(
+            {
+                "ok": not bad,
+                "exit_code": code,
+                "summary": f"{len(results) - len(bad)}/{len(results)} versions clean"
+                + (f"; problems in {', '.join(bad)}" if bad else ""),
+                "pack": inputs.datapack.name,
+                "versions": [run.version.id for run in results],
+                "not_run": not_run_ids(results, chosen),
+                "results": [agent.version_run_to_dict(run, "warning", 20) for run in results],
+            }
+        )
+    return code
+
+
+def report_matrix(arguments, inputs: Inputs, chosen, results) -> int:
 
     print(
         f"\n{'version':10} {'format':7} {'status':12} {'ticks':>9} {'cmds':>6} "
@@ -469,6 +574,7 @@ def register_matrix(subparsers) -> None:
         action="store_true",
         help="print every version's records (the engine window's lower pane)",
     )
+    add_json_argument(matrix)
     add_output_filter(matrix)
     add_vanilla_arguments(matrix, per_version=True)
     matrix.set_defaults(handler=command_matrix)
@@ -537,13 +643,38 @@ def command_test(arguments: argparse.Namespace) -> int:
     warn_unreached(tests, ticks)
     single = vanilla_for(arguments, chosen[0], inputs) if len(chosen) == 1 else None
     engine = engine_for(arguments, inputs, tests, ticks, vanilla=single)
-    bus = printing_bus(arguments) if arguments.verbose else None
+    bus = (
+        printing_bus(arguments, stream=sys.stderr if arguments.json else None)
+        if arguments.verbose
+        else None
+    )
     progress_of = progress if len(chosen) > 1 else None
     with interruptible() as interrupt:
         results = engine.run(chosen, progress=progress_of, output=bus, cancelled=interrupt)
     if not results:
         err("stopped before the first version ran")
         return INTERRUPTED
+    with human_output(arguments):
+        code = report_tests(arguments, inputs, chosen, results)
+    if arguments.json:
+        rows = [agent.test_result_to_dict(run.version, r) for run in results for r in run.tests]
+        failed = sum(1 for row in rows if row["status"] == "fail")
+        total = sum(1 for row in rows if row["status"] != "skip")
+        print_json(
+            {
+                "ok": code == OK,
+                "exit_code": code,
+                "summary": f"{total - failed}/{total} passed",
+                "pack": inputs.datapack.name,
+                "versions": [run.version.id for run in results],
+                "ticks": ticks,
+                "results": rows,
+            }
+        )
+    return code
+
+
+def report_tests(arguments, inputs: Inputs, chosen, results) -> int:
     stopped = cancelled_note(results, len(chosen))
 
     failed = sum(run.tests_failed for run in results)
@@ -628,6 +759,7 @@ def register_test(subparsers) -> None:
         "--include-disabled", action="store_true", help="also run tests unticked in the project"
     )
     test.add_argument("--junit", type=Path, default=None, help="write a JUnit XML report")
+    add_json_argument(test)
     add_show_records(test)
     test.add_argument(
         "--verbose", action="store_true", help="print every record while the tests run"
