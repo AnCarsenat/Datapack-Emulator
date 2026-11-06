@@ -148,3 +148,129 @@ def test_cancelled_runs_skip_their_tests_and_report(make_pack):
     failing = TestEngine(pack, ticks=3, tests=[CommandTest("say a", expect="nope")])
     run = failing.run(["1.21.4"], cancelled=lambda: len(calls.append(1) or calls) > 6)[0]
     assert run.cancelled and run.status == "tests failed"
+
+
+def _busy_graph() -> CallGraph:
+    """Fan-out, fan-in, a skipped layer, a cycle, a self-call, lone nodes."""
+    graph = CallGraph()
+    for tag in ("#minecraft:load", "#minecraft:tick"):
+        graph.add_node(tag, kind="tag")
+    edges = [
+        ("#minecraft:load", "p:load", "tag"),
+        ("#minecraft:tick", "p:tick", "tag"),
+        ("p:load", "p:util/log", "call"),  # skips two layers
+        ("p:tick", "p:a", "call"),
+        ("p:tick", "p:b", "call"),
+        ("p:tick", "p:c", "condition"),
+        ("p:a", "p:x", "call"),
+        ("p:b", "p:x", "call"),
+        ("p:c", "p:y", "macro"),
+        ("p:a", "p:z", "call"),
+        ("p:x", "p:util/log", "call"),
+        ("p:y", "p:util/log", "call"),
+        ("p:z", "p:util/log", "call"),
+        ("p:timer", "p:timer", "schedule"),  # a self-call only: a lone node
+        ("p:r1", "p:r2", "call"),  # a cycle of its own
+        ("p:r2", "p:r1", "call"),
+    ]
+    for source, target, kind in edges:
+        for node in (source, target):
+            graph.add_node(node, kind="function", missing=node == "p:z")
+        graph.add_edge(source, target, kind)
+    for index in range(5):
+        graph.add_node(f"p:dead/{index}", kind="function")
+    return graph
+
+
+def test_layered_layout_never_overlaps_and_routes_around_nodes():
+    graph = _busy_graph()
+    widths = {node: 0.5 + 0.1 * len(node) for node in graph.nodes}
+    layout = graph.layered_layout(widths, gap=0.4, y_spacing=2.0)
+    assert set(layout.positions) == set(graph.nodes)
+    assert set(layout.routes) == set(graph.edges)
+
+    # boxes on the same row keep their widths plus the gap apart
+    items = list(layout.positions.items())
+    for index, (a, (ax, ay)) in enumerate(items):
+        for b, (bx, by) in items[index + 1 :]:
+            if abs(ay - by) < 1e-9:
+                assert abs(ax - bx) >= (widths[a] + widths[b]) / 2 + 0.4 - 1e-9, (a, b)
+            else:
+                assert abs(ay - by) >= 2.0 - 1e-9
+
+    # an edge that skips layers bends once per layer, between the boxes there
+    route = layout.routes[next(e for e in graph.edges if e.target == "p:util/log")]
+    load_y, log_y = layout.positions["p:load"][1], layout.positions["p:util/log"][1]
+    assert len(route) == 2 + round((load_y - log_y) / 2.0) - 1
+    for bend_x, bend_y in route[1:-1]:
+        for node, (x, y) in layout.positions.items():
+            if abs(y - bend_y) < 1e-9:
+                assert abs(x - bend_x) >= widths[node] / 2, node
+    timer = next(e for e in graph.edges if e.source == "p:timer")
+    assert layout.routes[timer] == [layout.positions["p:timer"]]
+
+    # the load/tick part comes first (left, top); nodes with no edges sit apart, below
+    top_left = min(layout.positions.values(), key=lambda p: (-p[1], p[0]))
+    assert top_left == layout.positions["#minecraft:load"]
+    lowest_linked = min(layout.positions["p:util/log"][1], layout.positions["p:r2"][1])
+    for index in range(5):
+        assert layout.positions[f"p:dead/{index}"][1] < lowest_linked
+    assert layout.positions["p:timer"][1] < lowest_linked
+
+
+def test_layered_layout_is_deterministic():
+    first = _busy_graph().layered_layout(gap=0.3)
+    second = _busy_graph().layered_layout(gap=0.3)
+    assert first == second
+    assert first.positions == _busy_graph().layered_layout(gap=0.3).positions
+    # the plain ``layout`` keeps its shape: node -> (x, y), x_spacing apart
+    positions = _busy_graph().layout(x_spacing=3.0, y_spacing=1.6)
+    assert set(positions) == set(_busy_graph().nodes)
+    rows: dict[float, list[float]] = {}
+    for x, y in positions.values():
+        rows.setdefault(y, []).append(x)
+    for xs in rows.values():
+        xs.sort()
+        assert all(b - a >= 3.0 - 1e-9 for a, b in zip(xs, xs[1:], strict=False))
+
+
+def test_layered_layout_orders_layers_to_cut_crossings():
+    from datapack_emulator.emulator.analysis.graph import count_crossings
+
+    # a twisted bipartite graph: in name order every pair of edges crosses
+    graph = CallGraph()
+    tops = [f"t:{index}" for index in range(5)]
+    bottoms = [f"b:{index}" for index in range(5)]
+    for node in tops + bottoms:
+        graph.add_node(node, kind="function")
+    for index, top in enumerate(tops):
+        graph.add_edge(top, bottoms[4 - index])
+        graph.add_edge(top, bottoms[max(3 - index, 0)])
+    below = {top: graph.successors(top) for top in tops}
+    assert count_crossings([sorted(tops), sorted(bottoms)], below) > 10
+    layout = graph.layered_layout()
+    assert layout.crossings == 0
+    order = sorted(bottoms, key=lambda node: layout.positions[node][0])
+    top_order = sorted(tops, key=lambda node: layout.positions[node][0])
+    assert count_crossings([top_order, order], below) == 0
+
+    # and on the busy fixture it is no worse than the first, depth-first order
+    assert _busy_graph().layered_layout(passes=8).crossings <= (
+        _busy_graph().layered_layout(passes=0).crossings
+    )
+
+
+def test_labels_can_drop_the_main_namespace():
+    from datapack_emulator.emulator.analysis.graph import short_name
+
+    graph = _busy_graph()
+    assert graph.main_namespace() == "p"
+    assert short_name("p:util/log", "p") == "util/log"
+    assert short_name("#p:hooks", "p") == "#hooks"
+    assert short_name("#minecraft:tick", "p") == "#minecraft:tick"
+    assert short_name("q:p:odd", "p") == "q:p:odd"
+    assert short_name("p:x", None) == "p:x"
+    mixed = CallGraph()
+    for node in ("a:1", "b:1", "c:1"):
+        mixed.add_node(node, kind="function")
+    assert mixed.main_namespace() is None

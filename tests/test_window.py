@@ -2152,3 +2152,59 @@ def test_renaming_a_function_carries_its_note_and_breakpoints(app, window, make_
     assert not window.editor.rename_function()
     assert asked == []  # cancelled before anything was asked about the edit
     assert window.source_edit.document().isModified()
+
+
+def test_call_graph_boxes_do_not_overlap_and_the_legend_explains_them(app, window, make_pack):
+    files = {
+        "data/minecraft/tags/function/tick.json": {"values": ["test:tick", "#test:hooks"]},
+        "data/test/tags/function/hooks.json": {"values": ["test:hook"]},
+        "data/test/function/tick.mcfunction": (
+            "function test:a\nfunction test:b\nexecute if function test:check run say y\n"
+            "function test:fx {id:1}\nfunction test:missing\n"
+        ),
+        "data/test/function/a.mcfunction": "function test:deep/one\n",
+        "data/test/function/b.mcfunction": "function test:deep/one\nfunction test:log\n",
+        "data/test/function/deep/one.mcfunction": "function test:log\n",
+        "data/test/function/check.mcfunction": "return 1\n",
+        "data/test/function/fx.mcfunction": "$say $(id)\n",
+        "data/test/function/hook.mcfunction": "function test:log\n",
+        "data/test/function/log.mcfunction": "say log\n",
+        # schedules itself: drawn as a loop, not a filled blob
+        "data/test/function/timer.mcfunction": "schedule function test:timer 20t\n",
+        "data/test/function/dead.mcfunction": "say never\n",
+    }
+    window.datapacks.load(make_pack(files))
+    window.runs.run_graphview()
+    app.processEvents()
+    widget = window.graph_widget
+    positions, half = widget._positions, widget._half_sizes
+    assert set(positions) == set(window.call_graph.nodes)
+    names = list(positions)
+    for index, a in enumerate(names):
+        for b in names[index + 1 :]:
+            apart_x = abs(positions[a][0] - positions[b][0]) >= half[a][0] + half[b][0]
+            apart_y = abs(positions[a][1] - positions[b][1]) >= half[a][1] + half[b][1]
+            assert apart_x or apart_y, (a, b)
+
+    legend = widget.legend.text
+    for words in ("tag", "macro", "missing", "schedule", "execute if function", "test:"):
+        assert words in legend
+    # the starting view shows the whole of a small graph, at a readable size
+    (left, right), (bottom, top) = widget.plot.viewRange()
+    for name, (x, y) in positions.items():
+        assert left <= x - half[name][0] and x + half[name][0] <= right, name
+        assert bottom <= y - half[name][1] and y + half[name][1] <= top, name
+
+    # a right-click on a box finds its node, and nothing off the boxes
+    from PySide6.QtCore import QPointF
+
+    def at(x, y):
+        return widget.mapFromScene(widget.plot.vb.mapViewToScene(QPointF(x, y)))
+
+    x, y = positions["test:tick"]
+    assert widget.node_at(at(x, y)) == "test:tick"
+    assert widget.node_at(at(x + half["test:tick"][0] * 0.9, y)) == "test:tick"
+    assert widget.node_at(at(left + 1e-3, top - 1e-3)) is None
+
+    widget.clear_graph()
+    assert not widget.legend.text and widget.node_at(at(x, y)) is None
