@@ -320,5 +320,7 @@ when `with`/`$` is involved), `schedule function` (`schedule`),
 | `depths()` | longest path from a root |
 | `unreachable()` | functions nothing reachable from load/tick calls |
 | `missing()` | called but not defined |
-| `layout()` | layered positions with barycentre ordering |
+| `layout()` | layered positions, `node -> (x, y)`, roots on top |
+| `layered_layout(widths, gap)` | a `GraphLayout`: positions that keep boxes of the given widths apart, edge routes that bend around the layers they skip, and the crossings left |
+| `main_namespace()` | the namespace at least half the functions share (the window drops it from labels) |
 | `to_dot()` / `write_dot()` | Graphviz |

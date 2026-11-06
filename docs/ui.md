@@ -138,8 +138,24 @@ current version.
     run). Right-clicking a bar or a row of any of them gives the same menu as
     a call-graph node (open the function, callers and calls, note…).
 * **Call graph** — layered DAG of `function`, `schedule`, `execute if function`
-  and tag edges. Purple nodes are tags, blue ones come from an overlay, orange
-  ones are macros, red ones are called but missing. *Show in call graph*
+  and tag edges, roots on top and arrows pointing at the function called.
+  Each node is a box with its name and estimated cost (its own commands,
+  not the functions it calls): purple boxes are tags,
+  blue ones come from an overlay, orange ones are macros, red ones are called
+  but missing, and a dashed border marks a function `#minecraft:load`/`tick`
+  never reach. Edges are grey for `function`, dashed blue for `schedule`,
+  dotted for `execute if function`, purple for a tag's entries and orange for
+  macro calls; a function that schedules itself gets a small loop. The
+  legend under the canvas lists the colours the graph uses, and when most
+  functions share a namespace the labels leave it out (the legend says
+  which; hovering a box shows its full id and file). Layers are ordered to
+  cut edge crossings, an edge that skips layers is routed between the boxes
+  instead of through them, and separate parts sit side by side, the one
+  with `#minecraft:load`/`tick` first, with functions nothing calls and that
+  call nothing in a grid after them. Labels zoom with the graph, so they
+  never run into each other; the graph opens fitted to the view, or, when
+  that would make the labels too small, at a readable size on its top (the
+  rest is a pan or a scroll away). *Show in call graph*
   (Ctrl+Shift+G, from the source view, the edit menu or a file's menu)
   centres the view on a function or function tag and rings it in red, with
   a thinner ring on its direct callers and calls; a busy node keeps a
