@@ -5,7 +5,7 @@ name: Publish to PyPI
 # described in docs/releases.md ("Publishing to PyPI").
 #
 # Release: bump `version` in pyproject.toml, merge, then
-#     git tag v0.3.0 && git push origin v0.3.0
+#     git tag v0.4.0 && git push origin v0.4.0
 # The tag must match pyproject.toml or the build stops before anything ships.
 # A PyPI version can never be replaced, only superseded.
 
