@@ -37,7 +37,11 @@ defaults; the block between the `calibration:` markers there says where and
 when they were measured. The run behind the built-in numbers is
 [`calibration-26.2.json`](calibration-26.2.json): Minecraft 26.2, an Intel
 Core 5 120U laptop, OpenJDK 27, every benchmark with its measured, old-model
-and fitted cost.
+and fitted cost. To reproduce it from the reports, the fit starts from the
+earlier guesses (`costs.py` at commit 9a7d3af) with `DATA_ENTITY_EXTRA_US`
+at 3.0; a few constants the benchmarks barely separate (`@s`, `as`/`at`,
+`tag`) move by a few hundredths of a microsecond with another starting
+point.
 
 What the measurements overturned:
 
