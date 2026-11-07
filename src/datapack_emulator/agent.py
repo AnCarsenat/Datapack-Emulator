@@ -42,7 +42,12 @@ from typing import Any
 
 from datapack_emulator import __version__
 from datapack_emulator.emulator import versions as _versions
-from datapack_emulator.emulator.analysis.problems import SEVERITIES, find_problems, ignored_folders
+from datapack_emulator.emulator.analysis.problems import (
+    SEVERITIES,
+    find_problems,
+    ignored_folders,
+    load_blockers,
+)
 from datapack_emulator.emulator.analysis.problems import count as count_problems
 from datapack_emulator.emulator.analysis.world_view import world_to_dict
 from datapack_emulator.emulator.commands import Command
@@ -146,6 +151,16 @@ def select_versions(
     if not chosen:
         raise AgentError("no versions selected")
     return chosen
+
+
+def _schema_of(assets: VanillaAssets | None):
+    """The field schema of a client jar (learned once, kept in the cache)."""
+    if assets is None:
+        return None
+    from datapack_emulator.emulator.analysis.schema import schema_for
+    from datapack_emulator.settings.main import PATHS
+
+    return schema_for(assets, PATHS.CACHE)
 
 
 def vanilla_assets(
@@ -431,6 +446,8 @@ def check(
     results: list[dict[str, Any]] = []
     tallies: list[str] = []
     errors = 0
+    fatal = 0
+    blockers: list[dict[str, Any]] = []
     for target in chosen:
         assets = vanilla_assets(vanilla, target, download)
         schema = None
@@ -446,7 +463,15 @@ def check(
         ]
         totals = count_problems(problems)
         errors += totals["error"]
-        tallies.append(f"{target.id}: {totals['error']}E/{totals['warning']}W")
+        fatal += totals["fatal"]
+        blockers += [
+            {"version": target.id, **problem.to_dict()} for problem in load_blockers(problems)
+        ]
+        tallies.append(
+            f"{target.id}: "
+            + (f"{totals['fatal']} FATAL/" if totals["fatal"] else "")
+            + f"{totals['error']}E/{totals['warning']}W"
+        )
         results.append(
             {
                 "version": target.id,
@@ -457,11 +482,16 @@ def check(
             }
         )
     load_errors = list(datapack.errors)
-    ok = errors == 0 and not load_errors
+    ok = errors == 0 and fatal == 0 and not load_errors
     worst = ", ".join(tallies)
+    if fatal:
+        headline = f"{fatal} problem(s) stop the world or the pack from loading"
+    else:
+        headline = "no errors" if ok else f"{errors} error(s)"
     return {
         "ok": ok,
-        "summary": f"{'no errors' if ok else f'{errors} error(s)'} — {worst}",
+        "summary": f"{headline} — {worst}",
+        "load_blockers": blockers,
         "pack": datapack.name,
         "versions": [target.id for target in chosen],
         "load_errors": load_errors,
@@ -538,8 +568,19 @@ def run(
     failed_functions = sorted(emulator.library.function_failures)
     failed_tags = sorted(emulator.library.tag_failures)
     ignored = [p.to_dict() for p in ignored_folders(datapack, target) if p.severity == "error"]
+    blockers = [
+        p.to_dict()
+        for p in load_blockers(
+            find_problems(datapack, target, emulator.vanilla, _schema_of(emulator.vanilla))
+        )
+    ]
     broken = bool(
-        errors or failed_functions or failed_tags or graph["missing_functions"] or ignored
+        errors
+        or failed_functions
+        or failed_tags
+        or graph["missing_functions"]
+        or ignored
+        or blockers
     )
     chat = [
         r.message
@@ -549,7 +590,12 @@ def run(
     out: dict[str, Any] = {
         "ok": not broken,
         "summary": (
-            f"{target.id}: {ran_ticks} tick(s), {len(errors)} error(s), "
+            (
+                f"WILL NOT LOAD ({len(blockers)} fatal problem(s)); emulated anyway: "
+                if blockers
+                else ""
+            )
+            + f"{target.id}: {ran_ticks} tick(s), {len(errors)} error(s), "
             f"{len(failed_functions)} function(s) not loaded, "
             + (f"{len(ignored)} ignored folder(s), " if ignored else "")
             + f"{sum(1 for r in tick_records if r.level == LogLevel.WARNING)} warning(s), "
@@ -564,6 +610,7 @@ def run(
         "failed_functions": failed_functions,
         "failed_tags": failed_tags,
         "ignored_folders": ignored,
+        "load_blockers": blockers,
         "chat": chat[-50:],
         **records_to_list(tick_records, level, max_records),
         "commands": answers,

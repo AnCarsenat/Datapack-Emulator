@@ -90,7 +90,9 @@ def command_check(arguments: argparse.Namespace) -> int:
             if SEVERITIES.index(problem.severity) <= lowest and (not codes or problem.code in codes)
         ]
         totals = count(problems)
-        failed = failed or bool(totals["error"] or (arguments.strict and totals["warning"]))
+        failed = failed or bool(
+            totals["fatal"] or totals["error"] or (arguments.strict and totals["warning"])
+        )
         if arguments.json:
             report.append(
                 {
@@ -109,6 +111,8 @@ def command_check(arguments: argparse.Namespace) -> int:
             print(problem.format())
             if arguments.verbose and problem.path:
                 print(f"        {problem.path}" + (f":{problem.line}" if problem.line else ""))
+        if totals["fatal"]:
+            print(f"{version.id}: {totals['fatal']} FATAL -- the world or the pack will not load")
         print(
             f"{version.id}: {totals['error']} error(s), {totals['warning']} warning(s), "
             f"{totals['info']} note(s)"

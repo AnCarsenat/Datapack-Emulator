@@ -62,13 +62,24 @@ check — raises `agent.AgentError` with a message to show to whoever asked.
 
 ### `check(packs, version=None, versions=None, *, declared=False, boundaries=False, severity="info", vanilla="auto", download=False)`
 
-Static problems, nothing runs. `ok` is false when any version has an
-error-level problem or a pack failed to load.
+Static problems, nothing runs. `ok` is false when any version has a fatal
+or error-level problem or a pack failed to load.
+
+**`load_blockers` comes first**: the `fatal` problems, which stop the world
+or the pack from loading at all — a world-registry file (worldgen,
+dimension, dimension type, enchantment, …) that does not parse, lacks a field
+the version requires, or names a kind the version does not have; or an
+unreadable `pack.mcmeta`. A server with one of those refuses to start the
+world for *every* pack ("Failed to load datapacks, can't proceed with server
+load"), so fix them before anything else. Without a client jar only the
+parse failures are found; with one (`vanilla="auto"` finds an installed
+jar) the missing fields and removed kinds are too.
 
 ```json
 {
   "ok": false,
   "summary": "2 error(s) — 1.21.4: 2E/0W",
+  "load_blockers": [],
   "versions": ["1.21.4"],
   "load_errors": [],
   "results": [{
@@ -82,7 +93,8 @@ error-level problem or a pack failed to load.
 }
 ```
 
-Problem codes (filter on `code`): `pack`, `ignored-folder`,
+Severities, dearest first: `fatal`, `error`, `warning`, `info`. Problem codes
+(filter on `code`): `world-registry`, `pack`, `ignored-folder`,
 `function-not-loaded`, `tag-not-loaded`, `unknown-id`, `text-component`,
 `json`, `missing-function`, … — the full list is
 `datapack_emulator.emulator.analysis.problems.CODES`.
@@ -99,8 +111,9 @@ packs), a warning outside the versions `pack.mcmeta` declares.
 Ticks the pack, then runs each of `commands` as if typed in the server
 console — that is how you **ask the world a question** afterwards.
 
-`ok` is false when a tick logged an error, **a function or tag failed to
-load**, a called function does not exist, or **a whole kind of resource sits
+`ok` is false when the world would not load at all (`load_blockers`, as for
+`check`; the summary then starts with `WILL NOT LOAD`), when a tick logged an
+error, **a function or tag failed to load**, a called function does not exist, or **a whole kind of resource sits
 in folders the version does not read** (`ignored_folders`). The real game only
 *warns* when a function fails to parse and says nothing at all about folders
 it does not read; those are the two usual causes of "my pack does nothing",

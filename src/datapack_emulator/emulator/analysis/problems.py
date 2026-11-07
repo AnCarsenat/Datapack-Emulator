@@ -1,8 +1,16 @@
 """Static diagnostics for a whole pack in one version: what the server
 refuses to load, what it would fail on at run time, and what looks wrong.
 
-Nothing runs. Each finding is a ``Problem`` with a severity:
+Nothing runs. Each finding is a ``Problem`` with a severity, dearest first:
 
+* **fatal** — the server refuses the *world*, or the pack as a whole: a file
+  of a world registry (worldgen, a dimension or dimension type, an
+  enchantment, a damage type, a variant...) that does not parse or lacks a
+  field the version requires, or names a kind the version does not have.
+  Those are read when the world loads; one bad element and the server stops
+  with "Failed to load datapacks, can't proceed with server load" -- for
+  every pack, not just this one. A pack the server cannot read at all (no
+  readable ``pack.mcmeta``) is fatal too;
 * **error** — the server refuses it: a function or tag that does not load
   (unknown commands, selector options, bad macro templates), an id the
   version does not have, a text component or JSON file that does not parse,
@@ -40,11 +48,44 @@ from datapack_emulator.emulator.common import (
 from datapack_emulator.emulator.runtime.library import FunctionLibrary, line_problems
 from datapack_emulator.emulator.versions import Version
 
-SEVERITIES = ("error", "warning", "info")
+SEVERITIES = ("fatal", "error", "warning", "info")
+
+#: folders the server reads (and re-reads on /reload) one file at a time: a
+#: file it cannot read is skipped, the rest of the pack goes on
+RELOADABLE = frozenset(
+    {
+        "function",
+        "recipe",
+        "loot_table",
+        "predicate",
+        "item_modifier",
+        "advancement",
+        "structure",
+    }
+)
+
+
+def is_world_registry(registry: str) -> bool:
+    """Whether a folder is read when the world loads, all or nothing: every
+    registry that is not a function, tag, recipe, loot table, predicate,
+    item modifier, advancement or structure (worldgen/*, dimension,
+    dimension_type, enchantment, damage_type, chat_type, trim_*, variants...).
+    """
+    return registry not in RELOADABLE and not registry.startswith("tags/")
+
+
+#: kinds of object the game dropped, with the first version without them: a
+#: world registry file naming one stops the world (seen in a 26.2 server log).
+#: An id no vanilla file uses is otherwise only a note: vanilla's files use
+#: few of the kinds a version has (no enchantment runs a function)
+REMOVED_TYPES = {"minecraft:random_patch": "26.2"}
+
+WORLD_STOPS = "the server will not load the world (any pack) until it is fixed"
 
 #: every kind of problem, for filters
 CODES = (
     "pack",
+    "world-registry",
     "ignored-folder",
     "function-not-loaded",
     "tag-not-loaded",
@@ -175,6 +216,11 @@ def text_problems(text: str, suffix: str, version: str | Version) -> dict[int, s
     return {}
 
 
+def load_blockers(problems: list[Problem]) -> list[Problem]:
+    """The problems that stop the world or the pack from loading at all."""
+    return [problem for problem in problems if problem.severity == "fatal"]
+
+
 def count(problems: list[Problem]) -> dict[str, int]:
     return {severity: sum(p.severity == severity for p in problems) for severity in SEVERITIES}
 
@@ -186,6 +232,13 @@ def count(problems: list[Problem]) -> dict[str, int]:
 
 def _pack(scan: _Scan) -> Iterator[Problem]:
     version = scan.version
+    for error in getattr(scan.datapack, "errors", []):
+        if "pack.mcmeta" in error:
+            yield Problem(
+                "fatal",
+                "pack",
+                f"{error}: the server does not load this pack at all",
+            )
     compatibility = scan.datapack.compatibility(version)
     if not compatibility.compatible:
         yield Problem(
@@ -382,10 +435,12 @@ def _json_resources(scan: _Scan) -> Iterator[Problem]:
     for registry, bucket in scan.registries.items():
         for resource in bucket.values():
             if getattr(resource, "error", None):
+                world = is_world_registry(registry)
                 yield Problem(
-                    "error",
+                    "fatal" if world else "error",
                     "json",
-                    f"{registry} file does not parse: {resource.error}",
+                    f"{registry} file does not parse: {resource.error}"
+                    + (f"; {WORLD_STOPS}" if world else ""),
                     resource.id,
                     resource.path,
                 )
@@ -430,15 +485,27 @@ def _schema_fields(scan: _Scan) -> Iterator[Problem]:
         )
         return
     for folder in sorted(schema.folders):
+        world = is_world_registry(folder)
         for resource in scan.resources(folder):
             if resource.error:
                 continue
             for issue in schema.check(resource.content, folder):
+                severity, message = issue.severity, issue.message
+                if issue.kind == "unknown-type":
+                    removed = REMOVED_TYPES.get(issue.value)
+                    if removed is not None and scan.version >= versions.parse(removed):
+                        severity = "warning"
+                        message = f"{issue.value} no longer exists in {scan.version.id}"
+                if world and (
+                    issue.kind == "missing-required"
+                    or (issue.kind == "unknown-type" and severity == "warning")
+                ):
+                    severity, message = "fatal", f"{message}; {WORLD_STOPS}"
                 yield _problem(
                     resource,
-                    issue.severity,
-                    "schema",
-                    f"{issue.where or 'the file'}: {issue.message}",
+                    severity,
+                    "world-registry" if severity == "fatal" else "schema",
+                    f"{issue.where or 'the file'}: {message}",
                 )
 
 

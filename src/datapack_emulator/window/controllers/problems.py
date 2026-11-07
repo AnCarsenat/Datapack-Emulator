@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 PROBLEM_ROLE = Qt.UserRole + 1
 COLOURS = {
+    "fatal": QColor("#7b0000"),
     "error": QColor("#c0392b"),
     "warning": QColor("#b9770e"),
     "info": QColor("#7f8c8d"),
@@ -109,7 +110,9 @@ class ProblemsController(Controller):
         totals = count(self.problems)
         jar = "" if window.vanilla else " (no client jar: ids are not checked)"
         self.label.setText(
-            f"{window.version.id}: {totals['error']} error(s), {totals['warning']} "
+            f"{window.version.id}: "
+            + (f"{totals['fatal']} FATAL (will not load), " if totals["fatal"] else "")
+            + f"{totals['error']} error(s), {totals['warning']} "
             f"warning(s), {totals['info']} note(s){jar}"
         )
         self.fill()
@@ -168,6 +171,12 @@ class ProblemsController(Controller):
         for problem in self.visible():
             item = QTreeWidgetItem([problem.severity, problem.where, problem.message, problem.code])
             item.setForeground(0, QBrush(COLOURS[problem.severity]))
+            if problem.severity == "fatal":
+                # stops the world from loading: above everything else, and bold
+                font = item.font(0)
+                font.setBold(True)
+                for column in range(4):
+                    item.setFont(column, font)
             item.setToolTip(2, problem.message)
             if problem.path is not None:
                 item.setToolTip(1, str(problem.path))
