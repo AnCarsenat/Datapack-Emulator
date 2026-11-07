@@ -62,6 +62,7 @@ _DATA_FILE = re.compile(
     r"^Couldn't parse data file '(?P<id>[^']+)' from '(?P<file>[^']+)'(?:: (?P<message>.*))?$"
 )
 _DATA_RESULT = re.compile(r"^DataResult\.Error\['(?P<inner>.*)'(?:: .*)?\]$")
+_FROM_PACK = re.compile(r"\bfrom pack (?P<pack>\S+)$")
 _UNBOUND = re.compile(r"Unbound values in registry .*?: \[(?P<ids>[^\]]*)\]")
 
 #: the folder of a data file -> the problem code the static check uses for it
@@ -95,6 +96,18 @@ def _cause(lines: list[str], start: int) -> str:
     return message
 
 
+def _from_pack(lines: list[str], start: int) -> str | None:
+    """The pack a registry element's failure names (``Failed to parse x from
+    pack file/p``), from ``start`` until the next log line or marker."""
+    for line in lines[start:]:
+        if _LOG_LINE.match(line) or line.startswith(">"):
+            break
+        match = _FROM_PACK.search(line.strip())
+        if match:
+            return match["pack"]
+    return None
+
+
 def _short(message: str, limit: int = 300) -> str:
     match = _DATA_RESULT.match(message)
     if match:
@@ -109,8 +122,10 @@ def parse_log(
 ) -> list[Problem]:
     """The problems a server log reports about resources in ``namespaces``.
 
-    ``pack_names`` (``file/<name>`` as the server calls them) let tag lines
-    that name a pack, not a namespace, count too.
+    ``pack_names`` (``file/<name>`` as the server calls them): a tag or
+    registry line that names its pack counts if, and only if, that pack is
+    one of them -- so a pack writing into ``minecraft:`` does not take on
+    lines about another pack's (or vanilla's) ``minecraft:`` resources.
     """
     mine = {namespace.lower() for namespace in namespaces}
     packs = {f"file/{name}" for name in pack_names}
@@ -137,7 +152,14 @@ def parse_log(
                 for resource in (i for i in ids if _mine(i, mine)):
                     unbound_found.append((element_id, resource))
                 continue
-            if _mine(element_id, mine):
+            source = _from_pack(lines, index + 1)
+            # the line names the pack: trust it over the namespace, which
+            # vanilla shares with any pack that writes into minecraft:
+            if source is not None and packs:
+                ours = source in packs
+            else:
+                ours = _mine(element_id, mine)
+            if ours:
                 failed_elements.add(element_id)
                 problems.append(
                     Problem(
@@ -191,7 +213,7 @@ def parse_log(
             )
             continue
         tag = _TAG.match(message)
-        if tag and (_mine(tag["id"], mine) or (tag["pack"] or "") in packs):
+        if tag and (tag["pack"] in packs if tag["pack"] and packs else _mine(tag["id"], mine)):
             problems.append(
                 Problem(
                     "error",

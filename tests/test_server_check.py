@@ -194,3 +194,28 @@ def test_the_eula_is_checked_before_the_folder(tmp_path):
             [tmp_path], ["x"], versions.parse("26.2"), tmp_path / "srv", accept_eula=False
         )
     assert sorted(p.name for p in (tmp_path / "srv").iterdir()) == ["keep"]
+
+
+def test_minecraft_lines_count_only_from_the_pack_itself():
+    """A pack that writes into minecraft: shares the namespace with vanilla
+    and every other pack: a line that names its pack decides by the pack."""
+    other = (
+        "[00:00:00] [ServerMain/ERROR]: Couldn't load tag minecraft:load as it is missing "
+        "following references: other:nope (from file/other)\n"
+        "[00:00:00] [Worker-Main-1/ERROR]: Registry loading errors:\n"
+        "> Errors in registry minecraft:dimension_type:\n"
+        ">> Errors in element minecraft:overworld:\n"
+        "java.lang.IllegalStateException: Failed to parse minecraft:overworld from pack file/other\n"
+        "Caused by: java.lang.IllegalStateException: No key height in MapLike[{}]\n"
+    )
+    assert parse_log(other, ["zoo", "minecraft"], ["zoo"]) == []
+    mine = other.replace("file/other", "file/zoo")
+    found = by_resource(parse_log(mine, ["zoo", "minecraft"], ["zoo"]))
+    assert set(found) == {
+        ("#minecraft:load", "tag-not-loaded"),
+        ("minecraft:overworld", "world-registry"),
+    }
+    # the server's own world noise on a minecraft:-writing pack is still left out
+    assert parse_log(RELOADABLE, ["minecraft"], ["zoo"]) and not any(
+        "layers" in p.message for p in parse_log(RELOADABLE, ["minecraft"], ["zoo"])
+    )
