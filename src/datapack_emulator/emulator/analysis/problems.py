@@ -74,6 +74,12 @@ def is_world_registry(registry: str) -> bool:
     return registry not in RELOADABLE and not registry.startswith("tags/")
 
 
+#: kinds of object the game dropped, with the first version without them: a
+#: world registry file naming one stops the world (seen in a 26.2 server log).
+#: An id no vanilla file uses is otherwise only a note: vanilla's files use
+#: few of the kinds a version has (no enchantment runs a function)
+REMOVED_TYPES = {"minecraft:random_patch": "26.2"}
+
 WORLD_STOPS = "the server will not load the world (any pack) until it is fixed"
 
 #: every kind of problem, for filters
@@ -485,11 +491,16 @@ def _schema_fields(scan: _Scan) -> Iterator[Problem]:
                 continue
             for issue in schema.check(resource.content, folder):
                 severity, message = issue.severity, issue.message
-                if issue.kind in ("missing-required", "unknown-type"):
-                    if world:
-                        severity, message = "fatal", f"{message}; {WORLD_STOPS}"
-                    elif issue.kind == "unknown-type":
+                if issue.kind == "unknown-type":
+                    removed = REMOVED_TYPES.get(issue.value)
+                    if removed is not None and scan.version >= versions.parse(removed):
                         severity = "warning"
+                        message = f"{issue.value} no longer exists in {scan.version.id}"
+                if world and (
+                    issue.kind == "missing-required"
+                    or (issue.kind == "unknown-type" and severity == "warning")
+                ):
+                    severity, message = "fatal", f"{message}; {WORLD_STOPS}"
                 yield _problem(
                     resource,
                     severity,

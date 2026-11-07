@@ -88,6 +88,32 @@ MAP_FIELDS = frozenset(
         "requirements",
     }
 )
+#: fields the game's codecs read as ``fieldOf(name).orElse(default)``: optional,
+#: yet written by vanilla's datagen even at their default, so "every file sets
+#: it, sometimes to nothing" does not make them required (seen in 1.21.1-26.3:
+#: trim patterns, tree, huge fungus, spring, random patch and feature size
+#: configs, noise based counts), and the either-of keys of a vertical anchor
+WRITTEN_AT_DEFAULT = frozenset(
+    {
+        "decal",
+        "ignore_vines",
+        "force_dirt",
+        "planted",
+        "hole_count",
+        "requires_block_below",
+        "rock_count",
+        "tries",
+        "xz_spread",
+        "y_spread",
+        "limit",
+        "lower_size",
+        "upper_size",
+        "noise_offset",
+        "absolute",
+        "above_bottom",
+        "below_top",
+    }
+)
 #: how many different names a field must hold before it is read as a map
 MAP_NAMES = 8
 #: how many files must agree before "it is always this kind" is said at all
@@ -244,8 +270,15 @@ class Shape:
         files when it holds that default, so one written as ``false`` / ``0`` /
         ``[]`` in some file is one the game needs. Leaving it out of a file of
         a world registry (a dimension, a biome, a noise setting) stops the
-        whole world from loading."""
-        return {name for name in self.required() if self.fields[name].defaults}
+        whole world from loading.
+
+        Not a field named by a namespaced id (an environment attribute: the
+        keys of a map, each optional) nor one of ``WRITTEN_AT_DEFAULT``."""
+        return {
+            name
+            for name in self.required()
+            if self.fields[name].defaults and ":" not in name and name not in WRITTEN_AT_DEFAULT
+        }
 
     def known(self) -> set[str]:
         return set(self.fields)
@@ -326,6 +359,8 @@ class Issue:
     #: file of that version read does". Neither is a rule of the game: the
     #: version's own files say what it writes, not everything it accepts.
     severity: str = "warning"
+    #: the id an "unknown-type" names
+    value: str = ""
 
 
 @dataclass
@@ -451,7 +486,9 @@ def _check(value: Any, shape: Shape, where: str, issues: list[Issue], version_id
                             "unknown-type",
                             _at(where, shape.dispatch),
                             f"{type_id}: no {version_id} file read uses this {shape.dispatch} "
-                            f"(they use {len(shape.variants)} others)",
+                            f"(they use {len(shape.variants)} others; it may still exist)",
+                            "info",
+                            normalise_id(type_id),
                         )
                     )
                 return  # nothing more is known of a kind no file has
@@ -472,7 +509,9 @@ def _check(value: Any, shape: Shape, where: str, issues: list[Issue], version_id
                         f"no {version_id} file read uses this field here",
                     )
                 )
-            strict = inner.strictly_required()
+            # below a namespaced key (an attribute, an enchantment effect
+            # component) the shape is that entry's own: too few files to tell
+            strict = set() if ":" in where else inner.strictly_required()
             for name in sorted(inner.required() - set(value)):
                 if name in strict:
                     issues.append(
