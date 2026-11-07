@@ -73,7 +73,7 @@ QDockWidget::title {
     <item>
      <layout class="QHBoxLayout" name="controlLayout">
       <item>
-       <widget class="QLabel" name="labelPack">
+       <widget class="ElidedLabel" name="labelPack">
         <property name="text">
          <string>no datapack loaded</string>
         </property>
@@ -720,7 +720,7 @@ QDockWidget::title {
                </widget>
               </item>
               <item>
-               <widget class="QLabel" name="labelProfileBaseline">
+               <widget class="ElidedLabel" name="labelProfileBaseline">
                 <property name="text">
                  <string>no baseline kept</string>
                 </property>
@@ -826,7 +826,7 @@ QDockWidget::title {
          <number>0</number>
         </property>
         <item>
-         <widget class="QLabel" name="labelGraph">
+         <widget class="ElidedLabel" name="labelGraph">
           <property name="text">
            <string>function call DAG — load a datapack, then run graphview</string>
           </property>
@@ -870,7 +870,7 @@ QDockWidget::title {
          <number>0</number>
         </property>
         <item>
-         <widget class="QLabel" name="labelSource">
+         <widget class="ElidedLabel" name="labelSource">
           <property name="text">
            <string>select a file in the explorer</string>
           </property>
@@ -2943,6 +2943,11 @@ QDockWidget::title {
    <class>SourceEdit</class>
    <extends>QPlainTextEdit</extends>
    <header>datapack_emulator/window/panels/source.h</header>
+  </customwidget>
+  <customwidget>
+   <class>ElidedLabel</class>
+   <extends>QLabel</extends>
+   <header>datapack_emulator/window/panels/labels.h</header>
   </customwidget>
   <customwidget>
    <class>QWebEngineView</class>

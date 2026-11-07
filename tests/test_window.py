@@ -2389,3 +2389,52 @@ def test_lock_layout_keeps_docks_in_place_and_is_remembered(app, window):
         assert all(dock.features() & feature.DockWidgetMovable for dock in again.docks)
     finally:
         _close(again)
+
+
+def test_locking_docks_a_floating_dock_back_where_it_was(app, window):
+    from PySide6.QtWidgets import QDockWidget
+
+    window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, window.dock_world)
+    window.dock_world.setFloating(True)
+    window.dock_debug.setFloating(True)
+    app.processEvents()
+    window._action("actionlock_layout").trigger()
+    app.processEvents()
+    # a floating dock could no longer be moved nor docked back: it is docked first
+    assert not any(dock.isFloating() for dock in window.docks)
+    assert window.dockWidgetArea(window.dock_world) == Qt.DockWidgetArea.LeftDockWidgetArea
+    assert window.dockWidgetArea(window.dock_debug) == Qt.DockWidgetArea.RightDockWidgetArea
+    assert not window.dock_world.features() & QDockWidget.DockWidgetFeature.DockWidgetFloatable
+
+    again = _new_window(app)
+    try:
+        assert again._action("actionlock_layout").isChecked()
+        assert not any(dock.isFloating() for dock in again.docks)
+        assert again.dockWidgetArea(again.dock_world) == Qt.DockWidgetArea.LeftDockWidgetArea
+    finally:
+        _close(again)
+
+
+def test_a_long_source_path_does_not_widen_the_window(app, window, tmp_path):
+    from PySide6.QtWidgets import QLabel
+
+    window.tabs.setCurrentWidget(window.tab_page("source_view"))
+    app.processEvents()
+    width = window.width()
+    window_minimum = window.minimumSizeHint().width()
+    central_minimum = window.centralWidget().minimumSizeHint().width()
+    folder = tmp_path.joinpath(*["a_rather_long_directory_name"] * 12)
+    folder.mkdir(parents=True)
+    path = folder / "a_function_with_a_long_name.mcfunction"
+    path.write_text("say hi\n")
+    window.navigation.show_source(path, ask=False)
+    app.processEvents()
+    assert window.width() == width
+    assert window.minimumSizeHint().width() <= window_minimum
+    assert window.centralWidget().minimumSizeHint().width() <= central_minimum
+    # the whole path is still the label's text and its tooltip; the middle is cut
+    label = window.source_label
+    assert label.text() == str(path) and label.toolTip() == str(path)
+    shown = QLabel.text(label)
+    assert "…" in shown and shown.endswith(path.name)
+    assert label.width() <= window.centralWidget().width()
