@@ -1081,7 +1081,7 @@ def test_check_reports_problems(make_pack, tmp_path, capsys):
         ["check", bad, "--version", "1.21.4", "--code", "recursion", "--json", "--no-vanilla"]
     )
     data = json.loads(capsys.readouterr().out)
-    assert code == 0 and data["counts"] == {"error": 0, "warning": 0, "info": 1}
+    assert code == 0 and data["counts"] == {"fatal": 0, "error": 0, "warning": 0, "info": 1}
     assert data["problems"][0]["resource"] == "test:loop"
     pack = str(_pack(make_pack))
     assert main(["check", pack, "--versions", "1.20.4", "1.21.4", "--no-vanilla"]) == 0
