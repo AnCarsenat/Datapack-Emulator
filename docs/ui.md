@@ -8,7 +8,11 @@ matches.
 Every widget, dock, menu, action and shortcut is declared in
 `src/datapack_emulator/window/window.ui` (main window), `src/datapack_emulator/window/engine.ui` (engine
 window) and `src/datapack_emulator/window/download.ui` (client-jar download popup). The Python side only loads those files and wires behaviour, so
-layout changes are made in Qt Designer, never in code.
+layout changes are made in Qt Designer, never in code. One exception: at
+start-up `MainWindow._make_docks_shrinkable` puts each dock's body in a
+frameless scroll area (`<dock name>Scroll`), so a dock can be dragged
+smaller than its row of buttons. Edit a dock's contents in Designer as
+usual; widgets are found by object name, so the extra level does not matter.
 
 ## Main window
 

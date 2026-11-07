@@ -173,6 +173,11 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
   The only widget created in code is the pyqtgraph canvas, which Designer
   cannot describe; it goes into the `graphContainer` placeholder. The source
   view is a custom widget class (`panels/source.py`) declared in the `.ui`.
+  The one structural change made in code: each dock's body is wrapped in a
+  `QScrollArea` at start-up (`_make_docks_shrinkable`), because a dock cannot
+  be narrower than its contents' minimum and wrapping six dock bodies in the
+  `.ui` would rewrite them. Never look a dock's contents up with
+  `dock.widget()` or `parent()`: use `findChild` by object name.
 * **Game output and our diagnostics stay separate.** A handler reports what
   Minecraft would say with `context.game_error(key, …)` using a real
   translation key; what *we* notice goes through `context.note(…)`.
