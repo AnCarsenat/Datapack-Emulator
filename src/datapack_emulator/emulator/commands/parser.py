@@ -65,12 +65,20 @@ class Selector:
     def is_single(self) -> bool:
         return self.kind in ("@s", "@p", "@r", "@n", "literal") or self.limit == 1
 
-    def estimate_cost(self, entity_count: int = 30) -> float:
-        """Cost of *resolving* this selector, in microseconds."""
+    def estimate_cost(self, entity_count: int = 30, player_count: int | None = None) -> float:
+        """Cost of *resolving* this selector, in microseconds. ``player_count``
+        defaults to a tenth of the entities."""
         if self.kind == "literal":
             return 1.0
         cost = costs.SELECTOR_BASE_COST_US.get(self.kind, 10.0)
-        scanned = entity_count if self.kind in ("@e", "@n") else max(1, entity_count // 10)
+        if self.kind == "@s":
+            scanned = 0  # the executor itself: nothing to search
+        elif self.kind in ("@e", "@n"):
+            scanned = entity_count
+        elif player_count is not None:
+            scanned = player_count
+        else:
+            scanned = max(1, entity_count // 10)  # players, about a tenth
         scan = scanned * costs.SELECTOR_PER_ENTITY_COST_US
         if "type" in self.arguments:
             scan *= costs.TYPE_FILTER_DISCOUNT
@@ -78,13 +86,19 @@ class Selector:
             scan *= costs.LIMIT_DISCOUNT
         cost += scan
         if "nbt" in self.arguments:
-            cost += costs.NBT_FILTER_COST_US * max(1, scanned // 4)
+            cost += costs.NBT_FILTER_COST_US * scanned  # every candidate is serialised
         if "predicate" in self.arguments:
             cost += costs.CONDITION_COST_US["predicate"]
         return cost
 
     def __str__(self) -> str:
         return self.raw
+
+
+def _reads_entity(tokens: list[str]) -> bool:
+    """A ``data`` target that serialises an entity or block entity to NBT
+    (measured several times dearer than command storage)."""
+    return any(token in ("entity", "block") for token in tokens)
 
 
 #: how many tokens each ``execute`` subcommand consumes after its own name
@@ -295,7 +309,9 @@ class Command:
                     needed.add(f"store:{subcommand.arguments[1]}")
         return needed
 
-    def estimate_cost(self, entity_count: int = 30, include_child: bool = True) -> float:
+    def estimate_cost(
+        self, entity_count: int = 30, include_child: bool = True, player_count: int | None = None
+    ) -> float:
         """Estimated wall-clock cost of this line, in microseconds.
 
         With ``include_child``, the command an ``execute … run`` wraps is part
@@ -305,6 +321,8 @@ class Command:
         to the callee.  See :mod:`datapack_emulator.emulator.costs` for the model.
         """
         total = costs.COMMAND_COST_US.get(self.name, costs.DEFAULT_COMMAND_COST_US)
+        if self.name == "data" and _reads_entity(self.arguments[1:3]):
+            total += costs.DATA_ENTITY_EXTRA_US
         if self.is_macro:
             total += costs.MACRO_CALL_OVERHEAD_US
 
@@ -312,18 +330,22 @@ class Command:
             total += costs.SUBCOMMAND_COST_US.get(subcommand.name, 1.0)
             if subcommand.name in ("if", "unless") and subcommand.condition:
                 total += costs.CONDITION_COST_US.get(subcommand.condition, 5.0)
+                if subcommand.condition == "data" and _reads_entity(subcommand.arguments[1:2]):
+                    total += costs.DATA_ENTITY_EXTRA_US
             for selector in subcommand.selectors:
-                total += selector.estimate_cost(entity_count)
+                total += selector.estimate_cost(entity_count, player_count)
 
-        for argument in self.arguments:
+        # an execute's raw arguments repeat its subcommands' selectors and its
+        # `run` child's: those are charged above and by the child
+        for argument in self.arguments if self.name != "execute" else ():
             if argument.startswith("@"):
-                total += Selector.parse(argument).estimate_cost(entity_count)
+                total += Selector.parse(argument).estimate_cost(entity_count, player_count)
 
         if self.name in ("fill", "clone", "fillbiome"):
             total += volume_of(self.arguments) * costs.VOLUME_COST_US_PER_BLOCK
 
         if self.child is not None and include_child:
-            total += self.child.estimate_cost(entity_count)
+            total += self.child.estimate_cost(entity_count, player_count=player_count)
         return total
 
     # -- macros -----------------------------------------------------------

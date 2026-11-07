@@ -86,6 +86,9 @@ class AgentError(ValueError):
 
 def load_packs(packs: Packs) -> DatapackSet:
     """One datapack folder (or zip), or several in load order."""
+    from datapack_emulator.emulator import costs
+
+    costs.ensure_user_calibration()
     paths = [Path(packs)] if isinstance(packs, (str, Path)) else [Path(p) for p in packs]
     if not paths:
         raise AgentError("no datapack given")
@@ -744,6 +747,55 @@ def explain(packs: Packs, command: str, version: str | None = None) -> dict[str,
     }
 
 
+def server_profile(
+    report: PathLike,
+    packs: Packs | None = None,
+    version: str | None = None,
+    *,
+    ticks: int = 200,
+    players: int = 1,
+    top_lines: int = 10,
+) -> dict[str, Any]:
+    """Real timings from a server's ``/perf`` report (the zip in
+    ``debug/profiling/``, or its ``server/profiling.txt``).
+
+    Every function the server ran, with its measured ms per tick and its
+    dearest lines. With ``packs``, the pack is also emulated for ``ticks``
+    and each function gets the emulator's estimate and the ratio
+    (measured / estimated) under ``compared``. ``ok`` is false when the
+    server was lagging (more than 50 ms per tick on average).
+    """
+    from datapack_emulator.emulator.server_profile import ServerProfile, compare
+
+    try:
+        profile = ServerProfile.read(report)
+    except (OSError, ValueError) as exc:
+        raise AgentError(f"cannot read {report}: {exc}") from exc
+    data = profile.to_dict(top_lines=top_lines)
+    top = data["functions"][0] if data["functions"] else None
+    out: dict[str, Any] = {
+        "ok": data["mspt"] <= 50.0,
+        "summary": (
+            f"{profile.version}: {data['mspt']:.3f} ms per tick, datapacks "
+            f"{data['datapack_ms_per_tick']:.3f} ms"
+            + (f"; dearest {top['function']} {top['ms_per_tick']:.4f} ms" if top else "")
+        ),
+        **data,
+    }
+    if packs is not None:
+        datapack = load_packs(packs)
+        target = resolve_version(version or profile.version, datapack)
+        emulator = Emulator(datapack, version=target, players=players, output=OutputBus())
+        emulator.run(ticks=ticks)
+        out["compared"] = {
+            "version": target.id,
+            "ticks": ticks,
+            "note": "estimates are warm-loop costs: a lower bound, read the ratio as a ranking",
+            "functions": compare(profile, emulator.profiler),
+        }
+    return out
+
+
 __all__ = [
     "AgentError",
     "check",
@@ -753,6 +805,7 @@ __all__ = [
     "parse_test",
     "resolve_version",
     "run",
+    "server_profile",
     "test",
     "versions",
 ]

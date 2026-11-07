@@ -30,7 +30,8 @@ checked against the real base game read out of a `client.jar`.
 * a function debugger: breakpoints (with conditions) on function lines, step
   into / over / out, the call stack, the command source and watched scores,
   storage and NBT — in the window and in the command-line shell
-* profiler with per-function estimated cost, dearest lines, a flame graph and
+* profiler with per-function cost (from constants measured on a real server),
+  dearest lines, a flame graph and
   before/after comparison of two runs, call-graph DAG, version matrix
 * edits functions in the window: lines checked as you type, completion
   (Ctrl+Space) and renaming a function across the pack (F2)
@@ -110,8 +111,11 @@ Everything is in [`docs/`](docs/README.md):
   [cost model](docs/costs.md)
 * [architecture](docs/architecture.md)
 
-Timings are **estimates from a cost model**, not measurements — see
-[costs.md](docs/costs.md).
+Timings come from a cost model whose constants were **measured on a real
+Minecraft server** — a lower bound and a ranking, not a tick-time
+prediction. For real timings of your own pack, `datapack-emulator-cli
+server-profile` reads a server's `/perf` report; `calibrate` measures the
+model on your machine. See [costs.md](docs/costs.md).
 
 ## Layout
 
