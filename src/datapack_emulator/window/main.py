@@ -427,6 +427,7 @@ class MainWindow(QMainWindow):
                 dock.objectName(), Qt.DockWidgetArea.RightDockWidgetArea
             )
             self.addDockWidget(area, dock)
+            dock.setFloating(False)  # addDockWidget alone leaves a floating dock floating
 
     @staticmethod
     def _set_dock_visible(dock: QDockWidget, visible: bool) -> None:

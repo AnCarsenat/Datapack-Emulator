@@ -2415,6 +2415,18 @@ def test_locking_docks_a_floating_dock_back_where_it_was(app, window):
         _close(again)
 
 
+def test_locking_docks_back_a_dock_that_was_never_docked(app, window):
+    dock = window.dock_world
+    window.removeDockWidget(dock)  # floating with no place kept in the window
+    dock.setFloating(True)
+    dock.show()
+    app.processEvents()
+    window._action("actionlock_layout").trigger()
+    app.processEvents()
+    assert not dock.isFloating() and dock.isVisible()
+    assert window.dockWidgetArea(dock) == window._default_dock_areas[dock.objectName()]
+
+
 def test_a_long_source_path_does_not_widen_the_window(app, window, tmp_path):
     from PySide6.QtWidgets import QLabel
 
