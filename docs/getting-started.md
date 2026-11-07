@@ -31,6 +31,15 @@ src/main.sh                      # same, without installing the package
 and puts `src/` on `PYTHONPATH`; `src/main.sh --cli …` runs the
 [command line](cli.md) instead.
 
+**On a Wayland session** (KDE, GNOME on Linux) the window runs through
+XWayland when an X display is there. Qt's Wayland backend cannot grab the
+mouse for a normal window, which dragging a dock needs — it prints *"This
+plugin supports grabbing the mouse only for popup windows"* — and Wayland
+does not let an application place its own windows, so docks would drag and
+float badly. `--wayland` runs natively anyway; a `-platform` option or
+`QT_QPA_PLATFORM` set by you is always kept. Under XWayland, fractional
+display scaling can look slightly soft.
+
 On a cold start the first datapack in `samples/` opens by itself (and again
 whenever no project is open and the last datapack is removed) — an installed
 copy with no `samples/` folder opens a copy of the starter pack that ships

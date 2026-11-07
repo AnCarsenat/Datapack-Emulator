@@ -8,6 +8,7 @@ which is also the window's *file › open the last project on launch*).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -48,6 +49,29 @@ def split_qt_arguments(argv: list[str]) -> tuple[list[str], list[str]]:
     return mine, for_qt
 
 
+def choose_platform(
+    for_qt: list[str], environ: dict[str, str] | None = None, native_wayland: bool = False
+) -> str | None:
+    """The Qt platform to start on, or None to leave Qt's own choice.
+
+    On a Wayland session the window runs through XWayland (``xcb``) when an X
+    display is there: Qt's Wayland backend cannot grab the mouse for a normal
+    window, which dock dragging needs ("This plugin supports grabbing the
+    mouse only for popup windows"), and Wayland does not let an application
+    place its own windows, so docks drag and float badly. ``--wayland``, a
+    ``-platform`` option or ``QT_QPA_PLATFORM`` keep the user's choice.
+    """
+    env = os.environ if environ is None else environ
+    if native_wayland or env.get("QT_QPA_PLATFORM") or "-platform" in for_qt:
+        return None
+    if any(argument.startswith("-platform=") for argument in for_qt):
+        return None
+    wayland = env.get("XDG_SESSION_TYPE") == "wayland" or bool(env.get("WAYLAND_DISPLAY"))
+    if wayland and env.get("DISPLAY") and sys.platform.startswith("linux"):
+        return "xcb"
+    return None
+
+
 def parse_arguments(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(
         prog="datapack-emulator",
@@ -73,6 +97,12 @@ def parse_arguments(argv: list[str] | None = None) -> tuple[argparse.Namespace, 
         dest="open_last",
         action="store_false",
         help="start on the sample datapack instead",
+    )
+    parser.add_argument(
+        "--wayland",
+        action="store_true",
+        help="run on Wayland natively (by default a Wayland session uses XWayland, "
+        "where docks drag and float properly)",
     )
     parser.add_argument(
         "--version",
@@ -102,6 +132,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    platform = choose_platform(for_qt, native_wayland=arguments.wayland)
+    if platform is not None:
+        os.environ["QT_QPA_PLATFORM"] = platform
     app = QApplication([sys.argv[0], *for_qt])
     window = MainWindow(start_path=arguments.path, open_last=arguments.open_last, defer_start=True)
     window.show()
