@@ -548,6 +548,29 @@ then the counts. Nothing runs. Exit `1` on a fatal problem or an error.
 | `--vanilla`, `--no-vanilla`, `--download` | the client jar ids are checked against (see [client jars](#client-jars)) |
 | `--no-schema` | do not check JSON fields against the jar's own files |
 | `--schema FILE` | a schema written by [`schema --write`](#schema--what-a-versions-own-files-hold) instead of the jar's (works with `--no-vanilla`, on a machine with no jar) |
+| `--server --accept-eula` | also run the pack on a **real dedicated server** of each version and report what its log says about the pack (see below). `--server-jar` (default: downloaded once into the cache), `--java`, `--server-dir` (default: the cache; a folder of your own must be new or empty, since each run deletes its `world/` and `logs/`) |
+
+### On a real server (`--server`)
+
+```sh
+datapack-emulator-cli check ./my_pack --version 26.2 --server --accept-eula
+```
+
+The static check knows a lot; only the server knows everything its codecs
+reject. `--server` starts a vanilla dedicated server of the version (offline,
+flat world, no players, a fresh world each time) with the pack installed,
+waits until it is up or has given up on the world (seconds), stops it, and
+turns every line of its log about the pack's resources into a problem:
+registry loading errors and *"Failed to load datapacks, can't proceed with
+server load"* are **fatal**; functions, tags, loot tables, recipes,
+advancements, predicates and item modifiers that do not load are errors;
+pack metadata the server reads only as a fallback is a warning. They print
+after the static problems as `== <version> on a real server: started` (or
+`DID NOT START THE WORLD`), each message starting with `server:`, then the
+log's path; `--json` puts them under `server`. Exit `1` if the server
+reports a fatal problem or an error. Java is needed; running a Minecraft
+server means accepting the [Minecraft EULA](https://aka.ms/MinecraftEULA),
+hence `--accept-eula`. Tested against 26.2's log.
 
 | code | severity | |
 | --- | --- | --- |

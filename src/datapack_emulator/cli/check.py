@@ -77,6 +77,11 @@ def command_check(arguments: argparse.Namespace) -> int:
         chosen = [inputs.version(arguments)]
     if arguments.lines:
         return check_lines(arguments, chosen)
+    if arguments.server and not arguments.accept_eula:
+        raise CliError(
+            "--server runs a Minecraft server, which means accepting the Minecraft EULA "
+            "(https://aka.ms/MinecraftEULA): add --accept-eula if you agree to it"
+        )
     lowest = SEVERITIES.index(arguments.severity)
     codes = set(arguments.code or [])
     report = []
@@ -93,16 +98,21 @@ def command_check(arguments: argparse.Namespace) -> int:
         failed = failed or bool(
             totals["fatal"] or totals["error"] or (arguments.strict and totals["warning"])
         )
+        on_server = run_on_server(arguments, inputs, version) if arguments.server else None
+        if on_server is not None:
+            server_totals = count(on_server.problems)
+            failed = failed or bool(server_totals["fatal"] or server_totals["error"])
         if arguments.json:
-            report.append(
-                {
-                    "version": version.id,
-                    "client_jar": vanilla.version_id if vanilla else "",
-                    "schema": schema.version_id if schema else "",
-                    "counts": totals,
-                    "problems": [problem.to_dict() for problem in problems],
-                }
-            )
+            entry = {
+                "version": version.id,
+                "client_jar": vanilla.version_id if vanilla else "",
+                "schema": schema.version_id if schema else "",
+                "counts": totals,
+                "problems": [problem.to_dict() for problem in problems],
+            }
+            if on_server is not None:
+                entry["server"] = on_server.to_dict()
+            report.append(entry)
             continue
         if len(chosen) > 1 or arguments.verbose:
             jar = f", client jar {vanilla.version_id}" if vanilla else ", no client jar"
@@ -117,10 +127,39 @@ def command_check(arguments: argparse.Namespace) -> int:
             f"{version.id}: {totals['error']} error(s), {totals['warning']} warning(s), "
             f"{totals['info']} note(s)"
         )
+        if on_server is not None:
+            state = "started" if on_server.started else "DID NOT START THE WORLD"
+            print(f"== {version.id} on a real server: {state} ({on_server.seconds:.0f} s)")
+            for problem in on_server.problems:
+                print(problem.format())
+            if not on_server.problems:
+                print("the server reported nothing about the pack")
+            print(f"server log: {on_server.log}")
     if arguments.json:
         # a list whenever versions were chosen as a list, even if one matched
         print(json.dumps(report if several else report[0], indent=2))
     return FAILED if failed else OK
+
+
+def run_on_server(arguments: argparse.Namespace, inputs, version):
+    """``--server``: the pack on a real dedicated server of ``version``."""
+    from datapack_emulator.emulator.server_check import check_on_server
+    from datapack_emulator.settings.main import PATHS
+
+    workdir = arguments.server_dir or PATHS.CACHE / "server-check" / version.id
+    try:
+        return check_on_server(
+            [pack.path for pack in inputs.datapack.packs],
+            inputs.datapack.namespaces,
+            version,
+            workdir,
+            accept_eula=True,
+            jar=arguments.server_jar,
+            java=arguments.java,
+            progress=err,
+        )
+    except (OSError, KeyError, TimeoutError, ValueError) as exc:
+        raise CliError(f"cannot run the {version.id} server: {exc}") from exc
 
 
 def register(subparsers) -> None:
@@ -165,6 +204,22 @@ def register(subparsers) -> None:
     check.add_argument(
         "--verbose", action="store_true", help="name the version and each problem's file"
     )
+    server = check.add_argument_group("a real server")
+    server.add_argument(
+        "--server",
+        action="store_true",
+        help="also run the pack on a real dedicated server of the version (Java; the jar is "
+        "downloaded once) and report what its log says about the pack: everything the "
+        "server refuses, exactly. Needs --accept-eula",
+    )
+    server.add_argument(
+        "--accept-eula",
+        action="store_true",
+        help="you accept the Minecraft EULA (https://aka.ms/MinecraftEULA)",
+    )
+    server.add_argument("--server-jar", type=Path, default=None, help="default: download it")
+    server.add_argument("--java", default="java", help="the Java to run it with")
+    server.add_argument("--server-dir", type=Path, default=None, help="the server's folder")
     add_vanilla_arguments(check)
     add_schema_arguments(check)
     check.set_defaults(handler=command_check)

@@ -423,13 +423,28 @@ def check(
     vanilla: str | bool | None = "auto",
     download: bool = False,
     max_problems: int = MAX_PROBLEMS,
+    server: bool = False,
+    accept_eula: bool = False,
+    server_jar: PathLike | None = None,
+    java: str = "java",
 ) -> dict[str, Any]:
     """Static problems: what a version refuses to load or cannot run. Nothing runs.
 
     One entry per version under ``results``; ``ok`` is false if any version
     has an error-level problem. With a client jar (``vanilla``) ids and JSON
     fields are checked against the real game files of that version.
+
+    ``server=True`` also runs the pack on a real dedicated server of each
+    version (Java; the jar is downloaded once) and adds what its log says,
+    under ``results[].server``: everything the server refuses, exactly. It
+    needs ``accept_eula=True``, which only the user can say: running a
+    Minecraft server means accepting the Minecraft EULA.
     """
+    if server and not accept_eula:
+        raise AgentError(
+            "server=True runs a Minecraft server, which means accepting the Minecraft EULA "
+            "(https://aka.ms/MinecraftEULA): pass accept_eula=True only if the user agreed"
+        )
     if severity not in SEVERITIES:
         raise AgentError(f"unknown severity {severity!r}: one of {', '.join(SEVERITIES)}")
     datapack = load_packs(packs)
@@ -472,15 +487,27 @@ def check(
             + (f"{totals['fatal']} FATAL/" if totals["fatal"] else "")
             + f"{totals['error']}E/{totals['warning']}W"
         )
-        results.append(
-            {
-                "version": target.id,
-                "client_jar": assets.version_id if assets else None,
-                "counts": totals,
-                "problems": [problem.to_dict() for problem in problems[:max_problems]],
-                "truncated": len(problems) > max_problems,
-            }
-        )
+        entry: dict[str, Any] = {
+            "version": target.id,
+            "client_jar": assets.version_id if assets else None,
+            "counts": totals,
+            "problems": [problem.to_dict() for problem in problems[:max_problems]],
+            "truncated": len(problems) > max_problems,
+        }
+        if server:
+            on_server = _on_server(datapack, target, server_jar, java)
+            entry["server"] = on_server.to_dict()
+            server_totals = count_problems(on_server.problems)
+            fatal += server_totals["fatal"]
+            errors += server_totals["error"]
+            blockers += [
+                {"version": target.id, **problem.to_dict()}
+                for problem in load_blockers(on_server.problems)
+            ]
+            tallies[-1] += (
+                " (server: " + ("started" if on_server.started else "WORLD DID NOT LOAD") + ")"
+            )
+        results.append(entry)
     load_errors = list(datapack.errors)
     ok = errors == 0 and fatal == 0 and not load_errors
     worst = ", ".join(tallies)
@@ -497,6 +524,24 @@ def check(
         "load_errors": load_errors,
         "results": results,
     }
+
+
+def _on_server(datapack: DatapackSet, target: Version, jar: PathLike | None, java: str):
+    from datapack_emulator.emulator.server_check import check_on_server
+    from datapack_emulator.settings.main import PATHS
+
+    try:
+        return check_on_server(
+            [pack.path for pack in datapack.packs],
+            datapack.namespaces,
+            target,
+            PATHS.CACHE / "server-check" / target.id,
+            accept_eula=True,
+            jar=Path(jar) if jar else None,
+            java=java,
+        )
+    except (OSError, KeyError, TimeoutError, ValueError) as exc:
+        raise AgentError(f"cannot run the {target.id} server: {exc}") from exc
 
 
 def run(
