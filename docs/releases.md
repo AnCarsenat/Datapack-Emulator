@@ -55,7 +55,7 @@ python -m venv /tmp/try && /tmp/try/bin/pip install dist/datapack_emulator-*.whl
 On Windows the venv's programs are in `Scripts\` instead of `bin/`:
 
 ```bat
-py -m venv C:\try && C:\try\Scripts\pip install dist\datapack_emulator-0.3.0-py3-none-any.whl
+py -m venv C:\try && C:\try\Scripts\pip install dist\datapack_emulator-0.4.0-py3-none-any.whl
 C:\try\Scripts\datapack-emulator-cli project samples
 ```
 
@@ -147,8 +147,8 @@ Each release:
 ```sh
 # bump `version` in pyproject.toml in a pull request, merge it, then:
 git checkout main && git pull
-git tag v0.3.0
-git push origin v0.3.0        # the workflow builds, checks and publishes
+git tag v0.4.0
+git push origin v0.4.0        # the workflow builds, checks and publishes
 ```
 
 A version on PyPI can never be replaced or reused, only superseded: a wrong
@@ -162,4 +162,4 @@ workflow's last step at it with `repository-url: https://test.pypi.org/legacy/`.
 `datapack_emulator.__version__` reads it back from the installed
 distribution (`0.0.0+checkout` in a checkout that was never installed), and
 both programs print it with `--version`. Bump it, run the tests, tag
-(`git tag v0.3.0`), then build and upload.
+(`git tag v0.4.0`), then build and upload.
