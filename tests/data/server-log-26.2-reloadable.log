@@ -1,0 +1,57 @@
+[09:39:30] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, profilesHost=https://api.mojang.com, name=PROD]
+[09:39:30] [ServerMain/INFO]: Found new data pack file/zoo, loading it automatically
+[09:39:30] [Worker-Main-1/ERROR]: Couldn't load tag zoo:bad as it is missing following references: minecraft:not_an_item (from file/zoo)
+[09:39:31] [Worker-Main-1/INFO]: No existing world data, creating new world
+[09:39:31] [Worker-Main-1/ERROR]: No key layers in MapLike[{}]
+[09:39:31] [Worker-Main-3/ERROR]: Couldn't parse data file 'zoo:bad' from 'zoo:item_modifier/bad.json': DataResult.Error['Failed to parse either. First: Unknown registry key in ResourceKey[minecraft:root / minecraft:loot_function_type]: minecraft:set_nbt; Second: Not a json array: {"function":"minecraft:set_nbt","tag":"{}"}']
+[09:39:31] [Worker-Main-8/ERROR]: Couldn't parse data file 'zoo:bad' from 'zoo:predicate/bad.json': DataResult.Error['Failed to parse either. First: Unknown registry key in ResourceKey[minecraft:root / minecraft:loot_condition_type]: minecraft:not_a_condition; Second: Not a json array: {"condition":"minecraft:not_a_condition"}']
+[09:39:31] [Worker-Main-9/ERROR]: Couldn't parse data file 'zoo:bad_json' from 'zoo:loot_table/bad_json.json'
+com.google.gson.JsonSyntaxException: com.google.gson.stream.MalformedJsonException: Use JsonReader.setStrictness(Strictness.LENIENT) to accept malformed JSON at line 1 column 3 path $.
+See https://github.com/google/gson/blob/main/Troubleshooting.md#malformed-json
+Caused by: com.google.gson.stream.MalformedJsonException: Use JsonReader.setStrictness(Strictness.LENIENT) to accept malformed JSON at line 1 column 3 path $.
+See https://github.com/google/gson/blob/main/Troubleshooting.md#malformed-json
+[09:39:31] [Worker-Main-9/ERROR]: Couldn't parse data file 'zoo:bad_shape' from 'zoo:loot_table/bad_shape.json': DataResult.Error['Unknown registry key in ResourceKey[minecraft:root / minecraft:item]: minecraft:nonexistent_item': net.minecraft.world.level.storage.loot.LootTable@6a2020c7]
+[09:39:31] [Worker-Main-9/ERROR]: Couldn't parse data file 'zoo:old_result' from 'zoo:recipe/old_result.json': DataResult.Error['Failed to parse either. First: No key id in MapLike[{"item":"minecraft:diamond"}]; Second: Not a string: {"item":"minecraft:diamond"}']
+[09:39:31] [Worker-Main-5/ERROR]: Couldn't parse data file 'zoo:no_criteria' from 'zoo:advancement/no_criteria.json': DataResult.Error['No key criteria in MapLike[{"display":{"title":"x","description":"y","icon":{"id":"minecraft:stone"}}}]']
+[09:39:31] [ServerMain/INFO]: Loaded 1585 recipes
+[09:39:31] [ServerMain/ERROR]: Failed to load function zoo:bad_nbt
+java.util.concurrent.CompletionException: java.lang.IllegalArgumentException: Whilst parsing command on line 1: Expected whitespace to end one argument, but found trailing data at position 21: ...mond_sword<--[HERE]
+Caused by: java.lang.IllegalArgumentException: Whilst parsing command on line 1: Expected whitespace to end one argument, but found trailing data at position 21: ...mond_sword<--[HERE]
+[09:39:31] [ServerMain/ERROR]: Failed to load function zoo:bad_cmd
+java.util.concurrent.CompletionException: java.lang.IllegalArgumentException: Whilst parsing command on line 2: Unknown or incomplete command. See below for error at position 0: <--[HERE]
+Caused by: java.lang.IllegalArgumentException: Whilst parsing command on line 2: Unknown or incomplete command. See below for error at position 0: <--[HERE]
+[09:39:31] [ServerMain/ERROR]: Couldn't load tag minecraft:tick as it is missing following references: zoo:nope (from file/zoo)
+[09:39:31] [ServerMain/INFO]: Loaded 1688 advancements
+[09:39:31] [Server thread/INFO]: Starting minecraft server version 26.2
+[09:39:31] [Server thread/INFO]: Loading properties
+[09:39:31] [Server thread/INFO]: Default game type: SURVIVAL
+[09:39:31] [Server thread/INFO]: Generating keypair
+[09:39:31] [Server thread/INFO]: Starting Minecraft server on *:35985
+[09:39:31] [Server thread/WARN]: **** SERVER IS RUNNING IN OFFLINE/INSECURE MODE!
+[09:39:31] [Server thread/WARN]: The server will make no attempt to authenticate usernames. Beware.
+[09:39:31] [Server thread/WARN]: While this makes the game possible to play without internet access, it also opens up the ability for hackers to connect with any username they choose.
+[09:39:31] [Server thread/WARN]: To change this, set "online-mode" to "true" in the server.properties file.
+[09:39:31] [Server thread/INFO]: Preparing level "world"
+[09:39:31] [Server thread/INFO]: Selecting global world spawn...
+[09:39:32] [Server thread/INFO]: Loading 0 persistent chunks...
+[09:39:32] [Server thread/INFO]: Preparing spawn area: 100%
+[09:39:32] [Server thread/INFO]: Time elapsed: 192 ms
+[09:39:32] [Server thread/INFO]: Done (0.289s)! For help, type "help"
+[09:39:32] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[09:39:32] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[09:39:32] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage (world): All chunks are saved
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM-1): All chunks are saved
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM1): All chunks are saved
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage: All dimensions are saved
+[09:39:32] [Server thread/INFO]: Stopping the server
+[09:39:32] [Server thread/INFO]: Stopping server
+[09:39:32] [Server thread/INFO]: Saving players
+[09:39:32] [Server thread/INFO]: Saving worlds
+[09:39:32] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:overworld
+[09:39:32] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_nether
+[09:39:32] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'/minecraft:the_end
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage (world): All chunks are saved
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM-1): All chunks are saved
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage (DIM1): All chunks are saved
+[09:39:32] [Server thread/INFO]: ThreadedAnvilChunkStorage: All dimensions are saved

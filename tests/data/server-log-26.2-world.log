@@ -1,0 +1,25 @@
+[09:39:52] [ServerMain/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, servicesHost=https://api.minecraftservices.com, profilesHost=https://api.mojang.com, name=PROD]
+[09:39:52] [ServerMain/WARN]: Error reading pack metadata, attempting fallback type
+com.google.gson.JsonParseException: Pack declares support for version newer than 81, but is missing mandatory fields min_format and max_format
+[09:39:52] [ServerMain/INFO]: Found new data pack file/crystal, loading it automatically
+[09:39:53] [Worker-Main-6/ERROR]: Registry loading errors:
+> Errors in registry minecraft:dimension_type:
+>> Errors in element crystal:crystal_void:
+java.lang.IllegalStateException: Failed to parse crystal:crystal_void from pack file/crystal
+Caused by: java.lang.IllegalStateException: No key has_ender_dragon_fight in MapLike[{"ambient_light":0.5,"bed_works":false,"coordinate_scale":8.0,"effects":"minecraft:the_end","has_ceiling":false,"has_raids":false,"has_skylight":true,"height":256,"infiniburn":"#minecraft:infiniburn_end","logical_height":256,"min_y":0,"monster_spawn_block_light_limit":7,"monster_spawn_light_level":{"type":"minecraft:uniform","max_inclusive":7,"min_inclusive":0},"natural":false,"piglin_safe":true,"respawn_anchor_works":true,"ultrawarm":false}]
+> Errors in registry minecraft:root:
+>> Errors in element minecraft:worldgen/configured_feature:
+java.lang.IllegalStateException: Unbound values in registry ResourceKey[minecraft:root / minecraft:worldgen/configured_feature]: [crystal:amethyst_clusters]
+> Errors in registry minecraft:worldgen/configured_feature:
+>> Errors in element crystal:amethyst_clusters:
+java.lang.IllegalStateException: Failed to parse crystal:amethyst_clusters from pack file/crystal
+Caused by: java.lang.IllegalStateException: Unknown registry key in ResourceKey[minecraft:root / minecraft:worldgen/feature]: minecraft:random_patch
+> Errors in registry minecraft:worldgen/noise_settings:
+>> Errors in element crystal:crystal_void:
+java.lang.IllegalStateException: Failed to parse crystal:crystal_void from pack file/crystal
+Caused by: java.lang.IllegalStateException: No key preliminary_surface_level in MapLike[{"barrier":0,"fluid_level_floodedness":0,"fluid_level_spread":0,"lava":0,"temperature":0,"vegetation":0,"continents":0,"erosion":0,"depth":0,"ridges":0,"initial_density_without_jaggedness":0,"final_density":{"type":"minecraft:add","argument1":{"type":"minecraft:y_clamped_gradient","from_y":0,"to_y":128,"from_value":1.0,"to_value":-1.0},"argument2":{"type":"minecraft:mul","argument1":0.5,"argument2":{"type":"minecraft:noise","noise":"minecraft:gravel","xz_scale":0.1,"y_scale":0.1}}},"vein_toggle":0,"vein_ridged":0,"vein_gap":0}]
+
+[09:39:53] [ServerMain/WARN]: Failed to load datapacks, can't proceed with server load. You can either fix your datapacks or reset to vanilla with --safeMode
+java.util.concurrent.ExecutionException: net.minecraft.ReportedException: Registry Loading
+Caused by: net.minecraft.ReportedException: Registry Loading
+Caused by: java.lang.IllegalStateException: Failed to load registries due to errors

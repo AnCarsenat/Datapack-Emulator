@@ -75,6 +75,13 @@ load"), so fix them before anything else. Without a client jar only the
 parse failures are found; with one (`vanilla="auto"` finds an installed
 jar) the missing fields and removed kinds are too.
 
+**`server=True, accept_eula=True`** also runs the pack on a real dedicated
+server of each version (Java; the jar is downloaded once) and adds, under
+`results[].server`, what the server's log says about it: `started` (false:
+the world did not load), `counts`, `problems` (messages start with
+`server:`), `log`. Its fatal problems join `load_blockers`. Only pass
+`accept_eula=True` when the user said they accept the Minecraft EULA.
+
 ```json
 {
   "ok": false,
