@@ -1,0 +1,782 @@
+{
+ "kind": "datapack-emulator cost calibration",
+ "minecraft": "26.2",
+ "measured_at": "2026-11-06T22:08:03",
+ "machine": {
+  "cpu": "Intel(R) Core(TM) 5 120U",
+  "system": "Linux 7.2.14-arch1-1",
+  "java": "openjdk version \"27.0.1.0.3\" 2026-10-24",
+  "cores": "12"
+ },
+ "scale_of_old_model": 0.03399,
+ "measured": [
+  "COMMAND_COST_US[attribute]",
+  "COMMAND_COST_US[data]",
+  "COMMAND_COST_US[effect]",
+  "COMMAND_COST_US[execute]",
+  "COMMAND_COST_US[fill]",
+  "COMMAND_COST_US[function]",
+  "COMMAND_COST_US[item]",
+  "COMMAND_COST_US[kill]",
+  "COMMAND_COST_US[particle]",
+  "COMMAND_COST_US[schedule]",
+  "COMMAND_COST_US[scoreboard]",
+  "COMMAND_COST_US[setblock]",
+  "COMMAND_COST_US[summon]",
+  "COMMAND_COST_US[tag]",
+  "COMMAND_COST_US[tellraw]",
+  "COMMAND_COST_US[tp]",
+  "CONDITION_COST_US[block]",
+  "CONDITION_COST_US[data]",
+  "CONDITION_COST_US[entity]",
+  "CONDITION_COST_US[predicate]",
+  "CONDITION_COST_US[score]",
+  "DATA_ENTITY_EXTRA_US",
+  "MACRO_CALL_OVERHEAD_US",
+  "SELECTOR_BASE_COST_US[@a]",
+  "SELECTOR_BASE_COST_US[@e]",
+  "SELECTOR_BASE_COST_US[@s]",
+  "SUBCOMMAND_COST_US[as]",
+  "SUBCOMMAND_COST_US[at]",
+  "SUBCOMMAND_COST_US[if]",
+  "SUBCOMMAND_COST_US[store]",
+  "VOLUME_COST_US_PER_BLOCK",
+  "LIMIT_DISCOUNT",
+  "NBT_FILTER_COST_US",
+  "SELECTOR_PER_ENTITY_COST_US",
+  "TYPE_FILTER_DISCOUNT"
+ ],
+ "values": {
+  "COMMAND_COST_US": {
+   "#": 0.0,
+   "": 0.0,
+   "say": 0.102,
+   "me": 0.102,
+   "msg": 0.102,
+   "tell": 0.102,
+   "w": 0.102,
+   "tellraw": 0.3808,
+   "title": 0.2719,
+   "titleraw": 0.2719,
+   "bossbar": 0.3399,
+   "scoreboard": 0.433,
+   "trigger": 0.068,
+   "execute": 0.238,
+   "function": 0.1184,
+   "return": 0.017,
+   "schedule": 0.5447,
+   "tag": 0.3716,
+   "team": 0.1699,
+   "summon": 3.3087,
+   "kill": 3.621,
+   "tp": 3.0062,
+   "teleport": 0.5098,
+   "ride": 0.6798,
+   "attribute": 0.3509,
+   "effect": 0.5305,
+   "damage": 0.8497,
+   "spawnpoint": 0.3399,
+   "experience": 0.2719,
+   "xp": 0.2719,
+   "gamemode": 0.2719,
+   "item": 0.3852,
+   "give": 3.0589,
+   "clear": 2.0393,
+   "loot": 4.0786,
+   "enchant": 2.0393,
+   "recipe": 0.5098,
+   "data": 0.5554,
+   "setblock": 3.2259,
+   "fill": 15.8358,
+   "clone": 20.393,
+   "place": 16.9942,
+   "fillbiome": 13.5953,
+   "setworldspawn": 0.3399,
+   "forceload": 1.6994,
+   "worldborder": 0.1699,
+   "time": 0.068,
+   "weather": 0.1699,
+   "difficulty": 0.068,
+   "gamerule": 0.068,
+   "seed": 0.034,
+   "particle": 0.6639,
+   "playsound": 0.3399,
+   "stopsound": 0.1699,
+   "spectate": 0.1699,
+   "advancement": 1.3595,
+   "datapack": 3.3988,
+   "reload": 1699.4161,
+   "perf": 0.3399,
+   "debug": 0.3399
+  },
+  "SUBCOMMAND_COST_US": {
+   "align": 0.034,
+   "anchored": 0.017,
+   "as": 0.0198,
+   "at": 0.0198,
+   "facing": 0.068,
+   "in": 0.034,
+   "on": 0.2719,
+   "positioned": 0.034,
+   "rotated": 0.034,
+   "summon": 4.0786,
+   "if": 0.1407,
+   "unless": 0.068,
+   "store": 0.2011,
+   "run": 0.0
+  },
+  "CONDITION_COST_US": {
+   "score": 0.1319,
+   "entity": 0.3782,
+   "block": 0.0348,
+   "blocks": 10.1965,
+   "biome": 0.8497,
+   "data": 0.0362,
+   "predicate": 0.2486,
+   "dimension": 0.034,
+   "loaded": 0.1699,
+   "items": 3.0589,
+   "function": 0.034
+  },
+  "SELECTOR_BASE_COST_US": {
+   "@s": 0.0198,
+   "@p": 0.136,
+   "@r": 0.136,
+   "@a": 0.2145,
+   "@e": 0.0,
+   "@n": 0.8497
+  },
+  "DEFAULT_COMMAND_COST_US": 0.1699,
+  "MACRO_CALL_OVERHEAD_US": 0.0405,
+  "VOLUME_COST_US_PER_BLOCK": 2.2996,
+  "DATA_ENTITY_EXTRA_US": 2.7919,
+  "SELECTOR_PER_ENTITY_COST_US": 0.01322,
+  "TYPE_FILTER_DISCOUNT": 1.0,
+  "LIMIT_DISCOUNT": 0.5,
+  "NBT_FILTER_COST_US": 1.43184
+ },
+ "benchmarks": [
+  {
+   "benchmark": "score_add",
+   "phase": "base",
+   "entities": 1,
+   "reps": 2000,
+   "measured_us_per_rep": 0.4134,
+   "old_model_us_per_rep": 1.5,
+   "fitted_us_per_rep": 0.433
+  },
+  {
+   "benchmark": "score_operation",
+   "phase": "base",
+   "entities": 1,
+   "reps": 2000,
+   "measured_us_per_rep": 0.4675,
+   "old_model_us_per_rep": 1.5,
+   "fitted_us_per_rep": 0.433
+  },
+  {
+   "benchmark": "score_get",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.3626,
+   "old_model_us_per_rep": 1.5,
+   "fitted_us_per_rep": 0.433
+  },
+  {
+   "benchmark": "storage_set",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.6646,
+   "old_model_us_per_rep": 180.0,
+   "fitted_us_per_rep": 0.5554
+  },
+  {
+   "benchmark": "storage_get",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.3938,
+   "old_model_us_per_rep": 180.0,
+   "fitted_us_per_rep": 0.5554
+  },
+  {
+   "benchmark": "storage_merge",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 0.8218,
+   "old_model_us_per_rep": 180.0,
+   "fitted_us_per_rep": 0.5554
+  },
+  {
+   "benchmark": "execute_run",
+   "phase": "base",
+   "entities": 1,
+   "reps": 2000,
+   "measured_us_per_rep": 0.6208,
+   "old_model_us_per_rep": 2.5,
+   "fitted_us_per_rep": 0.671
+  },
+  {
+   "benchmark": "if_score",
+   "phase": "base",
+   "entities": 1,
+   "reps": 2000,
+   "measured_us_per_rep": 0.8819,
+   "old_model_us_per_rep": 6.5,
+   "fitted_us_per_rep": 0.9436
+  },
+  {
+   "benchmark": "if_data",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.3882,
+   "old_model_us_per_rep": 183.0,
+   "fitted_us_per_rep": 0.4149
+  },
+  {
+   "benchmark": "if_block",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.3951,
+   "old_model_us_per_rep": 23.0,
+   "fitted_us_per_rep": 0.4135
+  },
+  {
+   "benchmark": "if_predicate",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.5758,
+   "old_model_us_per_rep": 33.0,
+   "fitted_us_per_rep": 0.6273
+  },
+  {
+   "benchmark": "if_entity_all",
+   "phase": "base",
+   "entities": 1,
+   "reps": 200,
+   "measured_us_per_rep": 0.6145,
+   "old_model_us_per_rep": 34.35,
+   "fitted_us_per_rep": 0.7701
+  },
+  {
+   "benchmark": "if_entity_type",
+   "phase": "base",
+   "entities": 1,
+   "reps": 200,
+   "measured_us_per_rep": 0.5798,
+   "old_model_us_per_rep": 34.0875,
+   "fitted_us_per_rep": 0.7701
+  },
+  {
+   "benchmark": "if_entity_limit",
+   "phase": "base",
+   "entities": 1,
+   "reps": 200,
+   "measured_us_per_rep": 0.553,
+   "old_model_us_per_rep": 34.21,
+   "fitted_us_per_rep": 0.7635
+  },
+  {
+   "benchmark": "store_result",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.8198,
+   "old_model_us_per_rep": 5.5,
+   "fitted_us_per_rep": 0.8721
+  },
+  {
+   "benchmark": "as_at",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 1.21,
+   "old_model_us_per_rep": 29.7525,
+   "fitted_us_per_rep": 0.737
+  },
+  {
+   "benchmark": "tag",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.3768,
+   "old_model_us_per_rep": 3.2293,
+   "fitted_us_per_rep": 0.3918
+  },
+  {
+   "benchmark": "entity_get",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 2.9987,
+   "old_model_us_per_rep": 183.2585,
+   "fitted_us_per_rep": 3.3679
+  },
+  {
+   "benchmark": "if_data_entity",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 2.9164,
+   "old_model_us_per_rep": 186.2585,
+   "fitted_us_per_rep": 3.2274
+  },
+  {
+   "benchmark": "entity_modify",
+   "phase": "base",
+   "entities": 1,
+   "reps": 300,
+   "measured_us_per_rep": 3.2227,
+   "old_model_us_per_rep": 183.2975,
+   "fitted_us_per_rep": 3.3685
+  },
+  {
+   "benchmark": "tp",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 2.8513,
+   "old_model_us_per_rep": 15.2293,
+   "fitted_us_per_rep": 3.0264
+  },
+  {
+   "benchmark": "effect",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 0.5155,
+   "old_model_us_per_rep": 20.2585,
+   "fitted_us_per_rep": 0.5511
+  },
+  {
+   "benchmark": "attribute",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.3429,
+   "old_model_us_per_rep": 20.2293,
+   "fitted_us_per_rep": 0.3711
+  },
+  {
+   "benchmark": "item",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 0.3769,
+   "old_model_us_per_rep": 90.2585,
+   "fitted_us_per_rep": 0.4058
+  },
+  {
+   "benchmark": "function",
+   "phase": "base",
+   "entities": 1,
+   "reps": 2000,
+   "measured_us_per_rep": 0.1098,
+   "old_model_us_per_rep": 1.0,
+   "fitted_us_per_rep": 0.1184
+  },
+  {
+   "benchmark": "macro",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 0.5426,
+   "old_model_us_per_rep": 32.5,
+   "fitted_us_per_rep": 0.5919
+  },
+  {
+   "benchmark": "schedule",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.5095,
+   "old_model_us_per_rep": 4.0,
+   "fitted_us_per_rep": 0.5447
+  },
+  {
+   "benchmark": "setblock",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 3.0572,
+   "old_model_us_per_rep": 40.0,
+   "fitted_us_per_rep": 3.2259
+  },
+  {
+   "benchmark": "fill",
+   "phase": "base",
+   "entities": 1,
+   "reps": 50,
+   "measured_us_per_rep": 153.3692,
+   "old_model_us_per_rep": 451.2,
+   "fitted_us_per_rep": 163.0102
+  },
+  {
+   "benchmark": "fill_large",
+   "phase": "base",
+   "entities": 1,
+   "reps": 10,
+   "measured_us_per_rep": 1172.131,
+   "old_model_us_per_rep": 809.6,
+   "fitted_us_per_rep": 1193.231
+  },
+  {
+   "benchmark": "summon",
+   "phase": "base",
+   "entities": 1,
+   "reps": 100,
+   "measured_us_per_rep": 2.9153,
+   "old_model_us_per_rep": 120.0,
+   "fitted_us_per_rep": 3.3087
+  },
+  {
+   "benchmark": "kill",
+   "phase": "base",
+   "entities": 1,
+   "reps": 100,
+   "measured_us_per_rep": 1.3677,
+   "old_model_us_per_rep": 50.0525,
+   "fitted_us_per_rep": 3.6276
+  },
+  {
+   "benchmark": "tellraw",
+   "phase": "base",
+   "entities": 1,
+   "reps": 1000,
+   "measured_us_per_rep": 0.5495,
+   "old_model_us_per_rep": 10.0,
+   "fitted_us_per_rep": 0.5953
+  },
+  {
+   "benchmark": "particle",
+   "phase": "base",
+   "entities": 1,
+   "reps": 500,
+   "measured_us_per_rep": 0.6113,
+   "old_model_us_per_rep": 12.0,
+   "fitted_us_per_rep": 0.6639
+  },
+  {
+   "benchmark": "score_add",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 2000,
+   "measured_us_per_rep": 0.4682,
+   "old_model_us_per_rep": 1.5,
+   "fitted_us_per_rep": 0.433
+  },
+  {
+   "benchmark": "score_operation",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 2000,
+   "measured_us_per_rep": 0.5539,
+   "old_model_us_per_rep": 1.5,
+   "fitted_us_per_rep": 0.433
+  },
+  {
+   "benchmark": "score_get",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.4218,
+   "old_model_us_per_rep": 1.5,
+   "fitted_us_per_rep": 0.433
+  },
+  {
+   "benchmark": "storage_set",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.8367,
+   "old_model_us_per_rep": 180.0,
+   "fitted_us_per_rep": 0.5554
+  },
+  {
+   "benchmark": "storage_get",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.4594,
+   "old_model_us_per_rep": 180.0,
+   "fitted_us_per_rep": 0.5554
+  },
+  {
+   "benchmark": "storage_merge",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 0.9792,
+   "old_model_us_per_rep": 180.0,
+   "fitted_us_per_rep": 0.5554
+  },
+  {
+   "benchmark": "execute_run",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 2000,
+   "measured_us_per_rep": 0.7442,
+   "old_model_us_per_rep": 2.5,
+   "fitted_us_per_rep": 0.671
+  },
+  {
+   "benchmark": "if_score",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 2000,
+   "measured_us_per_rep": 1.0277,
+   "old_model_us_per_rep": 6.5,
+   "fitted_us_per_rep": 0.9436
+  },
+  {
+   "benchmark": "if_data",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.4531,
+   "old_model_us_per_rep": 183.0,
+   "fitted_us_per_rep": 0.4149
+  },
+  {
+   "benchmark": "if_block",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.4358,
+   "old_model_us_per_rep": 23.0,
+   "fitted_us_per_rep": 0.4135
+  },
+  {
+   "benchmark": "if_predicate",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.7044,
+   "old_model_us_per_rep": 33.0,
+   "fitted_us_per_rep": 0.6273
+  },
+  {
+   "benchmark": "if_entity_all",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 200,
+   "measured_us_per_rep": 13.8324,
+   "old_model_us_per_rep": 384.35,
+   "fitted_us_per_rep": 13.9901
+  },
+  {
+   "benchmark": "if_entity_type",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 200,
+   "measured_us_per_rep": 16.8536,
+   "old_model_us_per_rep": 121.5875,
+   "fitted_us_per_rep": 13.9901
+  },
+  {
+   "benchmark": "if_entity_limit",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 200,
+   "measured_us_per_rep": 0.5084,
+   "old_model_us_per_rep": 244.21,
+   "fitted_us_per_rep": 7.3735
+  },
+  {
+   "benchmark": "if_entity_nbt",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 20,
+   "measured_us_per_rep": 1446.4986,
+   "old_model_us_per_rep": 150271.5875,
+   "fitted_us_per_rep": 1447.262
+  },
+  {
+   "benchmark": "store_result",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.9413,
+   "old_model_us_per_rep": 5.5,
+   "fitted_us_per_rep": 0.8721
+  },
+  {
+   "benchmark": "as_at",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 1.4235,
+   "old_model_us_per_rep": 82.2525,
+   "fitted_us_per_rep": 7.347
+  },
+  {
+   "benchmark": "tag",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.4115,
+   "old_model_us_per_rep": 3.2818,
+   "fitted_us_per_rep": 0.3984
+  },
+  {
+   "benchmark": "entity_get",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 3.7019,
+   "old_model_us_per_rep": 183.3635,
+   "fitted_us_per_rep": 3.3812
+  },
+  {
+   "benchmark": "if_data_entity",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 3.5958,
+   "old_model_us_per_rep": 186.3635,
+   "fitted_us_per_rep": 3.2407
+  },
+  {
+   "benchmark": "entity_modify",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 300,
+   "measured_us_per_rep": 4.0588,
+   "old_model_us_per_rep": 183.4725,
+   "fitted_us_per_rep": 3.3905
+  },
+  {
+   "benchmark": "tp",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 3.2574,
+   "old_model_us_per_rep": 15.2818,
+   "fitted_us_per_rep": 3.033
+  },
+  {
+   "benchmark": "effect",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 0.6027,
+   "old_model_us_per_rep": 20.3635,
+   "fitted_us_per_rep": 0.5644
+  },
+  {
+   "benchmark": "attribute",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.4133,
+   "old_model_us_per_rep": 20.2818,
+   "fitted_us_per_rep": 0.3777
+  },
+  {
+   "benchmark": "item",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 0.4495,
+   "old_model_us_per_rep": 90.3635,
+   "fitted_us_per_rep": 0.4191
+  },
+  {
+   "benchmark": "function",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 2000,
+   "measured_us_per_rep": 0.1304,
+   "old_model_us_per_rep": 1.0,
+   "fitted_us_per_rep": 0.1184
+  },
+  {
+   "benchmark": "macro",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 0.6661,
+   "old_model_us_per_rep": 32.5,
+   "fitted_us_per_rep": 0.5919
+  },
+  {
+   "benchmark": "schedule",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.5924,
+   "old_model_us_per_rep": 4.0,
+   "fitted_us_per_rep": 0.5447
+  },
+  {
+   "benchmark": "setblock",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 3.4394,
+   "old_model_us_per_rep": 40.0,
+   "fitted_us_per_rep": 3.2259
+  },
+  {
+   "benchmark": "fill",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 50,
+   "measured_us_per_rep": 173.257,
+   "old_model_us_per_rep": 451.2,
+   "fitted_us_per_rep": 163.0102
+  },
+  {
+   "benchmark": "fill_large",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 10,
+   "measured_us_per_rep": 1345.1052,
+   "old_model_us_per_rep": 809.6,
+   "fitted_us_per_rep": 1193.231
+  },
+  {
+   "benchmark": "summon",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 100,
+   "measured_us_per_rep": 4.0786,
+   "old_model_us_per_rep": 120.0,
+   "fitted_us_per_rep": 3.3087
+  },
+  {
+   "benchmark": "kill",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 100,
+   "measured_us_per_rep": 25.2306,
+   "old_model_us_per_rep": 102.5525,
+   "fitted_us_per_rep": 10.2376
+  },
+  {
+   "benchmark": "tellraw",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 1000,
+   "measured_us_per_rep": 0.6617,
+   "old_model_us_per_rep": 10.0,
+   "fitted_us_per_rep": 0.5953
+  },
+  {
+   "benchmark": "particle",
+   "phase": "markers",
+   "entities": 1001,
+   "reps": 500,
+   "measured_us_per_rep": 0.7412,
+   "old_model_us_per_rep": 12.0,
+   "fitted_us_per_rep": 0.6639
+  }
+ ],
+ "median_relative_error": 0.086
+}

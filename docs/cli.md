@@ -668,6 +668,35 @@ command** (so `--duplicate 1 --remove 1` keeps only the copy, and
 
 Every change is written back to the file, datapacks included, as *save* does.
 
+## `server-profile` — real timings from a server
+
+```sh
+datapack-emulator-cli server-profile debug/profiling/2026-11-06_22_02_13-world-26_2.zip
+datapack-emulator-cli server-profile report.zip --pack ./my_pack --ticks 200 --json
+```
+
+Reads the zip a Minecraft server writes after `/perf start` (in
+`debug/profiling/`; `server/profiling.txt` inside it also works) and prints
+the measured ms per tick of every function and the cost of each of its lines
+(lines from 1.20.3). With `--pack`, the pack is emulated (`--version`,
+default the report's; `--ticks`; `--players`) and each function gets the
+emulator's estimate and the ratio measured / estimated. `--top`, `--lines`
+limit the output; `--json` for scripts. See [costs](costs.md#real-timings-for-your-pack).
+
+## `calibrate` — measure the cost model on a real server
+
+```sh
+datapack-emulator-cli calibrate --version 26.2 --accept-eula [--install]
+```
+
+Runs a benchmark pack on a vanilla dedicated server (downloaded, or
+`--server-jar`; needs Java, `--java`), takes `--runs` `/perf` reports per
+phase (default 3), fits the cost model and writes
+`generated/calibration-<version>.json` (`--out`). `--install` also makes
+every later run use it. About two minutes; 1.20.3 or newer. Running a
+Minecraft server means accepting the [Minecraft EULA](https://aka.ms/MinecraftEULA):
+it refuses without `--accept-eula`. See [costs](costs.md#calibrating-on-your-machine).
+
 ## `versions`
 
 Lists every known release with its pack format and data version.

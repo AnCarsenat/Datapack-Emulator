@@ -23,7 +23,7 @@ import logging
 import traceback
 
 from datapack_emulator import __version__
-from datapack_emulator.cli import check, inspect, jars, projects, runs, schemas, world
+from datapack_emulator.cli import check, inspect, jars, perf, projects, runs, schemas, world
 from datapack_emulator.cli.common import CRASHED, USAGE, CliError, err
 
 PROG = "datapack-emulator-cli"
@@ -52,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     schemas.register(subparsers)
     projects.register(subparsers)
     jars.register(subparsers)
+    perf.register(subparsers)
     return parser
 
 
@@ -63,6 +64,9 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(message)s",
     )
     try:
+        from datapack_emulator.emulator import costs
+
+        costs.ensure_user_calibration()
         return arguments.handler(arguments)
     except CliError as exc:
         err(f"{PROG}: {exc}")

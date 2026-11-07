@@ -137,8 +137,11 @@ Records have a `source`, and the difference matters:
 | `app` | loading, reports | context |
 
 Pass `entities=True` for every entity's full NBT and the placed blocks (large).
-`profile` numbers are **estimates from a cost model**, not measurements — good
-for "which function is dearest", not for absolute timings.
+`profile` numbers come from a cost model **measured on a real 26.2 server**
+(see [costs.md](costs.md)), but measured in warm loops: read them as a
+lower bound and a ranking — right about which function is dearest and how a
+change moves it — not as a real tick time. For real numbers, use
+`server_profile` below.
 
 ### `test(packs, tests, version=None, versions=None, *, expect="", expect_value="", checks=(), ticks=None, ...)`
 
@@ -178,6 +181,15 @@ One row per version: `status` (`ok`, `warnings`, `errors`, `tests failed`,
 warnings with their records. Without a selection: the range `pack.mcmeta`
 declares. `boundaries=True` keeps the first release of each pack format —
 usually all a compatibility check needs.
+
+### `server_profile(report, packs=None, version=None, *, ticks=200, players=1)`
+
+Real timings from a server's `/perf` report (the zip a server writes to
+`debug/profiling/` after `/perf start`). `functions[]`: each function's
+measured `ms_per_tick`, `calls_per_tick` and its dearest `lines[]`
+(`command`, `runs_per_tick`, `us_each`). `mspt` is the server's whole tick;
+`ok` is false when it was over 50 ms. With `packs`, `compared.functions[]`
+puts the emulator's estimate and the `ratio` beside each one.
 
 ### `explain(packs, command, version=None)`
 

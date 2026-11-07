@@ -17,7 +17,8 @@ or `datapack-emulator-cli --quiet run|test|matrix|check ... --json`. Always
 pass the version the pack targets. Read `summary` first, `ok` next. A `game`
 record is what Minecraft would say; an `emulator` record is a limit of the
 emulation (see [docs/emulation.md](docs/emulation.md)), not a bug in the pack.
-Timings are estimates from a cost model.
+Timings come from a cost model measured on a real server (a lower bound and a
+ranking, see docs/costs.md); `agent.server_profile` reads real `/perf` reports.
 
 ## Changing this repository
 

@@ -77,3 +77,6 @@ class PATHS:
     GENERATED = ROOT / "generated"
     CACHE = _CACHE
     VANILLA_CACHE = _CACHE / "vanilla"
+    #: the per-user data folder, from a checkout too: what belongs to this
+    #: machine rather than to a project (the cost calibration, costs.json)
+    DATA = user_dirs()[0]
