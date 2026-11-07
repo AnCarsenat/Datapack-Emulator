@@ -14,11 +14,13 @@
    <string>Datapack Emulator</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">background-color: rgb(255, 255, 255);
-alternate-background-color: rgb(246, 246, 246);
-color: rgb(0, 0, 0);
-selection-color: rgb(0, 0, 255);
-selection-background-color: rgb(228, 251, 255);
+   <string notr="true">QWidget {
+    background-color: rgb(255, 255, 255);
+    alternate-background-color: rgb(246, 246, 246);
+    color: rgb(0, 0, 0);
+    selection-color: rgb(0, 0, 255);
+    selection-background-color: rgb(228, 251, 255);
+}
 
 QMenuBar {
     border: none;
@@ -32,7 +34,27 @@ QMenuBar::item {
 
 QMenuBar::item:selected {
     border-radius: 0px;
+}
+
+QMainWindow::separator {
+    background-color: rgb(222, 222, 222);
+    width: 6px;
+    height: 6px;
+}
+
+QMainWindow::separator:hover {
+    background-color: rgb(120, 160, 230);
+}
+
+QDockWidget::title {
+    background-color: rgb(232, 236, 242);
+    border-bottom: 1px solid rgb(205, 210, 218);
+    padding: 4px 6px;
+    text-align: left;
 }</string>
+  </property>
+  <property name="dockOptions">
+   <set>QMainWindow::AnimatedDocks|QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks</set>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="centralLayout">
@@ -888,8 +910,8 @@ QMenuBar::item:selected {
   <widget class="QDockWidget" name="dockWidgetExplorer">
    <property name="minimumSize">
     <size>
-     <width>220</width>
-     <height>220</height>
+     <width>150</width>
+     <height>80</height>
     </size>
    </property>
    <property name="windowTitle">
@@ -928,8 +950,8 @@ QMenuBar::item:selected {
   <widget class="QDockWidget" name="dockWidgetInspector">
    <property name="minimumSize">
     <size>
-     <width>260</width>
-     <height>220</height>
+     <width>150</width>
+     <height>80</height>
     </size>
    </property>
    <property name="windowTitle">
@@ -1099,6 +1121,7 @@ QMenuBar::item:selected {
     <addaction name="actiondebugger"/>
     <addaction name="actionproblems"/>
     <addaction name="actionreset_layout"/>
+    <addaction name="actionlock_layout"/>
     <addaction name="separator"/>
     <addaction name="actionenvironment"/>
     <addaction name="actionprofile"/>
@@ -1118,8 +1141,8 @@ QMenuBar::item:selected {
   <widget class="QDockWidget" name="dockWidgetLogs">
    <property name="minimumSize">
     <size>
-     <width>400</width>
-     <height>190</height>
+     <width>150</width>
+     <height>80</height>
     </size>
    </property>
    <property name="windowTitle">
@@ -1362,8 +1385,8 @@ QMenuBar::item:selected {
   <widget class="QDockWidget" name="dockWidgetWorld">
    <property name="minimumSize">
     <size>
-     <width>260</width>
-     <height>220</height>
+     <width>150</width>
+     <height>80</height>
     </size>
    </property>
    <property name="windowTitle">
@@ -1787,8 +1810,8 @@ QMenuBar::item:selected {
   <widget class="QDockWidget" name="dockWidgetDebug">
    <property name="minimumSize">
     <size>
-     <width>260</width>
-     <height>200</height>
+     <width>150</width>
+     <height>80</height>
     </size>
    </property>
    <property name="windowTitle">
@@ -2155,8 +2178,8 @@ QMenuBar::item:selected {
   <widget class="QDockWidget" name="dockWidgetProblems">
    <property name="minimumSize">
     <size>
-     <width>260</width>
-     <height>140</height>
+     <width>150</width>
+     <height>80</height>
     </size>
    </property>
    <property name="windowTitle">
@@ -2628,6 +2651,17 @@ QMenuBar::item:selected {
    </property>
    <property name="statusTip">
     <string>put every dock back where it starts, all of them open</string>
+   </property>
+  </action>
+  <action name="actionlock_layout">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>lock layout</string>
+   </property>
+   <property name="statusTip">
+    <string>keep every dock where it is: no dragging, floating or tabbing (they still resize and close)</string>
    </property>
   </action>
   <action name="actionadd_console_test">

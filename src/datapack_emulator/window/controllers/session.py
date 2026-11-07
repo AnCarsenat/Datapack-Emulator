@@ -34,6 +34,8 @@ class SessionController(Controller):
         self.recent_datapacks: list[str] = []
         #: start on the last project instead of the sample datapack
         self.open_last_on_launch = True
+        #: docks cannot be dragged, floated or tabbed (view > lock layout)
+        self.layout_locked = False
         self._default_state = QByteArray()
 
     def connect(self) -> None:
@@ -73,8 +75,20 @@ class SessionController(Controller):
         docks = data.get("docks")
         if isinstance(geometry, str):
             window.restoreGeometry(QByteArray.fromBase64(geometry.encode()))
-        if isinstance(docks, str):
-            window.restoreState(QByteArray.fromBase64(docks.encode()))
+        if isinstance(docks, str) and not window.restoreState(
+            QByteArray.fromBase64(docks.encode())
+        ):
+            # damaged, or written by a Qt that cannot be read back
+            log.warning("cannot restore the saved dock layout: using the default one")
+            window.restoreState(self._default_state)
+            window.show_all_docks()
+        self.layout_locked = data.get("lock_layout") is True
+        lock = window._action("actionlock_layout")
+        if lock is not None:
+            blocker = QSignalBlocker(lock)
+            lock.setChecked(self.layout_locked)
+            del blocker
+        window.set_layout_locked(self.layout_locked)
 
     def save(self) -> bool:
         """Write the state file; False when it could not be written."""
@@ -86,6 +100,7 @@ class SessionController(Controller):
                 "recent_projects": self.recent_projects,
                 "recent_datapacks": self.recent_datapacks,
                 "open_last_on_launch": self.open_last_on_launch,
+                "lock_layout": self.layout_locked,
                 "geometry": bytes(window.saveGeometry().toBase64()).decode(),
                 "docks": bytes(window.saveState().toBase64()).decode(),
             }
@@ -104,6 +119,12 @@ class SessionController(Controller):
             window.restoreState(self._default_state)
         window.show_all_docks()
         self.status("layout reset")
+
+    def set_layout_locked(self, locked: bool) -> None:
+        self.layout_locked = locked
+        self.window.set_layout_locked(locked)
+        self.save()
+        self.status("layout locked" if locked else "layout unlocked: drag a dock by its title")
 
     # -- recent lists -----------------------------------------------------------
 
