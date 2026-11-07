@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datapack-emulator"
-version = "0.2.0"
+version = "0.3.0"
 description = "Run, profile and version-test Minecraft datapacks outside the game."
 readme = "readme.md"
 license = "GPL-3.0-or-later"
