@@ -163,3 +163,34 @@ def test_prepare_writes_eula_and_properties(tmp_path):
     properties = (tmp_path / "srv" / "server.properties").read_text()
     assert "online-mode=false" in properties and "pause-when-empty-seconds=-1" in properties
     assert (tmp_path / "srv" / "eula.txt").read_text() == "eula=true\n"
+
+
+def test_a_folder_not_made_by_a_check_is_refused(tmp_path):
+    """Pointed at someone's real server folder, a run would delete its world."""
+    real = tmp_path / "my-server"
+    (real / "world").mkdir(parents=True)
+    (real / "world" / "level.dat").write_text("precious")
+    jar = tmp_path / "server.jar"
+    jar.write_text("x")
+    with pytest.raises(FileExistsError, match="not empty"):
+        check_on_server(
+            [tmp_path],
+            ["x"],
+            versions.parse("26.2"),
+            real,
+            accept_eula=True,
+            jar=jar,
+            java=sys.executable,
+        )
+    assert (real / "world" / "level.dat").read_text() == "precious"
+    assert not (real / "server.properties").exists()
+
+
+def test_the_eula_is_checked_before_the_folder(tmp_path):
+    (tmp_path / "srv").mkdir()
+    (tmp_path / "srv" / "keep").write_text("x")
+    with pytest.raises(PermissionError, match="EULA"):
+        check_on_server(
+            [tmp_path], ["x"], versions.parse("26.2"), tmp_path / "srv", accept_eula=False
+        )
+    assert sorted(p.name for p in (tmp_path / "srv").iterdir()) == ["keep"]

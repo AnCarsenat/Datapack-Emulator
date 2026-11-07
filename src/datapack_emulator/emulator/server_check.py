@@ -277,6 +277,36 @@ def _install(packs: Iterable[Path], datapacks: Path) -> list[str]:
     return names
 
 
+#: written in every folder this module runs a server in: its world and logs
+#: are deleted before each run, so a folder without it is never used
+MARKER = ".datapack-emulator-server-check"
+
+
+def claim_workdir(workdir: Path) -> None:
+    """Make ``workdir`` ours, or refuse it.
+
+    A run deletes ``workdir/world`` and ``workdir/logs`` and rewrites
+    ``server.properties``: pointed at someone's real server folder, that
+    would destroy their world. So a folder is used only if it is new, empty,
+    or carries :data:`MARKER` from an earlier run.
+    """
+    marker = workdir / MARKER
+    if workdir.exists():
+        if not workdir.is_dir():
+            raise NotADirectoryError(f"{workdir} is not a folder")
+        if not marker.is_file() and any(workdir.iterdir()):
+            raise FileExistsError(
+                f"{workdir} is not empty and was not made by a server check (no {MARKER}): "
+                "each run deletes its world/ and logs/, so it is left alone. Pick a new or "
+                "empty folder"
+            )
+    workdir.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        "made by datapack-emulator check --server: its world/ and logs/ are deleted on every run\n",
+        encoding="utf-8",
+    )
+
+
 def check_on_server(
     packs: Iterable[Path | str],
     namespaces: Iterable[str],
@@ -293,6 +323,8 @@ def check_on_server(
     """Start a server on a fresh world with ``packs`` installed, stop it once
     it is up (or has given up), and return what its log says about them."""
     say = progress or (lambda text: log.info("%s", text))
+    dedicated.require_eula(accept_eula)
+    claim_workdir(workdir)
     jar = dedicated.prepare(
         version, workdir, accept_eula=accept_eula, jar=jar, java=java, progress=say
     )
@@ -324,4 +356,4 @@ def check_on_server(
     return ServerCheck(version.id, started, problems, str(log_path), seconds)
 
 
-__all__ = ["ServerCheck", "check_on_server", "parse_log"]
+__all__ = ["MARKER", "ServerCheck", "check_on_server", "claim_workdir", "parse_log"]

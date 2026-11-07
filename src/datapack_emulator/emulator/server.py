@@ -156,6 +156,10 @@ class DedicatedServer:
                 self.process.wait(60)
             except (OSError, subprocess.TimeoutExpired):
                 self.process.kill()
+            except BaseException:
+                # interrupted while waiting (Ctrl-C): never leave it running
+                self.process.kill()
+                raise
 
 
 def require_eula(accept_eula: bool) -> None:

@@ -548,7 +548,7 @@ then the counts. Nothing runs. Exit `1` on a fatal problem or an error.
 | `--vanilla`, `--no-vanilla`, `--download` | the client jar ids are checked against (see [client jars](#client-jars)) |
 | `--no-schema` | do not check JSON fields against the jar's own files |
 | `--schema FILE` | a schema written by [`schema --write`](#schema--what-a-versions-own-files-hold) instead of the jar's (works with `--no-vanilla`, on a machine with no jar) |
-| `--server --accept-eula` | also run the pack on a **real dedicated server** of each version and report what its log says about the pack (see below). `--server-jar` (default: downloaded once into the cache), `--java`, `--server-dir` (default: the cache) |
+| `--server --accept-eula` | also run the pack on a **real dedicated server** of each version and report what its log says about the pack (see below). `--server-jar` (default: downloaded once into the cache), `--java`, `--server-dir` (default: the cache; a folder of your own must be new or empty, since each run deletes its `world/` and `logs/`) |
 
 ### On a real server (`--server`)
 
