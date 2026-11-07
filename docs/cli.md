@@ -574,7 +574,7 @@ hence `--accept-eula`. Tested against 26.2's log.
 
 | code | severity | |
 | --- | --- | --- |
-| `world-registry` | fatal | with a client jar: a file of a *world* registry (worldgen, dimension, dimension type, enchantment, damage type, variants…) that lacks a field the version requires — every vanilla file sets it, even to `false`/`0`/empty — or names a kind no vanilla file of the version uses (a removed feature type). The server reads those when the world loads, all or nothing: one bad element and it stops with "Failed to load datapacks, can't proceed with server load", for every pack |
+| `world-registry` | fatal | with a client jar: a file of a *world* registry (worldgen, dimension, dimension type, enchantment, damage type, variants…) that lacks a field the version requires — every vanilla file sets it, even to `false`/`0`/empty — or names a kind the version removed (so far `minecraft:random_patch`, gone in 26.2). Fields the game reads with a default yet always writes (a tree's `ignore_vines`, a trim pattern's `decal`…) and the keys of attribute maps are left out, so they stay notes. The server reads those when the world loads, all or nothing: one bad element and it stops with "Failed to load datapacks, can't proceed with server load", for every pack |
 | `json` | fatal | a world-registry file that does not parse (same consequence) |
 | `pack` | fatal | `pack.mcmeta` missing or unreadable: the server does not load the pack at all |
 | `function-not-loaded`, `tag-not-loaded` | error | the version's server refuses the function or tag: an unknown command or a feature it lacks, an unknown selector option (`@e[tpye=pig]`), a macro line that is not a template (no `$(name)`, an unclosed `$(`, a bad name), a missing tag entry |
@@ -589,7 +589,7 @@ hence `--accept-eula`. Tested against 26.2's log.
 | `pack` | warning | the version lists the pack as incompatible, or reads none of its functions (the folder is spelled for other versions) |
 | `unused-function` | info | nothing in the pack calls it: not the load and tick tags, other tags, functions, schedules, advancement rewards or enchantment `run_function` effects |
 | `recursion` | info | the function calls itself (directly or not) |
-| `schema` | warning / info | with a client jar of the emulated version (or `--schema`): the file holds something none of that version's own files hold. Warning: a field none of them uses — a typo, or a field the game accepts and vanilla never writes — or a value of a kind none of them holds there. Info: a field every one of them sets and this file leaves out, or a note that the checks were skipped because the jar is of another version. None of these is an error: the version's files say what the game writes, not everything it accepts |
+| `schema` | warning / info | with a client jar of the emulated version (or `--schema`): the file holds something none of that version's own files hold. Warning: a field none of them uses — a typo, or a field the game accepts and vanilla never writes — or a value of a kind none of them holds there. Info: a field every one of them sets and this file leaves out, a `type` none of them uses (vanilla's files use few of the kinds a version has), or a note that the checks were skipped because the jar is of another version. None of these is an error: the version's files say what the game writes, not everything it accepts |
 
 Macro lines (`$…`) are parsed when called, as the game does; only their
 template is checked. Type ids are checked against the vanilla registries of

@@ -153,3 +153,57 @@ def test_cli_check_exits_1_on_fatal(make_pack, capsys):
         main(["check", str(pack), "--version", "1.21.4", "--no-vanilla", "--severity", "fatal"])
         == 1
     )
+
+
+def test_what_vanilla_never_does_is_not_fatal(tmp_path, make_pack):
+    """Real false positives on 26.2: vanilla writes ``fieldOf().orElse()``
+    fields even at their default, keys environment attributes by id, and uses
+    few of the kinds a version has (no enchantment runs a function)."""
+    path = tmp_path / "minecraft-26.2-client.jar"
+    tree = {"ignore_vines": False, "decorators": []}
+    effect = {"effect": {"type": "minecraft:ignite", "duration": 1}}
+    entries = {"version.json": {"id": "26.2"}}
+    for index in range(4):
+        entries[f"data/minecraft/trim_pattern/p{index}.json"] = {"asset_id": "a", "decal": False}
+        entries[f"data/minecraft/worldgen/configured_feature/t{index}.json"] = {
+            "type": "minecraft:tree",
+            "config": tree,
+        }
+        entries[f"data/minecraft/dimension_type/d{index}.json"] = {
+            "height": 256,
+            "attributes": {"minecraft:gameplay/respawn_anchor_works": index == 0},
+        }
+        entries[f"data/minecraft/enchantment/e{index}.json"] = {
+            "anvil_cost": 1,
+            "effects": {"minecraft:post_attack": [effect]},
+        }
+    for kind in ("minecraft:ignite", "minecraft:explode", "minecraft:damage_entity"):
+        for index in range(3):
+            entries[f"data/minecraft/enchantment/{kind[10:]}{index}.json"] = {
+                "anvil_cost": 1,
+                "effects": {
+                    "minecraft:tick": [{"effect": {"type": kind, kind[10:]: {"x": index}}}]
+                },
+            }
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, content in entries.items():
+            archive.writestr(name, json.dumps(content))
+    schema = learn_from_jar(path)
+    files = {
+        "data/test/trim_pattern/p.json": {"asset_id": "a"},
+        "data/test/worldgen/configured_feature/t.json": {
+            "type": "minecraft:tree",
+            "config": {"decorators": []},
+        },
+        "data/test/dimension_type/d.json": {"height": 256, "attributes": {}},
+        "data/test/enchantment/e.json": {
+            "anvil_cost": 1,
+            "effects": {
+                "minecraft:tick": [
+                    {"effect": {"type": "minecraft:run_function", "function": "a:b"}}
+                ]
+            },
+        },
+    }
+    problems = problems_of(make_pack, files, schema)
+    assert not load_blockers(problems), [p.format() for p in load_blockers(problems)]
