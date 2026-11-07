@@ -11,18 +11,21 @@ import logging
 from pathlib import Path
 
 import shiboken6
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDockWidget,
+    QFrame,
     QLabel,
     QLineEdit,
     QMainWindow,
     QMenu,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QTableView,
     QTableWidget,
@@ -131,6 +134,7 @@ class MainWindow(QMainWindow):
         self.resize(WINDOW.WINDOW_WIDTH, WINDOW.WINDOW_HEIGHT)
         self.runs._set_running(False)
         self.show_all_docks()
+        self.default_dock_sizes()
         self.datapacks.show(None)
         self.session.restore()
         #: what to open once the window is on screen (see ``start_session``)
@@ -237,6 +241,7 @@ class MainWindow(QMainWindow):
         container: QWidget = find(QWidget, "graphContainer")
         self.graph_widget = FunctionGraphWidget(container)
         container.layout().addWidget(self.graph_widget)
+        self._make_docks_shrinkable()
 
         self.spin_ticks.setValue(EMULATION.DEFAULT_TICKS)
         self.spin_players.setValue(EMULATION.DEFAULT_PLAYERS)
@@ -308,6 +313,7 @@ class MainWindow(QMainWindow):
             "actionshow_in_graph": lambda: navigation.show_in_graph(),
             "actionquick_open": lambda: navigation.search(0),
             "actionreset_layout": lambda: self.session.reset_layout(),
+            "actionlock_layout": lambda checked: self.session.set_layout_locked(checked),
             "actionfocus_console": lambda: self.session.focus_console(),
             "actionadd_console_test": lambda: self.console.add_as_test(),
             "actionsearch_pack": lambda: navigation.search(1),
@@ -342,6 +348,59 @@ class MainWindow(QMainWindow):
             )
 
     # -- docks ------------------------------------------------------------
+
+    #: status lines that would otherwise hold their dock as wide as their text
+    _SHRINKING_LABELS = ("labelLogCounts", "labelWorld", "labelProblems")
+
+    def _make_docks_shrinkable(self) -> None:
+        """Let a dock be dragged smaller than its widest row of controls.
+
+        A dock cannot get narrower than its contents' minimum size, and a row
+        of buttons is as wide as its labels: the debugger's six buttons held
+        its dock at 514 px, the logs' filter row at 994 px, so the window
+        opened wider than the screen and no separator could move. Each dock's
+        contents go in a frameless scroll area (Designer cannot wrap an
+        existing dock body without rewriting it), which scrolls only once the
+        dock is smaller than its controls; the long status lines clip instead.
+        """
+        for name in self._SHRINKING_LABELS:
+            label = self.findChild(QLabel, name)
+            if label is not None:
+                label.setMinimumWidth(40)
+        for dock in self.docks:
+            # a button may shrink to its text instead of the style's 80 px
+            for button in dock.findChildren(QPushButton):
+                text = button.fontMetrics().horizontalAdvance(button.text())
+                button.setMinimumWidth(text + 16)
+        for dock in self.docks:
+            contents = dock.widget()
+            if contents is None or isinstance(contents, QScrollArea):
+                continue
+            scroll = QScrollArea(dock)
+            scroll.setObjectName(f"{dock.objectName()}Scroll")
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(contents)
+            dock.setWidget(scroll)
+
+    def default_dock_sizes(self) -> None:
+        """The starting sizes: Qt would otherwise give every dock its minimum."""
+        horizontal, vertical = Qt.Orientation.Horizontal, Qt.Orientation.Vertical
+        self.resizeDocks([self.dock_explorer, self.dock_inspector], [230, 420], horizontal)
+        self.resizeDocks([self.dock_logs], [220], vertical)
+        self.resizeDocks(
+            [self.dock_inspector, self.dock_world, self.dock_debug], [160, 230, 170], vertical
+        )
+
+    def set_layout_locked(self, locked: bool) -> None:
+        """Docks stay where they are; they still resize, close and reopen."""
+        movable = (
+            QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        )
+        for dock in self.docks:
+            features = dock.features()
+            dock.setFeatures(features & ~movable if locked else features | movable)
 
     @staticmethod
     def _set_dock_visible(dock: QDockWidget, visible: bool) -> None:

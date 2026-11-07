@@ -8,7 +8,11 @@ matches.
 Every widget, dock, menu, action and shortcut is declared in
 `src/datapack_emulator/window/window.ui` (main window), `src/datapack_emulator/window/engine.ui` (engine
 window) and `src/datapack_emulator/window/download.ui` (client-jar download popup). The Python side only loads those files and wires behaviour, so
-layout changes are made in Qt Designer, never in code.
+layout changes are made in Qt Designer, never in code. One exception: at
+start-up `MainWindow._make_docks_shrinkable` puts each dock's body in a
+frameless scroll area (`<dock name>Scroll`), so a dock can be dragged
+smaller than its row of buttons. Edit a dock's contents in Designer as
+usual; widgets are found by object name, so the extra level does not matter.
 
 ## Main window
 
@@ -33,7 +37,7 @@ layout changes are made in Qt Designer, never in code.
 | edit | for the explorer selection: open in source view · open in external editor · open in external file manager · copy path; quick open… · search in pack… · analyze line at cursor · show in call graph (the source view's function) |
 | run | run all · run emulator · step one tick · stop · run tests · run profiler (rebuild the report of the current world without running) · run graphview (rebuild the call graph for the current version) · check pack (the problems dock) · check JSON fields against the client jar (on by default; `check --no-schema` is the same switch) · version engine… · export call graph (.dot) |
 | debug | toggle breakpoint · remove all breakpoints · continue · step into · step over · step out · pause (see the [debugger](#debugger-dock)) |
-| view | explorer · inspector · logs · world · debugger · problems (show or hide each dock) · reset layout · environment / profiler / call graph / source tab · command line · add command line as test |
+| view | explorer · inspector · logs · world · debugger · problems (show or hide each dock) · reset layout · lock layout · environment / profiler / call graph / source tab · command line · add command line as test |
 
 Hovering a menu entry explains it in the status bar; buttons, filters,
 column headers and inspector rows explain themselves in tooltips.
@@ -213,6 +217,23 @@ current version.
 ### Docks
 
 All six are open by default and can be toggled from *view*.
+
+* **resize** — drag the grey bar between two docks, or between a dock and
+  the tabs; it turns blue under the mouse. A dock goes down to about
+  150×80 px; when that is smaller than its row of buttons, the dock scrolls
+  instead of refusing to shrink.
+* **move** — drag a dock by its title bar to any edge of the window (left,
+  right, top or bottom). Drop it next to another dock to put them side by
+  side, or onto another dock's title to make them tabs of one dock.
+* **float** — the first button on the title bar (or a double-click on the
+  title) makes the dock a window of its own; the same button, or a
+  double-click, docks it back. The ✕ closes it; *view* reopens it.
+* **lock layout** (*view*) — the docks can no longer be dragged, floated or
+  tabbed, so a stray drag cannot undo a layout; they still resize and close.
+  It is remembered with the layout.
+* **reset layout** (*view*) — every dock back where it starts, all of them
+  open and docked. A saved layout that cannot be read (damaged, or from an
+  older Qt) is replaced by the default one at start-up.
 
 * **problems** — what the emulated version refuses or cannot run in the
   pack, found without running ([command line](cli.md#check--problems):

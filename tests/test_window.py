@@ -2208,3 +2208,184 @@ def test_call_graph_boxes_do_not_overlap_and_the_legend_explains_them(app, windo
 
     widget.clear_graph()
     assert not widget.legend.text and widget.node_at(at(x, y)) is None
+
+
+# -- docks ----------------------------------------------------------------------
+
+#: `saveState()` of the window before the docks were made resizable: the world
+#: dock dragged to the left, the debugger closed
+OLD_DOCK_STATE = (
+    "AAAA/wAAAAD9AAAAAwAAAAAAAAGOAAACr/wCAAAAAvsAAAAkAGQAbwBjAGsAVwBpAGQAZwBlAHQARQB4"
+    "AHAAbABvAHIAZQByAQAAABYAAAFeAAAA3AD////7AAAAHgBkAG8AYwBrAFcAaQBkAGcAZQB0AFcAbwBy"
+    "AGwAZAEAAAF6AAABSwAAAUsA////AAAAAQAAAQQAAAKv/AIAAAAC+wAAACYAZABvAGMAawBXAGkAZABn"
+    "AGUAdABJAG4AcwBwAGUAYwB0AG8AcgEAAAAWAAACrwAAANwA////+wAAAB4AZABvAGMAawBXAGkAZABn"
+    "AGUAdABEAGUAYgB1AGcAAAACSQAAANMAAADTAP///wAAAAMAAAWdAAABFfwBAAAAAvsAAAAcAGQAbwBj"
+    "AGsAVwBpAGQAZwBlAHQATABvAGcAcwEAAAAAAAAD4gAAA+IA////+wAAACQAZABvAGMAawBXAGkAZABn"
+    "AGUAdABQAHIAbwBiAGwAZQBtAHMBAAAD6AAAAbUAAAGwAP///wAAAv8AAAKvAAAABAAAAAQAAAAIAAAA"
+    "CPwAAAAA"
+)
+
+
+def _new_window(app):
+    from datapack_emulator.window import MainWindow
+
+    window = MainWindow(open_last=False)
+    window.show()
+    app.processEvents()
+    return window
+
+
+def _close(window):
+    window.projects.modified = False
+    window.close()
+
+
+def test_docks_move_float_tab_and_nest_anywhere(window):
+    from PySide6.QtWidgets import QDockWidget, QMainWindow, QStyle
+
+    wanted = (
+        QDockWidget.DockWidgetFeature.DockWidgetMovable
+        | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        | QDockWidget.DockWidgetFeature.DockWidgetClosable
+    )
+    for dock in window.docks:
+        assert dock.features() & wanted == wanted, dock.objectName()
+        assert dock.allowedAreas() == Qt.DockWidgetArea.AllDockWidgetAreas, dock.objectName()
+        assert dock.minimumWidth() <= 150 and dock.minimumHeight() <= 100, dock.objectName()
+    options = window.dockOptions()
+    assert options & QMainWindow.DockOption.AllowNestedDocks
+    assert options & QMainWindow.DockOption.AllowTabbedDocks
+    extent = window.style().pixelMetric(
+        QStyle.PixelMetric.PM_DockWidgetSeparatorExtent, None, window
+    )
+    assert extent >= 4
+    # the window opens at its configured size, not pushed wider by its docks
+    from datapack_emulator.settings import WINDOW
+
+    assert window.minimumSizeHint().width() < WINDOW.WINDOW_WIDTH
+    assert window.minimumSizeHint().height() < WINDOW.WINDOW_HEIGHT
+
+    for area in (
+        Qt.DockWidgetArea.LeftDockWidgetArea,
+        Qt.DockWidgetArea.TopDockWidgetArea,
+        Qt.DockWidgetArea.BottomDockWidgetArea,
+    ):
+        window.addDockWidget(area, window.dock_debug)
+        assert window.dockWidgetArea(window.dock_debug) == area
+    window.tabifyDockWidget(window.dock_logs, window.dock_world)
+    assert window.dock_world in window.tabifiedDockWidgets(window.dock_logs)
+    window.dock_world.setFloating(True)
+    assert window.dock_world.isFloating()
+
+
+def test_docks_resize_by_code_and_by_dragging_the_separator(app, window):
+    from PySide6.QtCore import QEvent, QPoint, QPointF
+    from PySide6.QtGui import QMouseEvent
+
+    dock = window.dock_explorer
+    # narrower, then wider again: the room it gave back goes to the editor
+    window.resizeDocks([dock], [170], Qt.Orientation.Horizontal)
+    app.processEvents()
+    assert dock.width() == 170
+    window.resizeDocks([dock], [200], Qt.Orientation.Horizontal)
+    app.processEvents()
+    assert 190 <= dock.width() <= 200  # the editor's minimum may keep a few pixels
+    taller = window.dock_logs.height() + 60
+    window.resizeDocks([window.dock_logs], [taller], Qt.Orientation.Vertical)
+    app.processEvents()
+    assert window.dock_logs.height() >= taller - 10
+
+    # the handle between the explorer and the editor, dragged 30 px left
+    x = (dock.geometry().right() + window.centralWidget().geometry().left()) // 2 + 1
+    y = window.centralWidget().geometry().center().y()
+
+    def send(kind, point, button, buttons):
+        event = QMouseEvent(
+            kind,
+            QPointF(point),
+            QPointF(window.mapToGlobal(point)),
+            button,
+            buttons,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        app.sendEvent(window, event)
+        app.processEvents()  # Qt applies separator moves on a zero timer
+
+    left = Qt.MouseButton.LeftButton
+    before = dock.width()
+    send(QEvent.Type.MouseMove, QPoint(x, y), Qt.MouseButton.NoButton, Qt.MouseButton.NoButton)
+    assert window.cursor().shape() == Qt.CursorShape.SplitHCursor
+    send(QEvent.Type.MouseButtonPress, QPoint(x, y), left, left)
+    for step in range(1, 7):
+        send(QEvent.Type.MouseMove, QPoint(x - 5 * step, y), Qt.MouseButton.NoButton, left)
+    send(QEvent.Type.MouseButtonRelease, QPoint(x - 30, y), left, Qt.MouseButton.NoButton)
+    assert dock.width() == before - 30
+
+
+def test_a_moved_dock_keeps_its_place_and_reset_puts_it_back(app, window):
+    window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, window.dock_world)
+    window.tabifyDockWidget(window.dock_problems, window.dock_debug)
+    window.dock_inspector.hide()
+    window.session.save()
+
+    again = _new_window(app)
+    try:
+        assert again.dockWidgetArea(again.dock_world) == Qt.DockWidgetArea.LeftDockWidgetArea
+        assert again.dock_debug in again.tabifiedDockWidgets(again.dock_problems)
+        assert again.dock_inspector.isHidden()
+
+        again.session.reset_layout()
+        app.processEvents()
+        assert again.dockWidgetArea(again.dock_world) == Qt.DockWidgetArea.RightDockWidgetArea
+        assert again.dockWidgetArea(again.dock_debug) == Qt.DockWidgetArea.RightDockWidgetArea
+        assert again.tabifiedDockWidgets(again.dock_problems) == []
+        assert all(dock.isVisible() and not dock.isFloating() for dock in again.docks)
+    finally:
+        _close(again)
+
+
+def test_layouts_saved_by_older_versions_or_damaged_still_open(app, window, tmp_path):
+    from datapack_emulator.window.controllers.session import state_file
+
+    window.projects.modified = False
+    state_file().parent.mkdir(parents=True, exist_ok=True)
+    state_file().write_text(json.dumps({"docks": "".join(OLD_DOCK_STATE)}))
+    old = _new_window(app)
+    try:
+        assert old.dockWidgetArea(old.dock_world) == Qt.DockWidgetArea.LeftDockWidgetArea
+        assert old.dock_debug.isHidden()
+    finally:
+        old.projects.modified = False
+        old.hide()  # closing would save over the file below
+
+    # base64 of bytes that are no dock layout: the default one, every dock open
+    state_file().write_text(json.dumps({"docks": "AAAA/wAAAAD9AAAAAwAAAAA="}))
+    damaged = _new_window(app)
+    try:
+        assert all(dock.isVisible() for dock in damaged.docks)
+        assert damaged.dockWidgetArea(damaged.dock_world) == Qt.DockWidgetArea.RightDockWidgetArea
+    finally:
+        _close(damaged)
+        _close(old)
+
+
+def test_lock_layout_keeps_docks_in_place_and_is_remembered(app, window):
+    from PySide6.QtWidgets import QDockWidget
+
+    feature = QDockWidget.DockWidgetFeature
+    lock = window._action("actionlock_layout")
+    assert lock is not None and lock.isCheckable() and not lock.isChecked()
+    lock.trigger()
+    for dock in window.docks:
+        assert not dock.features() & feature.DockWidgetMovable, dock.objectName()
+        assert not dock.features() & feature.DockWidgetFloatable, dock.objectName()
+        assert dock.features() & feature.DockWidgetClosable, dock.objectName()
+
+    again = _new_window(app)
+    try:
+        assert again._action("actionlock_layout").isChecked()
+        assert not again.dock_logs.features() & feature.DockWidgetMovable
+        again._action("actionlock_layout").trigger()
+        assert all(dock.features() & feature.DockWidgetMovable for dock in again.docks)
+    finally:
+        _close(again)
