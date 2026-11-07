@@ -419,7 +419,11 @@ class Emulator:
         self.profiler.charge(
             inner.function_id,
             # the wrapped command is dispatched, and charged, on its own
-            command.estimate_cost(len(self.world.entities), include_child=False),
+            command.estimate_cost(
+                len(self.world.entities),
+                include_child=False,
+                player_count=sum(1 for entity in self.world.entities if entity.is_player),
+            ),
             line=command.line,
             raw=command.source_raw or command.raw,
             count_run=not nested,
