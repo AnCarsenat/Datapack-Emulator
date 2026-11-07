@@ -186,11 +186,19 @@ class ServerProfile:
                 if prefix is None:
                     continue
                 command = child.name[len(prefix) :]
-                line = row["lines"].setdefault(command, {"command": command, "runs": 0, "us": 0.0})
-                line["runs"] += child.calls
+                line = row["lines"].setdefault(
+                    command, {"command": command, "runs": 0, "prepared": 0, "us": 0.0}
+                )
+                # a line's ``prepare`` and ``execute`` sections time the same
+                # runs: count them once (a forking ``execute`` that runs a
+                # function may only have the ``prepare`` one)
+                line["runs" if prefix == "execute " else "prepared"] += child.calls
                 line["us"] += self.us_per_tick(child) * self.ticks
         rows = []
         for row in merged.values():
+            for line in row["lines"].values():
+                prepared = line.pop("prepared")
+                line["runs"] = line["runs"] or prepared
             lines = sorted(row.pop("lines").values(), key=lambda line: -line["us"])
             row["calls_per_tick"] = row["calls"] / max(self.ticks, 1)
             row["lines"] = [

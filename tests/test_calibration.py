@@ -78,6 +78,16 @@ def test_prepare_sections_count_as_lines():
     assert rows["probe:data"]["lines"][0]["command"].startswith("execute if score")
 
 
+def test_prepare_and_execute_of_a_line_are_one_run():
+    lines = REPORT.read_text().splitlines()
+    index = next(i for i, line in enumerate(lines) if "execute scoreboard players add" in line)
+    prepare = lines[index].replace("execute scoreboard", "prepare scoreboard")
+    text = "\n".join(lines[: index + 1] + [prepare] + lines[index + 1 :])
+    rows = {row["function"]: row for row in ServerProfile.parse(text).functions()}
+    (line,) = rows["probe:sb"]["lines"]
+    assert line["runs_per_tick"] == pytest.approx(2000)
+
+
 def test_compare_with_the_emulator(make_pack):
     from datapack_emulator.emulator.datapack import DatapackSet
     from datapack_emulator.emulator.runtime.emulator import Emulator
