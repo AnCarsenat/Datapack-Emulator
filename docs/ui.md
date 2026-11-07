@@ -167,7 +167,9 @@ current version.
   use (another overlay's copy), the id its folders give is shown.
 * **Source** — the selected file with syntax highlighting for `.mcfunction`
   (commands, subcommands, selectors, resource locations, NBT, macros,
-  comments) and JSON/`pack.mcmeta`, **editable**: the label and the tab show
+  comments) and JSON/`pack.mcmeta`, **editable**: the label above it is the
+  file's path (cut in the middle with `…` when it does not fit; hover it for
+  the whole path); the label and the tab show
   `●` while there are unsaved edits, Ctrl+S (or *file › save file*,
   Ctrl+Alt+S) writes the file — while the view has unsaved edits Ctrl+S saves
   it wherever the focus is, otherwise it saves the project — and reloads the
@@ -230,7 +232,9 @@ All six are open by default and can be toggled from *view*.
   double-click, docks it back. The ✕ closes it; *view* reopens it.
 * **lock layout** (*view*) — the docks can no longer be dragged, floated or
   tabbed, so a stray drag cannot undo a layout; they still resize and close.
-  It is remembered with the layout.
+  A floating dock is docked back first, where it was last docked (or in its
+  starting area), since a locked one could not be docked by hand. It is
+  remembered with the layout.
 * **reset layout** (*view*) — every dock back where it starts, all of them
   open and docked. A saved layout that cannot be read (damaged, or from an
   older Qt) is replaced by the default one at start-up.

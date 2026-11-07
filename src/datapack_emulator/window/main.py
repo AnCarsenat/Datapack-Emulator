@@ -68,6 +68,7 @@ from datapack_emulator.window.controllers.base import (
 )
 from datapack_emulator.window.engine_window import EngineWindow
 from datapack_emulator.window.panels import FunctionGraphWidget, load_ui_into
+from datapack_emulator.window.panels.labels import ElidedLabel
 from datapack_emulator.window.panels.source import SourceEdit
 
 log = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ class MainWindow(QMainWindow):
         self.engine_window: EngineWindow | None = None
         self.project = Project()
 
-        load_ui_into(self, UI_FILE, custom=[QWebEngineView, SourceEdit])
+        load_ui_into(self, UI_FILE, custom=[QWebEngineView, SourceEdit, ElidedLabel])
         self._bind_widgets()
         self._fill_versions()
 
@@ -135,6 +136,10 @@ class MainWindow(QMainWindow):
         self.runs._set_running(False)
         self.show_all_docks()
         self.default_dock_sizes()
+        #: where each dock starts: where locking puts back a dock that was never docked
+        self._default_dock_areas = {
+            dock.objectName(): self.dockWidgetArea(dock) for dock in self.docks
+        }
         self.datapacks.show(None)
         self.session.restore()
         #: what to open once the window is on screen (see ``start_session``)
@@ -170,15 +175,19 @@ class MainWindow(QMainWindow):
         self.web_view: QWebEngineView = find(QWebEngineView, "webEngineView")
         self.tree_profile: QTreeWidget = find(QTreeWidget, "treeProfile")
         self.profile_summary: QLabel = find(QLabel, "labelProfileSummary")
-        self.profile_baseline_label: QLabel = find(QLabel, "labelProfileBaseline")
+        self.profile_baseline_label: ElidedLabel = find(ElidedLabel, "labelProfileBaseline")
         self.profile_baseline_button: QPushButton = find(QPushButton, "buttonProfileBaseline")
         self.profile_clear_baseline_button: QPushButton = find(
             QPushButton, "buttonProfileClearBaseline"
         )
-        self.pack_label: QLabel = find(QLabel, "labelPack")
+        self.pack_label: ElidedLabel = find(ElidedLabel, "labelPack")
         self.vanilla_label: QLabel = find(QLabel, "labelVanilla")
-        self.graph_label: QLabel = find(QLabel, "labelGraph")
-        self.source_label: QLabel = find(QLabel, "labelSource")
+        self.graph_label: ElidedLabel = find(ElidedLabel, "labelGraph")
+        self.source_label: ElidedLabel = find(ElidedLabel, "labelSource")
+        # a path keeps its root and its file name; the rest elide on the right
+        self.source_label.set_elide_mode(Qt.TextElideMode.ElideMiddle)
+        # the pack's name and version are cut only when they are long
+        self.pack_label.set_minimum_text_width(200)
         self.log_counts: QLabel = find(QLabel, "labelLogCounts")
         self.combo_version: QComboBox = find(QComboBox, "comboVersion")
         self.version_note: QLabel = find(QLabel, "labelVersionNote")
@@ -393,14 +402,32 @@ class MainWindow(QMainWindow):
         )
 
     def set_layout_locked(self, locked: bool) -> None:
-        """Docks stay where they are; they still resize, close and reopen."""
+        """Docks stay where they are; they still resize, close and reopen.
+
+        A floating dock could be neither moved nor docked back once its
+        features are gone, so locking first docks it again: where it was last
+        docked, or else in its default area.
+        """
         movable = (
             QDockWidget.DockWidgetFeature.DockWidgetMovable
             | QDockWidget.DockWidgetFeature.DockWidgetFloatable
         )
+        if locked:
+            for dock in self.docks:
+                if dock.isFloating():
+                    self._dock_back(dock)
         for dock in self.docks:
             features = dock.features()
             dock.setFeatures(features & ~movable if locked else features | movable)
+
+    def _dock_back(self, dock: QDockWidget) -> None:
+        dock.setFloating(False)  # Qt puts it back where it was last docked
+        if dock.isFloating() or self.dockWidgetArea(dock) == Qt.DockWidgetArea.NoDockWidgetArea:
+            area = self._default_dock_areas.get(
+                dock.objectName(), Qt.DockWidgetArea.RightDockWidgetArea
+            )
+            self.addDockWidget(area, dock)
+            dock.setFloating(False)  # addDockWidget alone leaves a floating dock floating
 
     @staticmethod
     def _set_dock_visible(dock: QDockWidget, visible: bool) -> None:

@@ -172,7 +172,10 @@ Emulator(pack, version, vanilla, output)  CallGraph.from_pack
 * **All layout is in `.ui` files.** Python looks widgets up by object name.
   The only widget created in code is the pyqtgraph canvas, which Designer
   cannot describe; it goes into the `graphContainer` placeholder. The source
-  view is a custom widget class (`panels/source.py`) declared in the `.ui`.
+  view is a custom widget class (`panels/source.py`) declared in the `.ui`,
+  and so are the long one-line labels (`ElidedLabel`, `panels/labels.py`:
+  the file path, the pack line, the call graph and baseline lines), which
+  elide instead of holding the window wider than their text.
   The one structural change made in code: each dock's body is wrapped in a
   `QScrollArea` at start-up (`_make_docks_shrinkable`), because a dock cannot
   be narrower than its contents' minimum and wrapping six dock bodies in the
