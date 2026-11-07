@@ -2211,6 +2211,11 @@ QMenuBar::item:selected {
            <string>error</string>
           </property>
          </item>
+         <item>
+          <property name="text">
+           <string>fatal</string>
+          </property>
+         </item>
         </widget>
        </item>
        <item>

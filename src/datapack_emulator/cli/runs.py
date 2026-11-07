@@ -37,7 +37,11 @@ from datapack_emulator.cli.common import (
 from datapack_emulator.cli.debug import add_debug_arguments, trace_debugger
 from datapack_emulator.cli.junit import write_junit
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.analysis.problems import ignored_folders
+from datapack_emulator.emulator.analysis.problems import (
+    find_problems,
+    ignored_folders,
+    load_blockers,
+)
 from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.engine import TestEngine, VersionRun
 from datapack_emulator.emulator.runtime.emulator import Emulator
@@ -229,11 +233,30 @@ def run_json(arguments, inputs: Inputs, emulator: Emulator, bus, ticks, results,
         for problem in ignored_folders(inputs.datapack, emulator.version)
         if problem.severity == "error"
     ]
-    broken = errors or failed_functions or failed_tags or graph["missing_functions"] or ignored
+    blockers = [
+        problem.to_dict()
+        for problem in load_blockers(
+            find_problems(
+                inputs.datapack,
+                emulator.version,
+                emulator.vanilla,
+                agent._schema_of(emulator.vanilla),
+            )
+        )
+    ]
+    broken = (
+        errors
+        or failed_functions
+        or failed_tags
+        or graph["missing_functions"]
+        or ignored
+        or blockers
+    )
     data = {
         "ok": code == OK and not broken,
         "exit_code": code,
-        "summary": f"{emulator.version.id}: {ticks} tick(s), {errors} error(s), "
+        "summary": (f"WILL NOT LOAD ({len(blockers)} fatal problem(s)); " if blockers else "")
+        + f"{emulator.version.id}: {ticks} tick(s), {errors} error(s), "
         f"{len(failed_functions)} function(s) not loaded"
         + (f", tests {len(results) - failed}/{len(results)} passed" if results else ""),
         "pack": inputs.datapack.name,
@@ -243,6 +266,7 @@ def run_json(arguments, inputs: Inputs, emulator: Emulator, bus, ticks, results,
         "ticks": ticks,
         "load_errors": list(inputs.datapack.errors),
         "failed_functions": failed_functions,
+        "load_blockers": blockers,
         "failed_tags": failed_tags,
         "ignored_folders": ignored,
         "chat": [

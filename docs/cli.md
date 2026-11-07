@@ -532,13 +532,14 @@ datapack-emulator-cli check samples/hat --versions 1.19 1.21.4 --lines draft.mcf
 ```
 
 The problems dock: every problem of the pack in the version (or each of the
-chosen versions), errors first, as `severity place: message [code]`, then
-the counts. Nothing runs.
+chosen versions), dearest first — **fatal** (the world or the pack will not
+load), then errors, warnings, notes — as `severity place: message [code]`,
+then the counts. Nothing runs. Exit `1` on a fatal problem or an error.
 
 | option | |
 | --- | --- |
 | `--version`, `--versions`, `--from/--to`, `--declared`, `--all`, `--boundaries` | which versions (default: the project's, else the pack's newest) |
-| `--severity error\|warning\|info` | the lowest severity shown |
+| `--severity fatal\|error\|warning\|info` | the lowest severity shown (`fatal`: only what stops loading) |
 | `--code CODE` | only these kinds (repeatable; one of the codes below) |
 | `--strict` | exit with `1` on warnings too (errors always do) |
 | `--lines FILE` | check one file's lines the way the source view underlines them, instead of the pack (repeatable; `.mcfunction`, `.json`, `.mcmeta`). Prints `file:line: message`, with `[version]` before the message when several versions were chosen, or objects with `--json`; exit `1` when a line is refused, `2` when the file cannot be read. It takes no `--code` or `--severity` |
@@ -550,10 +551,13 @@ the counts. Nothing runs.
 
 | code | severity | |
 | --- | --- | --- |
+| `world-registry` | fatal | with a client jar: a file of a *world* registry (worldgen, dimension, dimension type, enchantment, damage type, variants…) that lacks a field the version requires — every vanilla file sets it, even to `false`/`0`/empty — or names a kind no vanilla file of the version uses (a removed feature type). The server reads those when the world loads, all or nothing: one bad element and it stops with "Failed to load datapacks, can't proceed with server load", for every pack |
+| `json` | fatal | a world-registry file that does not parse (same consequence) |
+| `pack` | fatal | `pack.mcmeta` missing or unreadable: the server does not load the pack at all |
 | `function-not-loaded`, `tag-not-loaded` | error | the version's server refuses the function or tag: an unknown command or a feature it lacks, an unknown selector option (`@e[tpye=pig]`), a macro line that is not a template (no `$(name)`, an unclosed `$(`, a bad name), a missing tag entry |
 | `unknown-id` | error | with a client jar: an entity, item or block id the version does not have |
 | `text-component` | error | `tellraw`/`title` text that does not parse |
-| `json` | error | a JSON resource that does not parse, or a tag file that is not an object |
+| `json` | error | a function-side JSON resource (recipe, loot table, predicate, item modifier, advancement, tag) that does not parse — the server skips that file — or a tag file that is not an object |
 | `condition`, `item-function`, `loot-entry` | error | a condition, item function or loot entry type the version does not have (`alternative` before 1.20 and `any_of` after, `set_nbt` before 1.20.5, …) or one that is not an object |
 | `loot-table`, `recipe` | error | a loot table that is not an object, without `rolls`, or with `pools`/`entries` that are not lists; a recipe that is not an object, without a `type`, or with a type the version does not have |
 | `advancement` | error / warning | errors: not an object, no criteria, a criterion without a trigger or with a trigger the version does not have (checked from 1.20.3), `requirements` naming an unknown criterion or leaving one out, a `#tag` as reward function; warning: a parent that is not in the pack |

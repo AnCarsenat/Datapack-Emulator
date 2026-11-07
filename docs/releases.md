@@ -162,4 +162,4 @@ workflow's last step at it with `repository-url: https://test.pypi.org/legacy/`.
 `datapack_emulator.__version__` reads it back from the installed
 distribution (`0.0.0+checkout` in a checkout that was never installed), and
 both programs print it with `--version`. Bump it, run the tests, tag
-(`git tag v0.2.0`), then build and upload.
+(`git tag v0.3.0`), then build and upload.

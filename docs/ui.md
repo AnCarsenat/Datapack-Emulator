@@ -216,7 +216,11 @@ All six are open by default and can be toggled from *view*.
 
 * **problems** — what the emulated version refuses or cannot run in the
   pack, found without running ([command line](cli.md#check--problems):
-  `check`, which lists every kind): functions and tags that do not load,
+  `check`, which lists every kind). **Fatal** rows come first, in bold dark
+  red: they stop the world or the pack from loading at all (a worldgen or
+  dimension file that does not parse, lacks a field the version requires or
+  uses a kind it no longer has; an unreadable `pack.mcmeta`) — a server with
+  one refuses to start the world for every pack. Then errors: functions and tags that do not load,
   unknown selector options, SNBT and (with a client jar) ids the version
   does not have, calls to missing functions, broken JSON resources and
   unknown conditions or item functions in them, and — as notes — unused

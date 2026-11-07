@@ -22,7 +22,10 @@ checked against the real base game read out of a `client.jar`.
   writes JUnit XML
 * world snapshots: keep a world aside, rewind to it, and compare two to see
   what a tick changed
-* a problems list for the whole pack, per version: functions that do not
+* a problems list for the whole pack, per version, worst first: what stops
+  the world or the pack from loading at all (worldgen and dimension files
+  missing a required field or using a removed kind, broken JSON there, an
+  unreadable `pack.mcmeta`), then functions that do not
   load, unknown selector options, bad SNBT and ids, missing functions,
   broken loot tables and predicates, unused functions
 * explains any command line: execute steps, selectors, references, version

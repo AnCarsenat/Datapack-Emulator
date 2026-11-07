@@ -33,7 +33,7 @@ from datapack_emulator.emulator.common import normalise_id
 log = logging.getLogger(__name__)
 
 #: the format of a written schema file, so an older one is not read wrongly
-FORMAT = 1
+FORMAT = 2
 KIND = "datapack-emulator-schema"
 #: how deep a shape is learned (loot tables nest entries inside entries)
 MAX_DEPTH = 12
@@ -147,12 +147,18 @@ class Shape:
     #: whether the field names here are the pack's own (a criterion, a recipe
     #: key letter): then only their values are worth checking
     named_by_the_pack: bool = False
+    #: how many of the values were a "nothing" value (false, 0, "", [], {}):
+    #: a field vanilla writes even then is not one the game leaves out when it
+    #: holds its default, so it is required (see ``strictly_required``)
+    defaults: int = 0
 
     # -- learning ----------------------------------------------------------
 
     def learn(self, value: Any, depth: int = 0, parent: str = "") -> None:
         self.seen += 1
         self.kinds.add(kind_of(value))
+        if value in (False, 0, "", [], {}) and value is not None:
+            self.defaults += 1
         if depth >= MAX_DEPTH:
             self.truncated = True  # nothing below this is known, so nothing is claimed
             return
@@ -210,6 +216,7 @@ class Shape:
     def merge(self, other: Shape) -> None:
         """Fold another shape of the same place into this one."""
         self.seen += other.seen
+        self.defaults += other.defaults
         self.kinds |= other.kinds
         self.dispatch = self.dispatch or other.dispatch
         self.truncated = self.truncated or other.truncated
@@ -231,6 +238,15 @@ class Shape:
             return set()
         return {name for name, shape in self.fields.items() if shape.seen == self.seen}
 
+    def strictly_required(self) -> set[str]:
+        """The fields every vanilla file has *even where they hold a nothing
+        value*: an optional field with a default is left out of the game's own
+        files when it holds that default, so one written as ``false`` / ``0`` /
+        ``[]`` in some file is one the game needs. Leaving it out of a file of
+        a world registry (a dimension, a biome, a noise setting) stops the
+        whole world from loading."""
+        return {name for name in self.required() if self.fields[name].defaults}
+
     def known(self) -> set[str]:
         return set(self.fields)
 
@@ -248,6 +264,8 @@ class Shape:
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"seen": self.seen, "kinds": sorted(self.kinds)}
+        if self.defaults:
+            out["defaults"] = self.defaults
         if self.fields:
             out["fields"] = {name: shape.to_dict() for name, shape in self.fields.items()}
         if self.items is not None:
@@ -263,7 +281,11 @@ class Shape:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Shape:
-        shape = cls(seen=int(data.get("seen", 0)), kinds=set(data.get("kinds", [])))
+        shape = cls(
+            seen=int(data.get("seen", 0)),
+            kinds=set(data.get("kinds", [])),
+            defaults=int(data.get("defaults", 0)),
+        )
         shape.fields = {
             name: cls.from_dict(held) for name, held in (data.get("fields") or {}).items()
         }
@@ -294,7 +316,8 @@ def _dispatch_key(value: dict[str, Any], parent: str = "") -> str:
 class Issue:
     """One thing a file says that its version's own files never say."""
 
-    #: "unknown-field", "missing-field" or "wrong-kind"
+    #: "unknown-field", "missing-field", "missing-required", "wrong-kind" or
+    #: "unknown-type"
     kind: str
     #: where it is, as ``pools[0].entries[1].name``
     where: str
@@ -361,6 +384,40 @@ class Schema:
         return schema
 
 
+def _polymorphic(shape: Shape) -> bool:
+    """Whether the ids at a dispatch key name kinds of object with fields of
+    their own (a feature's ``type``), not values that share one shape (a
+    biome spawner's ``type`` is an entity id: every spawner has the same
+    fields). Only then is an id no vanilla file uses a kind the version may
+    not have."""
+    if len(shape.variants) < ENOUGH:
+        return False
+    layouts = {_layout(variant) for variant in shape.variants.values()}
+    return len(layouts) > 1
+
+
+def _layout(shape: Shape, depth: int = 2) -> frozenset:
+    """The field names of a shape and of its objects ``depth`` levels down: a
+    feature's kinds all have ``type`` and ``config``, and differ inside it."""
+    if depth <= 0:
+        return frozenset()
+    return frozenset((name, _layout(child, depth - 1)) for name, child in shape.fields.items())
+
+
+def _nothing(shape: Shape) -> str:
+    """How a field's "nothing" value reads: false, 0, an empty list..."""
+    kinds = shape.kinds
+    if "true/false" in kinds:
+        return "false"
+    if "a number" in kinds:
+        return "0"
+    if "a list" in kinds:
+        return "an empty list"
+    if "an object" in kinds:
+        return "an empty object"
+    return "an empty value"
+
+
 def _at(where: str, step: str) -> str:
     return f"{where}.{step}" if where else step
 
@@ -388,7 +445,16 @@ def _check(value: Any, shape: Shape, where: str, issues: list[Issue], version_id
                 return  # the id itself is checked against the registry elsewhere
             found = shape.for_type(type_id)
             if found is None:
-                return  # an unknown type: the registry check says so, not this
+                if shape.seen >= ENOUGH and _polymorphic(shape):
+                    issues.append(
+                        Issue(
+                            "unknown-type",
+                            _at(where, shape.dispatch),
+                            f"{type_id}: no {version_id} file read uses this {shape.dispatch} "
+                            f"(they use {len(shape.variants)} others)",
+                        )
+                    )
+                return  # nothing more is known of a kind no file has
             inner = found
         if inner.named_by_the_pack:
             # a criterion, a recipe key letter: the names are the pack's own,
@@ -406,15 +472,28 @@ def _check(value: Any, shape: Shape, where: str, issues: list[Issue], version_id
                         f"no {version_id} file read uses this field here",
                     )
                 )
+            strict = inner.strictly_required()
             for name in sorted(inner.required() - set(value)):
-                issues.append(
-                    Issue(
-                        "missing-field",
-                        _at(where, name),
-                        f"missing: every {version_id} file read sets it here (it may be optional)",
-                        "info",
+                if name in strict:
+                    issues.append(
+                        Issue(
+                            "missing-required",
+                            _at(where, name),
+                            f"missing: every {version_id} file read sets it, even to "
+                            f"{_nothing(inner.fields[name])}, so the version requires it",
+                            "error",
+                        )
                     )
-                )
+                else:
+                    issues.append(
+                        Issue(
+                            "missing-field",
+                            _at(where, name),
+                            f"missing: every {version_id} file read sets it here "
+                            "(it may be optional)",
+                            "info",
+                        )
+                    )
         for name, held_value in value.items():
             child = inner.fields.get(name)
             if child is not None:
