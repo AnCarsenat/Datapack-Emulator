@@ -230,18 +230,44 @@ later in the same server tick.
 
 `runtime/predicates.py` evaluates the conditions of predicate files, loot
 tables, item modifiers and advancement criteria, for `execute if predicate`,
-`predicate=` and the `loot` and `item modify` commands:
+`predicate=` and the `loot` and `item modify` commands.
+
+The format follows the version (26.3-snapshot-4, pack format 111; the
+version table has releases only, so 26.3 is the gate):
+
+| | before 26.3 | 26.3 and later |
+|---|---|---|
+| a condition's type | `condition` | `type` |
+| an item function's type | `function` | `type` |
+| a pool's, entry's or item function's conditions | `conditions` (a list) | `condition` (one condition or a predicate id; no list, use `all_of`) |
+| a table's, pool's or entry's item functions | `functions` (a list) | `modifier` (a function, a list, or an item modifier id; also on `alternatives`, `group` and `sequence`) |
+| naming another predicate or item modifier | `reference` (1.20–26.2 for functions) | the id as a string; lists may also hold `#tags` of them |
+| the block of the loot context | `block_state_property` (`block`, `properties`) | `match_block` (a block predicate: `blocks`, `state`, `nbt`) |
+| a number in a range | `value_check` (1.17–26.2: `value`, `range`) | `int_value_check` / `float_value_check` (26.3-pre-1: `value`, `test`) |
+| a `tag` entry | `name` (a tag id) | `items` (a `#tag`, an item or a list) |
+| an advancement criterion's `player` | a list of conditions, or an entity predicate | one condition (or a predicate id) |
+
+The old spellings are not read in 26.3 and the new ones not before it: a
+removed condition type fails, and `check` reports the wrong type key as an
+error and an ignored holder field as a warning. A predicate or item modifier
+id is looked up in the pack, then (for `minecraft:`) in the client jar.
 
 * **conditions** — `all_of`, `any_of` (and the older `alternative`),
-  `inverted`, `reference`, `random_chance`, `value_check`, `entity_scores`,
-  `entity_properties` (on `this`), `time_check`, `weather_check`,
-  `location_check`, `block_state_property`, `match_tool`, `table_bonus`,
-  `survives_explosion` (passes); `random_chance_with_enchanted_bonus` uses the
-  unenchanted chance;
+  `inverted`, `reference` (before 26.3), `random_chance`, `value_check`
+  (1.17–26.2), `int_value_check` and `float_value_check` (26.3),
+  `entity_scores`, `entity_properties` (on `this`), `time_check`,
+  `weather_check`, `location_check` (with `offsetX`/`offsetY`/`offsetZ`),
+  `block_state_property` (before 26.3), `match_block` (26.3), `match_tool`,
+  `table_bonus`, `survives_explosion` (passes);
+  `random_chance_with_enchanted_bonus` uses the unenchanted chance;
 * **number providers** — constants, `uniform`, `binomial`, `score`, `storage`;
   whole numbers are rounded (floored before 1.17), and a uniform range
   whose low end is not below the high one gives the low end;
-* **entity predicates** — `type` (and tags), `nbt`, `location`, `distance`,
+* **entity predicates** — from 26.2 written as a map of namespaced
+  sub-predicates (`minecraft:entity_type`, `minecraft:flags`,
+  `minecraft:type_specific/player`, …), read as the fields below; a
+  sub-predicate not listed here (other `type_specific/…`, `entity_tags`)
+  fails and is noted. `type` (and tags), `nbt`, `location`, `distance`,
   `flags` (on fire, baby — `IsBaby` or a negative `Age`, living entities
   only —, flying, on ground), `equipment` and `slots` (an empty slot is an
   empty stack, so `{}` and `minecraft:air` match it), `effects`, `team`, the
@@ -249,8 +275,11 @@ tables, item modifiers and advancement criteria, for `execute if predicate`,
   never matches), `vehicle`, `passenger`. `predicate=` checks each entity
   where it is, in its own dimension;
 * **location and block predicates** — position ranges, dimension, block ids,
-  tags, states and NBT (block states only compare the properties a block was
-  given: default states are not known). The 26.x `clock` of `time_check` is
+  tags (`#tag`, from the client jar or the pack), lists of ids, states
+  (string values, or `{min, max}`) and NBT. Block states only compare the
+  properties a block was given: default states are not known, and a
+  predicate that asks for one the block was not placed with fails with a
+  note. The 26.x `clock` of `time_check` is
   not read: the day time is used;
 * **item predicates** — `items` (ids and tags), `count`, exact `components`,
   `nbt`.
@@ -276,14 +305,15 @@ options, level 1), `set_item`, `copy_name` (`this` or `block_entity`),
 `copy_nbt` and `copy_custom_data` (from the mined block entity, `this` or a
 storage, with `replace`/`append`/`merge`), `set_contents` (the entries'
 candidates, into `container` or the `component` named), `set_potion`,
-`filtered`, `sequence`, `discard` — in the version's item format. `item
+`filtered`, `sequence`, `discard`, `reference` (1.20–26.2; an item modifier
+id from 26.3) — in the version's item format. `item
 modify` caps the count to the stack size once, at the end. The `mine` tool
 is an empty stack when none is given, so `match_tool` with `{}` passes and
 `apply_bonus` works at enchantment level 0 (only
 `binomial_with_bonus_count` adds its `extra` trials). Functions that need a
 killer or an explosion (`enchanted_count_increase`, `explosion_decay`, …)
-leave the item as it is, as vanilla does without them; the rest (including
-`reference`) are skipped and noted.
+leave the item as it is, as vanilla does without them; the rest are skipped
+and noted.
 
 ## Output
 

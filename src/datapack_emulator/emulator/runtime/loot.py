@@ -29,12 +29,20 @@ from datapack_emulator.emulator.runtime.inventory import (
     uses_equipment,
 )
 from datapack_emulator.emulator.runtime.predicates import (
+    MAX_DEPTH as MAX_REFERENCE_DEPTH,
+)
+from datapack_emulator.emulator.runtime.predicates import (
     Context,
-    check,
+    expand_references,
+    holder_field,
+    holder_passes,
     integer,
     item_matches,
+    kind_of,
     number,
+    resolve,
     to_float,
+    typed_loot,
 )
 
 #: nested tables deeper than this are not followed (a table can include itself)
@@ -93,9 +101,19 @@ def _context(source: random.Random | Context | None) -> Context:
     return Context(rng=source or random.Random())
 
 
+#: where a candidate keeps the modifiers of the composite entries around it
+OUTER = "__outer_modifiers__"
+
+
 def _passes(holder: dict[str, Any], context: Context) -> bool:
-    conditions = holder.get("conditions")
-    return not conditions or check(conditions, context)
+    """A holder's ``conditions`` (``condition`` from 26.3)."""
+    return holder_passes(holder, context)
+
+
+def _modifiers(holder: dict[str, Any], context: Context) -> Any:
+    """A holder's item functions: ``functions`` (``modifier`` from 26.3: one
+    function, a list, or an item modifier id)."""
+    return holder_field(holder, "modifier", "functions", context)
 
 
 def evaluate(
@@ -118,11 +136,13 @@ def evaluate(
             if entry is None:
                 continue
             stacks = _entry_items(entry, lookup, depth, result, context)
-            for function in pool.get("functions", []) or []:
-                stacks = [apply(function, stack, context, result) for stack in stacks]
+            modifier = _modifiers(pool, context)
+            if modifier is not None:
+                stacks = [apply(modifier, stack, context, result) for stack in stacks]
             result.items.extend(stack for stack in stacks if stack.count > 0)
-    for function in table.get("functions", []) or []:
-        result.items = [apply(function, stack, context, result) for stack in result.items]
+    modifier = _modifiers(table, context)
+    if modifier is not None:
+        result.items = [apply(modifier, stack, context, result) for stack in result.items]
     result.items = [stack for stack in result.items if stack.count > 0]
     result.skipped |= context.unchecked
     return result
@@ -136,35 +156,63 @@ def _expand(entries: Any, context: Context) -> list[dict[str, Any]]:
     return out
 
 
-def _expand_entry(entry: Any, context: Context, out: list[dict[str, Any]]) -> bool:
+def _expand_entry(
+    entry: Any, context: Context, out: list[dict[str, Any]], outer: tuple[Any, ...] = ()
+) -> bool:
     """Vanilla's ``expand``: add an entry's candidates, and say whether it ran
     (its conditions passed). Alternatives stop at the first child that ran,
     sequences at the first that did not; a group runs every child and always
-    counts as run. An expanded tag gives each of its items as a candidate."""
+    counts as run. An expanded tag gives each of its items as a candidate.
+    From 26.3 a composite entry can carry a ``modifier`` too: its candidates
+    keep it (``outer``, nearest composite first) for when they are rolled."""
     if not isinstance(entry, dict) or not _passes(entry, context):
         return False
     kind = normalise_id(str(entry.get("type", "minecraft:item")))
     children = entry.get("children")
     children = children if isinstance(children, list) else []
-    if kind == "minecraft:alternatives":
-        return any(_expand_entry(child, context, out) for child in children)
-    if kind == "minecraft:sequence":
-        return all(_expand_entry(child, context, out) for child in children)
-    if kind == "minecraft:group":
+    if kind in ("minecraft:alternatives", "minecraft:sequence", "minecraft:group"):
+        modifier = _modifiers(entry, context) if typed_loot(context) is not False else None
+        inner = (modifier, *outer) if modifier is not None else outer
+        if kind == "minecraft:alternatives":
+            return any(_expand_entry(child, context, out, inner) for child in children)
+        if kind == "minecraft:sequence":
+            return all(_expand_entry(child, context, out, inner) for child in children)
         for child in children:
-            _expand_entry(child, context, out)
+            _expand_entry(child, context, out, inner)
         return True
+    if outer:
+        entry = {**entry, OUTER: outer}
     if kind == "minecraft:tag" and entry.get("expand"):
-        tag = "#" + normalise_id(str(entry.get("name", "")))
-        members = context.tags("item", tag) if context.tags else None
+        members = _tag_items(entry, context)
         if members is not None:
-            plain = {key: value for key, value in entry.items() if key != "conditions"}
-            out.extend(
-                {**plain, "type": "minecraft:item", "name": item_id} for item_id in sorted(members)
-            )
+            held = {"condition", "conditions", "name", "items"}
+            plain = {key: value for key, value in entry.items() if key not in held}
+            out.extend({**plain, "type": "minecraft:item", "name": item_id} for item_id in members)
             return True
     out.append(entry)
     return True
+
+
+def _tag_items(entry: dict[str, Any], context: Context) -> list[str] | None:
+    """The items of a ``tag`` entry: ``name`` (a tag id), from 26.3 ``items``
+    (an item, a list of items or a ``#tag``); None when a tag is unknown."""
+    if typed_loot(context) is False or (typed_loot(context) is None and "items" not in entry):
+        wanted: Any = "#" + normalise_id(str(entry.get("name", "")).lstrip("#"))
+    else:
+        wanted = entry.get("items")
+    values = wanted if isinstance(wanted, list) else [wanted]
+    if not all(isinstance(value, str) for value in values):
+        return []
+    found: list[str] = []
+    for value in values:
+        if value.startswith("#"):
+            members = context.tags("item", value) if context.tags else None
+            if members is None:
+                return None
+            found.extend(sorted(members))
+        else:
+            found.append(normalise_id(value))
+    return found
 
 
 def _weight(entry: dict[str, Any]) -> int:
@@ -193,12 +241,12 @@ def _entry_items(
     if kind == "minecraft:item":
         stacks = [ItemStack(normalise_id(str(entry.get("name", "minecraft:air"))), 1)]
     elif kind == "minecraft:tag":
-        tag = "#" + normalise_id(str(entry.get("name", "")))
-        members = context.tags("item", tag) if context.tags else None
+        members = _tag_items(entry, context)
         if members is None:
-            result.skipped.add(f"tag entry {tag}")
+            what = entry.get("items", entry.get("name", ""))
+            result.skipped.add(f"tag entry {what}")
         else:
-            stacks = [ItemStack(item_id, 1) for item_id in sorted(members)]
+            stacks = [ItemStack(item_id, 1) for item_id in members]
     elif kind == "minecraft:loot_table" and depth < MAX_DEPTH:
         value = entry.get("value", entry.get("name"))
         nested = None
@@ -228,9 +276,9 @@ def _entry_items(
             result.skipped.add(f"dynamic {name}")
     elif kind not in ("minecraft:empty", "minecraft:loot_table"):
         result.skipped.add(kind)
-    functions = entry.get("functions")
-    for function in functions if isinstance(functions, list) else []:
-        stacks = [apply(function, stack, context, result) for stack in stacks]
+    for modifier in (_modifiers(entry, context), *entry.get(OUTER, ())):
+        if modifier is not None:
+            stacks = [apply(modifier, stack, context, result) for stack in stacks]
     return [stack for stack in stacks if stack.id != "minecraft:air"]
 
 
@@ -372,20 +420,32 @@ def apply(
     result: LootResult,
     cap: bool = False,
 ) -> ItemStack:
-    """One item function (a list is a sequence). Counts are not capped here:
-    loot is split into stacks afterwards, and an item modifier caps the
-    result once (``modify``)."""
+    """One item function (a list is a sequence; from 26.3 an item modifier id,
+    and a list can hold ``#tags`` of them). Counts are not capped here: loot
+    is split into stacks afterwards, and an item modifier caps the result
+    once (``modify``)."""
     context = _context(context)
     if isinstance(function, list):
-        for part in function:
+        for part in expand_references(function, "item_modifier", context):
             stack = apply(part, stack, context, result, cap)
         return stack
+    if isinstance(function, str) and typed_loot(context) is not False:
+        if function.startswith("#"):
+            return apply([function], stack, context, result, cap)
+        target = resolve(function, context.modifiers, "item modifier", context)
+        if target is None or context.depth >= MAX_REFERENCE_DEPTH:
+            return stack
+        context.depth += 1
+        try:
+            return apply(target, stack, context, result, cap)
+        finally:
+            context.depth -= 1
     if not isinstance(function, dict) or not _passes(function, context):
         return stack
-    name = normalise_id(str(function.get("function", "")))
+    name = kind_of(function, "function", context)
     handler = FUNCTIONS.get(name)
-    if handler is None:
-        result.skipped.add(name or "function")
+    if handler is None or (typed_loot(context) and name in LEGACY_FUNCTIONS):
+        result.skipped.add(name or "function without a type")
         return stack
     return handler(function, stack, context, result, cap) or stack
 
@@ -564,7 +624,7 @@ def _copy_source(function: dict[str, Any], context: Context, result: LootResult)
         return context.block.data(context.version, context.block_position)
     if target == "minecraft:this" and context.entity is not None:
         return context.entity.data(context.version)
-    result.skipped.add(f"{function.get('function')} from {target}")
+    result.skipped.add(f"{kind_of(function, 'function', context)} from {target}")
     return None
 
 
@@ -618,6 +678,18 @@ def _sequence(function, stack, context, result, cap):
     for part in parts if isinstance(parts, list) else []:
         stack = apply(part, stack, context, result, cap)
     return stack
+
+
+def _reference(function, stack, context, result, cap):
+    """``reference`` (1.20 to 26.2): the item modifier named ``name``."""
+    target = resolve(str(function.get("name", "")), context.modifiers, "item modifier", context)
+    if target is None or context.depth >= MAX_REFERENCE_DEPTH:
+        return stack
+    context.depth += 1
+    try:
+        return apply(target, stack, context, result, cap)
+    finally:
+        context.depth -= 1
 
 
 def _discard(function, stack, context, result, cap):
@@ -683,6 +755,7 @@ FUNCTIONS: dict[str, Callable[..., ItemStack | None]] = {
     "minecraft:copy_custom_data": _copy_custom_data,
     "minecraft:filtered": _filtered,
     "minecraft:sequence": _sequence,
+    "minecraft:reference": _reference,
     "minecraft:discard": _discard,
     "minecraft:set_potion": _set_potion,
     "minecraft:explosion_decay": _unchanged,
@@ -697,6 +770,9 @@ FUNCTIONS: dict[str, Callable[..., ItemStack | None]] = {
     "minecraft:set_stew_effect": _skipped("minecraft:set_stew_effect"),
     "minecraft:copy_components": _skipped("minecraft:copy_components"),
 }
+
+#: item functions 26.3 removed (``reference``: an item modifier id instead)
+LEGACY_FUNCTIONS = frozenset({"minecraft:reference"})
 
 
 def modify(modifier: Any, stack: ItemStack, context: Context) -> tuple[ItemStack, LootResult]:
