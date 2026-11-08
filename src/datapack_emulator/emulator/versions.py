@@ -261,6 +261,37 @@ def has_modification_limit_rule(version: Version) -> bool:
     return version >= parse(MODIFICATION_LIMIT_RULE_SINCE)
 
 
+#: loot conditions (predicates) and item functions (item modifiers) name their
+#: kind in ``type``, not ``condition`` / ``function``; pools and entries take
+#: one ``condition`` and one ``modifier`` instead of ``conditions`` /
+#: ``functions`` lists; a predicate or item modifier id (a string) replaces
+#: the ``reference`` type, and ``block_state_property`` became ``match_block``
+#: (26.3-snapshot-4, pack_format 111). ``value_check`` became
+#: ``int_value_check`` / ``float_value_check`` in 26.3-pre-1. The version
+#: table has releases only, so the release is the gate; a version known with
+#: its pack format is gated by that format.
+TYPED_LOOT_SINCE = "26.3"
+TYPED_LOOT_FORMAT = (111, 0)
+
+
+def uses_typed_loot(version: Version) -> bool:
+    """Does ``version`` read the 26.3 loot format (``type``, ``condition``,
+    ``modifier``, references as ids)?"""
+    if version.pack_format:
+        return version.format >= TYPED_LOOT_FORMAT
+    return version >= parse(TYPED_LOOT_SINCE)
+
+
+#: entity predicates became a map of namespaced sub-predicates, like data
+#: components (``minecraft:entity_type``, ``minecraft:flags``,
+#: ``minecraft:type_specific/player``, …) in 26.2-snapshot-3
+ENTITY_PREDICATE_MAP_SINCE = "26.2"
+
+
+def uses_entity_predicate_map(version: Version) -> bool:
+    return version >= parse(ENTITY_PREDICATE_MAP_SINCE)
+
+
 def supports_macros(version: Version) -> bool:
     return version >= parse(MACROS_SINCE)
 
