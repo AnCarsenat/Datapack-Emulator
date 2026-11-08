@@ -33,6 +33,7 @@ fallback) so the caller can say so.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import struct
@@ -833,13 +834,35 @@ FLOAT_PROVIDERS: dict[str, Callable[[dict[str, Any], NumberContext], float]] = {
 
 
 def jar_provider(jar_path: Any, registry: str, resource_id: str) -> Any:
-    """A vanilla provider file from the client jar (it may be a bare number)."""
+    """A vanilla provider file from the client jar (it may be a bare number).
+
+    The jar's provider files are read once per jar: opening the client jar
+    costs a fifth of a second, far too much for a ``compute`` that runs every
+    tick."""
     namespace, _, path = normalise_id(resource_id).partition(":")
-    name = f"data/{namespace}/{registry}/{path}.json"
+    found = _jar_providers(str(jar_path)).get(f"data/{namespace}/{registry}/{path}.json")
+    return copy.deepcopy(found)
+
+
+@cache
+def _jar_providers(jar_path: str) -> dict[str, Any]:
+    """Every ``context_int_provider`` / ``context_float_provider`` file of a
+    jar, by its name in the archive."""
+    found: dict[str, Any] = {}
     try:
         with zipfile.ZipFile(jar_path) as archive:
-            if name not in archive.namelist():
-                return None
-            return json.loads(archive.read(name).decode("utf-8"))
-    except (OSError, zipfile.BadZipFile, ValueError):
-        return None
+            for name in archive.namelist():
+                parts = name.split("/")
+                if (
+                    len(parts) >= 4
+                    and parts[0] == "data"
+                    and parts[2] in (INT_REGISTRY, FLOAT_REGISTRY)
+                    and name.endswith(".json")
+                ):
+                    try:
+                        found[name] = json.loads(archive.read(name).decode("utf-8"))
+                    except ValueError:
+                        continue
+    except (OSError, zipfile.BadZipFile):
+        return {}
+    return found
