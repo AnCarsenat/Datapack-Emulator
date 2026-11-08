@@ -167,3 +167,46 @@ def test_metadata_compatibility_follows_each_versions_rules(make_pack):
     for version in ("1.21.9", "26.2"):
         verdict = fixed.compatibility(versions.parse(version))
         assert verdict.compatible and not verdict.server_log
+
+
+def test_modern_metadata_follows_the_26_3_codec(make_pack):
+    """PackFormat.IntermediaryFormat.validate, as read in the 26.3 jar."""
+
+    def verdict(pack: dict, version: str = "26.3"):
+        loaded = Datapack.load(make_pack({}, mcmeta={"pack": {"description": "d", **pack}}))
+        return loaded.compatibility(versions.parse(version))
+
+    # a pack_format next to a min_format above 81 is fine when it lies in the range
+    description = ["", {"text": "Pack", "bold": True, "color": "gold", "type": "text"}]
+    ra_style = {
+        "description": description,
+        "min_format": [121, 0],
+        "max_format": [121, 0],
+        "pack_format": 121,
+    }
+    result = verdict(ra_style)
+    assert result.compatible and not result.server_log
+    assert verdict({"min_format": 94, "max_format": 121}).compatible
+    # …and refused out of it, or with supported_formats (deprecated above 81)
+    for bad in (
+        {"min_format": 94, "max_format": 121, "pack_format": 90},
+        {"min_format": 94, "max_format": 121, "supported_formats": [94, 121]},
+        {"min_format": 121},
+        {"min_format": 121, "max_format": 94},
+        {"pack_format": 94},  # past 81 without min/max
+        {"supported_formats": [48, 94], "pack_format": 48},
+        {},
+    ):
+        result = verdict(bad)
+        assert result.status == "unknown" and result.server_log, bad
+    # without min/max an old pack still validates: it is too old, not unknown
+    assert verdict({"pack_format": 48}).status == "too_old"
+    assert verdict({"supported_formats": [48, 61], "pack_format": 48}).status == "too_old"
+
+
+def test_check_has_no_pack_warning_for_valid_modern_metadata(make_pack):
+    from datapack_emulator.emulator.analysis.problems import find_problems
+
+    meta = {"pack": {"description": "d", "min_format": 121, "max_format": 121, "pack_format": 121}}
+    pack = Datapack.load(make_pack({"data/test/function/tick.mcfunction": "say hi\n"}, mcmeta=meta))
+    assert not [p for p in find_problems(pack, "26.3") if p.code == "pack"]
