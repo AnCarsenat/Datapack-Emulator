@@ -14,7 +14,14 @@ frameless scroll area (`<dock name>Scroll`), so a dock can be dragged
 smaller than its row of buttons. Edit a dock's contents in Designer as
 usual; widgets are found by object name, so the extra level does not matter.
 
+The pictures on this page and in the readme come from
+`python tools/screenshots.py`, which opens the window on `samples/hat_v2`,
+runs it and saves each tab to `docs/screenshots/`. Run it again when the
+window changes (`--platform offscreen` works without a display).
+
 ## Main window
+
+![The main window after a 40-tick run of samples/hat_v2](screenshots/window.png)
 
 ### Toolbar
 
@@ -452,6 +459,8 @@ says why and the log records it. If the jar for that version is already
 installed, it is loaded without downloading.
 
 ## Engine window
+
+![The engine window: hat_v2 run on every version it declares](screenshots/engine.png)
 
 Left: version selection — a *from/to* range, the range `pack.mcmeta`
 declares, *one per format* (the first release of each `pack_format`, a cheap
