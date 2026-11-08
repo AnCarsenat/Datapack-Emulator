@@ -157,7 +157,7 @@ and block-entity data drops those types when it is written (`summon`,
 its own type through the entity's codec, which the emulator does not model, so
 those numbers match by value (`summon … {Health:5}` matches `{Health:5.0f}`).
 Items keep their types. Numbers the emulator computes itself have no type and
-also match by value.
+also match by value. `execute if data` counts every tag the path selects.
 
 ## Commands
 

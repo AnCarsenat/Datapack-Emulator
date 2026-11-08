@@ -295,3 +295,12 @@ def test_set_past_the_end_of_a_list_changes_nothing(emulator):
     emulator.run_typed("data modify storage test:s l set value [1, 2]")
     assert not passes(emulator, "data modify storage test:s l[5] set value 3")
     assert storage(emulator)["l"] == [1, 2]
+
+
+def test_if_data_counts_every_selected_tag(emulator):
+    emulator.run_typed("data modify storage test:s l set value [{a:1},{a:2},{b:3}]")
+    emulator.run_typed("scoreboard objectives add o dummy")
+    emulator.run_typed("execute store result score #n o if data storage test:s l[].a")
+    assert emulator.world.scoreboard.get("#n", "o") == 2
+    emulator.run_typed("execute store result score #n o if data storage test:s l[{a:2}]")
+    assert emulator.world.scoreboard.get("#n", "o") == 1
