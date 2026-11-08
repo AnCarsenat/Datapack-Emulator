@@ -254,3 +254,44 @@ def test_block_data_numbers_match_by_value(emulator):
     assert passes(emulator, "execute if data block 0 64 0 {CookTime:2s}")
     emulator.run_typed("execute store result block 0 64 0 CookTimeTotal short 1 run say x")
     assert passes(emulator, "execute if data block 0 64 0 {CookTimeTotal:1}")
+
+
+# --- parser edge cases (NbtPathArgument / StringReader) -------------------------
+
+
+@pytest.mark.parametrize(
+    ("path", "keys"),
+    [
+        ('""', [""]),
+        ('a.""', ["a", ""]),
+        ('"a\\"b"', ['a"b']),
+        ("'a\\'b'", ["a'b"]),
+        ('"a\\\\b"', ["a\\b"]),
+        ("'a\"b'", ['a"b']),
+    ],
+)
+def test_quoted_keys(path, keys):
+    nodes = parse_path(path)
+    assert nodes is not None and [node.key for node in nodes] == keys
+
+
+@pytest.mark.parametrize(
+    "path",
+    ['"a\\b"', "a[]{b:1}", "a[0]{b:1}", "a[ 0 ]", "a[+1]", "a[2147483648]", "a[", '"a', "["],
+)
+def test_invalid_paths(path):
+    assert parse_path(path) is None
+
+
+def test_long_paths_do_not_crash():
+    assert parse_path("a." * 50000 + "a") is not None
+    assert parse_path("[" * 10000) is None
+    assert parse_path("{" * 10000) is None
+    assert nbt_get({"l": [1, 2, 3]}, "l[-1]") == 3
+    assert nbt_get({"l": [1, 2, 3]}, "l[-4]") is None
+
+
+def test_set_past_the_end_of_a_list_changes_nothing(emulator):
+    emulator.run_typed("data modify storage test:s l set value [1, 2]")
+    assert not passes(emulator, "data modify storage test:s l[5] set value 3")
+    assert storage(emulator)["l"] == [1, 2]

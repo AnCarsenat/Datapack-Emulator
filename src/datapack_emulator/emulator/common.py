@@ -578,6 +578,7 @@ class PathNode:
 
 
 _PATH_NAME_STOP = set(" \"'[]{}.")
+_PATH_INDEX_RE = re.compile(r"-?[0-9]+")
 
 
 def parse_path(text: str) -> list[PathNode] | None:
@@ -615,9 +616,11 @@ def parse_path(text: str) -> list[PathNode] | None:
                 end = text.find("]", index)
                 if end < 0:
                     return None
-                try:
-                    number = int(text[index:end])
-                except ValueError:
+                # StringReader.readInt: an optional minus and digits, in int range
+                if not _PATH_INDEX_RE.fullmatch(text[index:end]):
+                    return None
+                number = int(text[index:end])
+                if not -(2**31) <= number < 2**31:
                     return None
                 nodes.append(PathNode("index", index=number))
                 index = end + 1
@@ -626,8 +629,11 @@ def parse_path(text: str) -> list[PathNode] | None:
                 end = index + 1
                 name: list[str] = []
                 while end < length and text[end] != char:
-                    if text[end] == "\\" and end + 1 < length:
+                    if text[end] == "\\":
                         end += 1
+                        # StringReader only escapes the quote and the backslash
+                        if end >= length or text[end] not in (char, "\\"):
+                            return None
                     name.append(text[end])
                     end += 1
                 if end >= length:
@@ -731,6 +737,9 @@ def nbt_set_count(store: Any, path: str, value: Any) -> int | None:
     """Vanilla ``NbtPath.set``: create the missing parents, then put ``value``
     at every tag the path selects. Returns how many tags changed, or None when
     the path is invalid or reaches no parent (``arguments.nbtpath.nothing_found``).
+    A final ``[n]`` past the end of the list changes nothing and gives 0, as
+    ``IndexedElementNode.setTag`` does (``data modify`` then reports
+    ``commands.data.merge.failed``).
 
     The first target receives ``value`` itself, the others a copy.
     """
@@ -745,8 +754,6 @@ def nbt_set_count(store: Any, path: str, value: Any) -> int | None:
     last = nodes[-1]
     changed = 0
     used = False
-    if last.kind == "index" and not any(_children(last, parent) for parent in parents):
-        return None  # no element at that index anywhere
 
     def give() -> Any:
         nonlocal used
