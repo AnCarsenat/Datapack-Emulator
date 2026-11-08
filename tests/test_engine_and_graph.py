@@ -302,6 +302,22 @@ def test_macro_call_targets_are_dynamic_not_missing(make_pack):
     assert graph.unreachable() == ["test:other/x"]
 
 
+def test_templates_sharing_a_pattern_share_edges_and_make_no_cycles(make_pack):
+    files = {
+        "data/test/function/tick.mcfunction": 'function test:a {f:"test:a",x:"b"}\n',
+        "data/test/function/a.mcfunction": "$function $(f)\n$function test:$(x)\n",
+        "data/test/function/b.mcfunction": "$function $(g)\n$function test:$(y)\n",
+    }
+    graph = CallGraph.from_datapack(Datapack.load(make_pack(files)))
+    # the second template of each pattern goes through the first
+    assert graph.successors("minecraft:$(g)") == ["minecraft:$(f)"]
+    assert graph.successors("test:$(y)") == ["test:$(x)"]
+    assert set(graph.successors("test:$(x)")) == {"test:a", "test:b", "test:tick"}
+    assert graph.unreachable() == []
+    # what a macro call may become is not recursion
+    assert graph.cycles() == []
+
+
 def test_template_pattern():
     from datapack_emulator.emulator.analysis.graph import fully_dynamic, template_pattern
 

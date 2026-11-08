@@ -316,7 +316,8 @@ A macro line such as `$function ns:dust/$(kind)` names its function only when
 it runs: its id goes in `call_graph.dynamic_calls`, never in
 `missing_functions`, and it counts as calling every function whose id fits the
 pattern (`ns:dust/*`). A call that is all macro (`$function $(f)`) counts as
-calling the functions whose id the pack writes as a quoted string.
+calling the functions whose id the pack writes as a quoted string. These
+possible calls are not counted as `recursion`.
 
 then `check` for the reason on each line.
 

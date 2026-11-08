@@ -124,8 +124,18 @@ class CallGraph:
         if not templates:
             return
         quoted: set[str] | None = None
+        # templates with the same pattern ($(f) and $(g), or ns:a/$(x) and
+        # ns:a/$(y)) can become the same functions: the first is linked to
+        # them and the others to it, so the edges grow with the number of
+        # templates plus functions, not their product
+        first: dict[str, str] = {}
         for template in templates:
-            if fully_dynamic(template):
+            key = "" if fully_dynamic(template) else template_pattern(template).pattern
+            if key in first:
+                self.add_edge(template, first[key], "dynamic")
+                continue
+            first[key] = template
+            if not key:
                 if quoted is None:
                     quoted = set()
                     for function in functions.values():
@@ -235,8 +245,16 @@ class CallGraph:
         return namespace if 2 * count >= functions else None
 
     def cycles(self) -> list[list[str]]:
-        """Every back-edge cycle; a non-empty result means it is not a DAG."""
+        """Every back-edge cycle; a non-empty result means it is not a DAG.
+
+        The ``dynamic`` edges out of a macro call target (``ns:a/$(b)``) are
+        left out: they say what the call may become, not what it calls."""
         found: list[list[str]] = []
+        out = {
+            node: targets
+            for node, targets in self._out.items()
+            if not self.nodes.get(node, {}).get("template")
+        }
         state: dict[str, int] = {}  # 0 = visiting, 1 = done
         # iterative depth-first search: packs chain thousands of functions deep
         for root in self.nodes:
@@ -245,7 +263,7 @@ class CallGraph:
             path: list[str] = [root]
             on_path: dict[str, int] = {root: 0}
             state[root] = 0
-            stack = [iter(self._out.get(root, []))]
+            stack = [iter(out.get(root, []))]
             while stack:
                 successor = next(stack[-1], None)
                 if successor is None:
@@ -260,7 +278,7 @@ class CallGraph:
                     state[successor] = 0
                     on_path[successor] = len(path)
                     path.append(successor)
-                    stack.append(iter(self._out.get(successor, [])))
+                    stack.append(iter(out.get(successor, [])))
         return found
 
     @property
