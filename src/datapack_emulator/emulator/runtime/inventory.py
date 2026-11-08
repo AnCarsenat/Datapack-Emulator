@@ -39,6 +39,7 @@ from datapack_emulator.emulator.runtime.components import (
     effective,
     namespace_ids,
     normalise,
+    same_patch,
     same_value,
     stack_problem,
 )
@@ -97,10 +98,9 @@ class ItemStack:
         return (
             self.id == other.id
             and self.tag == other.tag
-            and (
-                self.components == other.components
-                or normalise(self.id, self.components, None)
-                == normalise(other.id, other.components, None)
+            and same_patch(
+                normalise(self.id, self.components, None),
+                normalise(other.id, other.components, None),
             )
         )
 
@@ -230,7 +230,7 @@ class ComponentCheck:
         components = stack.effective_components(version)
         if self.has_value:
             result = self.key in components and same_value(
-                components[self.key], namespace_ids(self.key, self.value)
+                components[self.key], namespace_ids(self.key, self.value), self.key
             )
         else:
             result = self.key in components

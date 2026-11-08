@@ -4,6 +4,7 @@ from conftest import chat, game_errors
 
 from datapack_emulator.emulator import Datapack, Emulator
 from datapack_emulator.emulator.commands.parser import Command
+from datapack_emulator.emulator.common import parse_snbt
 from datapack_emulator.emulator.runtime.inventory import (
     Inventory,
     ItemStack,
@@ -424,6 +425,33 @@ def test_component_tests_see_the_item_defaults(make_pack):
     context = Context(version=emulator.version)
     assert item_matches({"components": {"max_stack_size": 16}}, pearl, context)
     assert not item_matches({"components": {"minecraft:food": {}}}, pearl, context)
+
+
+def test_component_values_are_typed_by_their_schema(make_pack):
+    emulator = empty_world(make_pack)
+    typed(emulator, "setblock 5 64 0 minecraft:chest")
+    typed(emulator, "item replace block 5 64 0 container.0 with stone[custom_data={a:1b}]")
+    typed(emulator, "item replace block 5 64 0 container.1 with stone[max_stack_size=16b]")
+    test = "execute if items block 5 64 0 container.{} {}"
+    # custom data is raw NBT: the game keeps its types, 1b is not 1
+    assert passes(emulator, test.format(0, "*[custom_data={a:1b}]"))
+    assert not passes(emulator, test.format(0, "*[custom_data={a:1}]"))
+    # a codec-typed component stores an int whatever the SNBT said
+    assert passes(emulator, test.format(1, "*[max_stack_size=16]"))
+    path = 'block 5 64 0 Items[{Slot:1b,components:{"minecraft:max_stack_size":16}}]'
+    assert passes(emulator, f"execute if data {path}")
+    # stacks whose custom data differ only in type do not merge
+    one = ItemStack("minecraft:stone", 1, {"minecraft:custom_data": parse_snbt("{a:1b}")})
+    other = ItemStack("minecraft:stone", 1, {"minecraft:custom_data": parse_snbt("{a:1}")})
+    assert not one.same_kind(other) and one.same_kind(one.copy())
+    # item entities keep the types of their stack through untyped() entity data
+    typed(
+        emulator,
+        'summon item 5 70 0 {Item:{id:"stone",count:1,components:{"minecraft:custom_data":{v:2s}}}}',
+    )
+    item = 'entity @e[type=item,limit=1] Item.components."minecraft:custom_data"'
+    assert passes(emulator, f"execute if data {item}{{v:2s}}")
+    assert not passes(emulator, f"execute if data {item}{{v:2}}")
 
 
 def test_defaults_follow_the_version(make_pack):

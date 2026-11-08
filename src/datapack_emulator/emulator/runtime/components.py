@@ -34,7 +34,12 @@ from functools import lru_cache
 from typing import Any
 
 from datapack_emulator.emulator import item_defaults, versions
-from datapack_emulator.emulator.common import normalise_id, normalise_tagged_id
+from datapack_emulator.emulator.common import (
+    nbt_equal,
+    normalise_id,
+    normalise_tagged_id,
+    untyped,
+)
 from datapack_emulator.emulator.versions import Version
 
 #: the default of a component whose presence is known but not its value
@@ -158,11 +163,25 @@ def _float32(value: float) -> float:
         return value
 
 
-def same_value(a: Any, b: Any) -> bool:
-    """Equal as the game compares decoded components: floats at float precision,
-    numbers whatever their NBT type, compounds whatever their key order."""
+#: components that hold raw NBT (``CustomData``): the game keeps their SNBT
+#: types, so ``{a:1b}`` and ``{a:1}`` differ; every other component is decoded
+#: by a codec that gives each field its own type
+RAW_NBT = frozenset(
+    f"minecraft:{name}"
+    for name in ("custom_data", "entity_data", "block_entity_data", "bucket_entity_data")
+)
+#: components that hold item stacks (normalised by the stack codec)
+_STACK_LISTS = frozenset({"minecraft:bundle_contents", "minecraft:charged_projectiles"})
+
+
+def same_value(a: Any, b: Any, key: str | None = None) -> bool:
+    """Equal as the game compares decoded components of type ``key``: floats at
+    float precision, numbers whatever their NBT type, compounds whatever their
+    key order; raw NBT (:data:`RAW_NBT`) exactly, types included."""
     if a is UNKNOWN or b is UNKNOWN:
         return False
+    if key in RAW_NBT:
+        return nbt_equal(a, b)
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         if isinstance(a, float) or isinstance(b, float):
             return _float32(float(a)) == _float32(float(b))
@@ -246,9 +265,7 @@ def namespace_ids(key: str, value: Any) -> Any:
         ]
     if key == "minecraft:potion_contents" and isinstance(value, str):
         return normalise_id(value)
-    if key in ("minecraft:bundle_contents", "minecraft:charged_projectiles") and isinstance(
-        value, list
-    ):
+    if key in _STACK_LISTS and isinstance(value, list):
         return [normalise_stack_nbt(item, None) for item in value]
     if key == "minecraft:container" and isinstance(value, list):
         return [
@@ -298,11 +315,44 @@ def normalise(item_id: str, components: dict[str, Any], version: Version | None)
                 continue  # removing what the item does not have: nothing to store
             out[name] = {}
             continue
-        value = namespace_ids(name, value)
-        if name in known and same_value(value, known[name]):
+        value = schema_typed(name, namespace_ids(name, value))
+        if name in known and same_value(value, known[name], name):
             continue
         out[name] = value
     return out
+
+
+def same_patch(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Whether two normalised patches are the same (see :func:`same_value`)."""
+    return a.keys() == b.keys() and all(same_value(a[key], b[key], key) for key in a)
+
+
+def _untyped_stack(stack: Any) -> Any:
+    if not isinstance(stack, dict):
+        return untyped(stack)
+    return {key: item if key == "components" else untyped(item) for key, item in stack.items()}
+
+
+def schema_typed(key: str, value: Any) -> Any:
+    """``value`` of component ``key`` with the SNBT number types it was written
+    with dropped, as the component's codec does (``max_stack_size:16b`` is
+    stored as an int); raw NBT keeps them, nested stacks keep their own
+    components' (already normalised). The emulator does not know each field's
+    type, so the numbers become plain and compare by value."""
+    if key in RAW_NBT:
+        return value
+    if key in _STACK_LISTS and isinstance(value, list):
+        return [_untyped_stack(item) for item in value]
+    if key == "minecraft:use_remainder":
+        return _untyped_stack(value)
+    if key == "minecraft:container" and isinstance(value, list):
+        return [
+            {k: _untyped_stack(v) if k == "item" else untyped(v) for k, v in entry.items()}
+            if isinstance(entry, dict)
+            else untyped(entry)
+            for entry in value
+        ]
+    return untyped(value)
 
 
 def normalise_stack_nbt(data: Any, version: Version | None) -> Any:

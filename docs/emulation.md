@@ -92,7 +92,11 @@ Deliberately small: no chunks, physics or block updates.
   defaults with the patch applied, so a plain ender pearl matches
   `[max_stack_size=16]` and a bread with `!food` does not match `[food]`.
   Values compare as decoded components (floats at float precision, ids
-  namespaced). Stacks are written back the way the item codec writes them
+  namespaced, numbers by value whatever their SNBT type, except in raw NBT:
+  `custom_data`, `entity_data`, `block_entity_data` and `bucket_entity_data`
+  keep their types, so `{a:1b}` is not `{a:1}`). Written back, the other
+  components drop their SNBT number types (`max_stack_size=16b` is stored as
+  `16`), like the entity data below. Stacks are written back the way the item codec writes them
   (in containers, `Items`, mob and player slots, and the `Item`, `item` and
   `FireworksItem` of item entities, frames, displays and projectiles):
   identifiers namespaced (`item_model`, `tooltip_style`, sounds, variants,

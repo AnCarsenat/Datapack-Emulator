@@ -666,7 +666,7 @@ def item_matches(predicate: Any, stack: ItemStack, context: Context) -> bool:
         for key, value in components.items():
             qualified = key if ":" in key else f"minecraft:{key}"
             if qualified not in actual or not same_value(
-                actual[qualified], namespace_ids(qualified, value)
+                actual[qualified], namespace_ids(qualified, value), qualified
             ):
                 return False
     if "nbt" in predicate and not _nbt_matches(predicate["nbt"], stack.tag):
