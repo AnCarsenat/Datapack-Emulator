@@ -1,44 +1,76 @@
 # Datapack Emulator
 
-Load a Minecraft datapack, run its functions, see what they print, what they
-cost and how they call each other — for **any Minecraft version you pick**,
-checked against the real base game read out of a `client.jar`.
+Run a Minecraft datapack without starting Minecraft. Load it, tick it, and see
+what its functions print, what they cost and how they call each other — for
+**any Minecraft version from 1.13 to 26.3**, checked against the real base
+game read out of a `client.jar`.
 
-* emulates `#minecraft:load` / `#minecraft:tick`, scoreboards, selectors,
-  `execute`, macros, schedules, storage, entity NBT, inventories and blocks
-  (setblock, fill, clone, containers, block entity data), teams, game modes,
-  experience, time, weather, the world border, random sequences, health,
-  attributes, effects, riding, boss bars, item entities, predicates,
-  advancements, and loot tables with their conditions and functions
-* knows which commands exist in each version from 1.13 to 26.3, and which
-  `pack.mcmeta` overlays apply
-* prints Minecraft's own error messages, kept apart from the app's own logs
-* shows the world as it runs — a scoreboard grid with each score's history,
-  entities with their full NBT, command storage, placed blocks — and runs commands typed
-  into it
-* command tests at any tick, with checks on scores, storage, NBT, blocks and
-  entity counts, in the window, during runs and across versions —
-  and in CI: `datapack-emulator-cli test` exits non-zero on a failure and
-  writes JUnit XML
-* world snapshots: keep a world aside, rewind to it, and compare two to see
-  what a tick changed
-* a problems list for the whole pack, per version, worst first: what stops
-  the world or the pack from loading at all (worldgen and dimension files
-  missing a required field or using a removed kind, broken JSON there, an
-  unreadable `pack.mcmeta`), then functions that do not
-  load, unknown selector options, bad SNBT and ids, missing functions,
-  broken loot tables and predicates, unused functions
-* explains any command line: execute steps, selectors, references, version
-  support and cost; your own notes on the project and its functions
-* a function debugger: breakpoints (with conditions) on function lines, step
-  into / over / out, the call stack, the command source and watched scores,
-  storage and NBT — in the window and in the command-line shell
-* profiler with per-function cost (from constants measured on a real server),
-  dearest lines, a flame graph and
-  before/after comparison of two runs, call-graph DAG, version matrix
-* edits functions in the window: lines checked as you type, completion
-  (Ctrl+Space) and renaming a function across the pack (F2)
-* reads registries, tags and message strings straight from a `client.jar`
+![The main window: a pack loaded, its tests passed, the scoreboard and logs after a 40-tick run](docs/screenshots/window.png)
+
+It comes as a window (PySide6) and as a command line that does everything the
+window does, so the same checks run on your desk and in CI.
+
+## What it does
+
+**Runs the pack.** `#minecraft:load` and `#minecraft:tick`, scoreboards,
+selectors, `execute`, macros, schedules, storage, entity NBT and inventories,
+blocks (setblock, fill, clone, containers, block entity data), teams, game
+modes, experience, time, weather, the world border, random sequences, health,
+attributes, effects, riding, boss bars, item entities, predicates,
+advancements, and loot tables with their conditions and functions.
+Minecraft's own error messages are printed as the game would, kept apart from
+the app's logs. See [what is emulated](docs/emulation.md).
+
+**Knows every version.** Which commands exist in each version from 1.14 to
+26.3 (1.13 is answered as 1.14: it has no command tree to read), how each one
+spells its folders, and which `pack.mcmeta` overlays apply.
+The version engine runs the pack across a whole range at once and compares
+the results.
+
+**Shows the world as it runs.** A scoreboard grid with each score's history,
+entities with their full NBT, command storage and placed blocks — and a
+console that runs commands typed into it. World snapshots keep a world aside,
+rewind to it, and compare two to see what a tick changed.
+
+**Tests it.** Commands at any tick, with checks on scores, storage, NBT,
+blocks and entity counts — in the window, during runs, across versions, and
+in CI: `datapack-emulator-cli test` exits non-zero on a failure and writes
+JUnit XML.
+
+**Finds problems.** One list for the whole pack, per version, worst first:
+what stops the world or the pack from loading at all (worldgen and dimension
+files missing a required field or using a removed kind, broken JSON there, an
+unreadable `pack.mcmeta`), then functions that do not load, unknown selector
+options, bad SNBT and ids, missing functions, broken loot tables and
+predicates, unused functions.
+
+**Profiles it.** Per-function cost from constants measured on a real server,
+the dearest lines, a flame graph, a before/after comparison of two runs, and
+the call graph as a DAG.
+
+**Edits and debugs.** Functions are edited in the window, each line checked as
+you type, with completion (Ctrl+Space) and renaming a function across the pack
+(F2). The debugger has breakpoints (with conditions) on function lines, step
+into / over / out, the call stack, the command source and watched scores,
+storage and NBT — in the window and in the command-line shell. Any command
+line can be explained: execute steps, selectors, references, version support
+and cost.
+
+**Reads the base game** — registries, tags and message strings — straight
+from a `client.jar`, downloaded for you on request.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Profiler: cost per function, per tick](docs/screenshots/profiler.png) | ![Call graph of the pack's functions and tags](docs/screenshots/call-graph.png) |
+| **Profiler** — estimated cost per function and call path, per tick | **Call graph** — function tags and the functions they call, overlays marked |
+| ![Source view with syntax highlighting](docs/screenshots/source.png) | ![Version engine: one row per Minecraft version](docs/screenshots/engine.png) |
+| **Source** — edit with live checks, breakpoints in the gutter | **Version engine** — the pack run on 43 versions, one row each |
+
+The pictures are made by `python tools/screenshots.py` (on `samples/hat_v2`);
+run it again after changing the window. The [window guide](docs/ui.md)
+describes every panel.
 
 ## Quick start
 
@@ -46,7 +78,7 @@ checked against the real base game read out of a `client.jar`.
 python -m venv .venv
 .venv/bin/pip install -e ".[gui]"
 
-.venv/bin/datapack-emulator          # the window; press F5 (it reopens the last project)
+.venv/bin/datapack-emulator          # the window (reopens the last project); F5 runs it
 .venv/bin/datapack-emulator samples/hat   # or open this pack; --no-last-project for the sample
 ```
 
@@ -60,10 +92,16 @@ does the same with `datapack-emulator-cli project samples --install`). See
 [docs/releases.md](docs/releases.md) for building and publishing one.
 
 The project opened most recently comes back on startup (the first sample pack
-when there is none). The [command line](docs/cli.md) does what the window does — run, test,
-profile, inspect, explain, search, complete, rename, the fields a version's
-own files hold, the call graph, the
-world, an interactive console with a debugger and project editing — on packs or saved projects:
+when there is none). New to it? [Getting started](docs/getting-started.md)
+walks through a first run.
+
+## Command line
+
+`datapack-emulator-cli` does what the window does — run, test, profile,
+inspect, explain, search, complete, rename, the fields a version's own files
+hold, the call graph, the world, an interactive console with a debugger and
+project editing — on packs or saved projects. It needs nothing beyond the
+standard library. See [docs/cli.md](docs/cli.md).
 
 ```sh
 .venv/bin/datapack-emulator-cli run    samples/hat_v2 --version 1.21.4 --vanilla
@@ -129,8 +167,8 @@ src/datapack_emulator/cli/       the command line: datapack-emulator-cli (no Qt)
 src/datapack_emulator/project.py  .dpemu project files
 src/main.sh     starts the window (or --cli) from a checkout
 tests/          pytest suite (no network, no Minecraft install needed)
-tools/          generate_version_data.py
-docs/           documentation
+tools/          generate_version_data.py, apply_calibration.py, screenshots.py
+docs/           documentation (docs/screenshots/: the pictures in this readme)
 samples/        example datapacks
 projects/       your saved .dpemu projects (git-ignored)
 generated/      reports and .dot files   (git-ignored)

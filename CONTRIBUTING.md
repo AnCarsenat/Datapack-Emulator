@@ -71,7 +71,8 @@ would format it, so a refresh differs only where the data did.
 * new behaviour comes with a test in `tests/` — the fixtures in
   `tests/conftest.py` build synthetic datapacks and a synthetic client jar,
   so no test needs the network or a Minecraft install
-* if you touched the window, launch it and exercise what you changed
+* if you touched the window, launch it and exercise what you changed; if it
+  looks different, refresh the pictures with `python tools/screenshots.py`
 * update `docs/` and `readme.md` in the same pull request whenever behaviour,
   options or commands change
 * one topic per pull request and per commit; commit messages follow

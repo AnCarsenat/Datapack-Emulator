@@ -109,7 +109,8 @@ src/datapack_emulator/     the package (standard src layout)
     panels/                models and widgets the controllers fill
       uiloader.py, explorer.py, logs.py, results.py, graph.py, highlight.py,
       world.py, profile.py, source.py (the source view with its gutter)
-tools/generate_version_data.py
+tools/       generate_version_data.py, apply_calibration.py (costs.md),
+             screenshots.py (the pictures in docs/screenshots/)
 tests/       pytest suite; conftest.py builds synthetic packs and client jars
 .github/     CI (lint, mypy, tests with coverage, window tests, CLI smoke run), the weekly
              version-data refresh, Dependabot, issue and pull request templates
