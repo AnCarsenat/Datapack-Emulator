@@ -168,3 +168,32 @@ def test_cli_run_json_keeps_under_max_result_chars(make_pack, capsys):
     main([*arguments, "--max-result-chars", "0"])
     whole = json.loads(capsys.readouterr().out)
     assert len(whole["world"]["scores"]) == 2000 and "trimmed" not in whole
+
+
+def test_many_console_commands_are_trimmed_together():
+    """Hundreds of commands are cut a few times across all of them, not once
+    each: few ``trimmed`` notes, and the result fits."""
+
+    def line(size):
+        return {"level": "info", "message": "m" * size}
+
+    many = {
+        "records": [],
+        "commands": [
+            {"command": "x" * 1000, "output": [line(300) for _ in range(20)]} for _ in range(500)
+        ],
+    }
+    agent.fit_result(many, 40_000)
+    assert len(json.dumps(many)) <= 40_000
+    assert len(many["trimmed"]) <= 4
+    assert many["commands_truncated"] is True
+
+    # one long message per command: the messages are shortened, the commands kept
+    long = {
+        "records": [],
+        "commands": [{"command": "c", "output": [line(100_000)]} for _ in range(50)],
+    }
+    agent.fit_result(long, 40_000)
+    assert len(json.dumps(long)) <= 40_000
+    assert len(long["commands"]) == 50
+    assert all(answer["truncated"] for answer in long["commands"])

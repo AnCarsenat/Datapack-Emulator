@@ -396,11 +396,54 @@ def _halve_records(owner: dict[str, Any], key: str, label: str) -> tuple[str, in
     return (label, len(items), len(kept), "items")
 
 
+def _cut_commands(result: dict[str, Any], sizes: list[int]) -> tuple[str, int, int, str] | None:
+    """One cut across every console command at once, so that many commands
+    cost a few cuts (and a few ``trimmed`` notes), not one each: halve every
+    output of more than one line; failing that, halve each long message of
+    the outputs; failing that, drop the newer half of the commands. When one
+    output alone is most of their size, None: that one is cut on its own."""
+    answers = result["commands"]
+    outputs = [
+        answer
+        for answer in answers
+        if isinstance(answer, dict) and isinstance(answer.get("output"), list)
+    ]
+    if sizes and max(sizes) * 2 > sum(sizes) and len(outputs) > 1:
+        return None
+    if any(len(answer["output"]) > 1 for answer in outputs):
+        before = sum(len(answer["output"]) for answer in outputs)
+        for answer in outputs:
+            if len(answer["output"]) > 1:
+                _halve_records(answer, "output", "")
+        return ("commands[].output", before, sum(len(a["output"]) for a in outputs), "items")
+    long = [answer for answer in outputs if _chars(answer["output"]) >= 2 * _SMALLEST_CUT]
+    if long:
+        before = sum(_chars(answer["output"]) for answer in long)
+        for answer in long:
+            _cut(answer, "output", "", newest=False)
+            answer["truncated"] = True
+        after = sum(_chars(answer["output"]) for answer in long)
+        return ("commands[].output messages", before, after, "characters")
+    if len(answers) > 1:
+        keep = len(answers) // 2
+        result["commands"] = answers[:keep]
+        result["commands_truncated"] = True
+        return ("commands", len(answers), keep, "items")
+    return None
+
+
 def _cut_biggest(result: dict[str, Any]) -> tuple[str, int, int, str] | None:
     """One cut in the biggest part of ``result`` that can lose something."""
     places: list[tuple[int, str, dict[str, Any], Any, bool]] = []
+    output_sizes: list[int] = []
     for label, owner, key in _record_lists(result):
-        places.append((_chars(owner[key]), label, owner, key, len(owner[key]) > 1))
+        size = _chars(owner[key])
+        if owner is not result:
+            output_sizes.append(size)
+        places.append((size, label, owner, key, owner is result and len(owner[key]) > 1))
+    answers = result.get("commands")
+    if isinstance(answers, list) and answers:
+        places.append((_chars(answers), "commands", result, "commands", False))
     for label, owner, key in _other_parts(result):
         places.append((_chars(owner[key]), label, owner, key, False))
     places.sort(key=lambda place: place[0], reverse=True)
@@ -409,18 +452,14 @@ def _cut_biggest(result: dict[str, Any]) -> tuple[str, int, int, str] | None:
             break
         if records:
             return _halve_records(owner, key, label)
-        done = _cut(owner, key, label, newest=label == "chat")
+        if label == "commands":
+            done = _cut_commands(result, output_sizes)
+        else:
+            done = _cut(owner, key, label, newest=label == "chat")
         if done is not None:
             if label == "chat":
                 result["chat_truncated"] = True
             return done
-    # last resort: fewer console commands
-    answers = result.get("commands")
-    if isinstance(answers, list) and len(answers) > 1:
-        keep = len(answers) // 2
-        result["commands"] = answers[:keep]
-        result["commands_truncated"] = True
-        return ("commands", len(answers), keep, "items")
     return None
 
 
