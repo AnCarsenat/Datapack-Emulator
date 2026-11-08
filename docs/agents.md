@@ -139,7 +139,7 @@ and `run` treats both as failures.
   "records_total": 1, "truncated": false,
   "commands": [{"command": "scoreboard players get #g t", "success": true, "value": 5,
                 "output": [{"message": "#g has 5 [t]", "...": "..."}]}],
-  "call_graph": {"functions": 3, "missing_functions": [], "never_called": [], "recursion": []},
+  "call_graph": {"functions": 3, "missing_functions": [], "dynamic_calls": [], "never_called": [], "recursion": []},
   "profile": {"estimated": true, "ms_per_tick": 0.01, "worst_tick_ms": 0.02,
               "functions": [{"function": "my:tick", "calls": 5, "...": "..."}],
               "dearest_lines": [{"at": "my:tick:1", "self_ms": 0.01, "runs": 5}]},
@@ -311,6 +311,12 @@ r["ignored_folders"]                        # functions/ on 1.21+, function/ bef
 r["failed_functions"], r["failed_tags"]     # parse failures: the game skips them silently
 r["call_graph"]["never_called"]             # not in #minecraft:tick/load, nobody calls them
 ```
+
+A macro line such as `$function ns:dust/$(kind)` names its function only when
+it runs: its id goes in `call_graph.dynamic_calls`, never in
+`missing_functions`, and it counts as calling every function whose id fits the
+pattern (`ns:dust/*`). A call that is all macro (`$function $(f)`) counts as
+calling the functions whose id the pack writes as a quoted string.
 
 then `check` for the reason on each line.
 

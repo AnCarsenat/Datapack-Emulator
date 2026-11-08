@@ -74,6 +74,32 @@ def test_run_flags_errors_and_missing_functions(make_pack):
     assert "test:nowhere" in result["call_graph"]["missing_functions"]
 
 
+def test_run_does_not_count_macro_calls_as_missing(make_pack):
+    pack = make_pack(
+        {
+            "data/test/function/tick.mcfunction": 'function test:pick {f:"test:dust/red"}\n',
+            "data/test/function/pick.mcfunction": (
+                "$function $(f)\n$function test:dust/$(f)\nfunction test:gone\n"
+            ),
+            "data/test/function/dust/red.mcfunction": "say red\n",
+        }
+    )
+    result = agent.run(pack, "1.21.4", ticks=1)
+    graph = result["call_graph"]
+    # only the static call to a function that does not exist is missing
+    assert graph["missing_functions"] == ["test:gone"]
+    assert graph["dynamic_calls"] == ["minecraft:$(f)", "test:dust/$(f)"]
+    assert result["ok"] is False
+    fixed = make_pack(
+        {
+            "data/test/function/tick.mcfunction": 'function test:pick {f:"test:dust/red"}\n',
+            "data/test/function/pick.mcfunction": "$function $(f)\n",
+            "data/test/function/dust/red.mcfunction": "say red\n",
+        }
+    )
+    assert agent.run(fixed, "1.21.4", ticks=1)["ok"] is True
+
+
 def test_run_caps_records_but_keeps_errors(make_pack):
     lines = "".join(f'tellraw @a {{"text":"line {n}"}}\n' for n in range(30))
     pack = make_pack({"data/test/function/tick.mcfunction": lines})

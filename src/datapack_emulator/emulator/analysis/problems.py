@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.analysis.graph import CallGraph
+from datapack_emulator.emulator.analysis.graph import CallGraph, fully_dynamic
 from datapack_emulator.emulator.analysis.registry_names import COVERED_SINCE, NAMES
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.registry import command_set
@@ -876,12 +876,20 @@ def _graph(scan: _Scan) -> Iterator[Problem]:
             stack.append(normalise_id(rewards["function"]))
     for resource in scan.resources("enchantment"):
         _run_function_effects(getattr(resource, "content", None), stack)
-    reached: set[str] = set()
-    while stack:
-        node = stack.pop()
-        if node not in reached:
-            reached.add(node)
-            stack.extend(graph.successors(node))
+    reached = graph.reachable(*stack)
+    # a reached call whose id is all macro ($function $(f)) can become any function
+    dynamic = [
+        node.removeprefix("minecraft:")
+        for node in graph.dynamic()
+        if fully_dynamic(node) and node in reached
+    ]
+    hint = ""
+    if dynamic:
+        shown = ", ".join(dynamic[:3]) + (", …" if len(dynamic) > 3 else "")
+        hint = (
+            "; it may still be reached through a macro call whose id is only known "
+            f"at run time ({shown})"
+        )
     for function_id in graph.unreachable():
         if function_id in reached or function_id not in functions:
             continue
@@ -889,7 +897,7 @@ def _graph(scan: _Scan) -> Iterator[Problem]:
             "info",
             "unused-function",
             "nothing in the pack calls it (load and tick tags, other tags, functions, "
-            "schedules, advancement rewards, enchantments)",
+            "schedules, advancement rewards, enchantments, macro calls whose id fits)" + hint,
             function_id,
             functions[function_id].path,
         )
