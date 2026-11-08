@@ -25,6 +25,7 @@ from datapack_emulator.emulator.common import (
     normalise_tagged_id,
     parse_snbt,
 )
+from datapack_emulator.emulator.runtime import item_sub_predicates
 from datapack_emulator.emulator.runtime.components import namespace_ids, same_value
 from datapack_emulator.emulator.runtime.inventory import ItemStack
 
@@ -830,6 +831,16 @@ def item_matches(predicate: Any, stack: ItemStack, context: Context) -> bool:
                 return False
     if "nbt" in predicate and not _nbt_matches(predicate["nbt"], stack.tag):
         return False
+    sub_predicates = predicate.get("predicates")
+    if isinstance(sub_predicates, dict):
+        components = stack.effective_components(context.version)
+        for name, value in sub_predicates.items():
+            if name == "count" or not item_sub_predicates.checkable(name, value):
+                context.unchecked.add(f"item predicates {name}")
+                return False
+            if not item_sub_predicates.matches(name, value, stack.count, components):
+                return False
+        predicate = {key: item for key, item in predicate.items() if key != "predicates"}
     for key in ("predicates", "enchantments", "stored_enchantments", "potion", "durability"):
         if key in predicate:
             context.unchecked.add(f"item {key}")

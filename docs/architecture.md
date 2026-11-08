@@ -49,6 +49,7 @@ src/datapack_emulator/     the package (standard src layout)
       state.py             ServerState: time, weather, border, teams, random sequences
       living.py            Living (attributes, effects), health, item entities each tick
       predicates.py        conditions, number providers, entity/item/location predicates
+      item_sub_predicates.py  custom_data~, damage~, enchantments~ … (commands and JSON)
       numbers.py           context int/float number providers (26.3, /compute)
       advancements.py      AdvancementTree, Progress (criteria per player)
       inventory.py         ItemStack, Inventory, item parsing, per-version item NBT
