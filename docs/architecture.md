@@ -37,6 +37,7 @@ src/datapack_emulator/     the package (standard src layout)
       living.py            effect, attribute, damage, ride
       bossbar.py           bossbar
       conditions.py        advancement, if predicate, predicate=/advancements=, loot contexts
+      compute.py           compute (26.3), data modify … compute
       misc.py              commands that only check their ids (effect), noop
       registry.py          CommandSet: what exists in a version, who runs it
     runtime/
@@ -47,6 +48,7 @@ src/datapack_emulator/     the package (standard src layout)
       state.py             ServerState: time, weather, border, teams, random sequences
       living.py            Living (attributes, effects), health, item entities each tick
       predicates.py        conditions, number providers, entity/item/location predicates
+      numbers.py           context int/float number providers (26.3, /compute)
       advancements.py      AdvancementTree, Progress (criteria per player)
       inventory.py         ItemStack, Inventory, item parsing, per-version item NBT
       components.py        default item components, effective components, the item codec's form
