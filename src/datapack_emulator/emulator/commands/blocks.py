@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.commands.helpers import require_id
+from datapack_emulator.emulator.commands.helpers import note_refused_items, require_id
 from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import normalise_id
@@ -113,10 +113,12 @@ def loaded_condition(arguments: list[str], context: ExecutionContext) -> bool:
 
 def block_argument(context: ExecutionContext, token: str) -> Block | None:
     """A block state argument, checked against the client jar."""
-    block = parse_block(token)
+    problems: list[str] = []
+    block = parse_block(token, problems)
     if block is None:
         context.game_error("argument.block.id.invalid", token)
         return None
+    note_refused_items(context, problems)
     if not require_id(context, "block", block.id, "argument.block.id.invalid"):
         return None
     assets = context.emulator.vanilla

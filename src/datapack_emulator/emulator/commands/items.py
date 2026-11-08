@@ -20,6 +20,7 @@ from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import normalise_id
 from datapack_emulator.emulator.runtime.blocks import Block, Position
+from datapack_emulator.emulator.runtime.components import component_problem
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.inventory import (
     SLOT_NAMES,
@@ -77,6 +78,11 @@ def _stack(context: ExecutionContext, token: str, allow_air: bool = False) -> It
         return None
     if not require_id(context, "item", stack.id, "argument.item.id.invalid"):
         return None
+    for key, value in stack.components.items():
+        problem = component_problem(key, value)
+        if problem is not None:
+            context.game_error("arguments.item.component.malformed", key, problem)
+            return None
     return stack
 
 
@@ -100,6 +106,7 @@ def item_tag_members(context: ExecutionContext, tag: str) -> set[str] | None:
 
 def _predicate(context: ExecutionContext, token: str) -> ItemPredicate:
     predicate = parse_item_predicate(token)
+    predicate.version = context.emulator.version
     if predicate.id.startswith("#"):
         predicate.tag_members = item_tag_members(context, predicate.id)
         if predicate.tag_members is None:

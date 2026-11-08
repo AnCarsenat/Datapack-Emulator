@@ -105,3 +105,10 @@ def text_argument(payload: str) -> str:
     """A text component argument as plain text (a bare word is kept as it is)."""
     component = load_text_component(payload)
     return payload.strip('"') if component is None else flatten_text_component(component)
+
+
+def note_refused_items(context: ExecutionContext, problems: list[str]) -> None:
+    """Report item stacks the item codec refused while NBT was loaded: the game
+    logs them on the server console and loads the slot empty, so they are notes."""
+    for problem in problems:
+        context.note(f"invalid item stack left out (the game loads the slot empty): {problem}")

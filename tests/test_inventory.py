@@ -4,6 +4,7 @@ from conftest import chat, game_errors
 
 from datapack_emulator.emulator import Datapack, Emulator
 from datapack_emulator.emulator.commands.parser import Command
+from datapack_emulator.emulator.common import parse_snbt
 from datapack_emulator.emulator.runtime.inventory import (
     Inventory,
     ItemStack,
@@ -39,7 +40,11 @@ def feedback(emulator) -> list[str]:
 def test_parse_items_and_predicates():
     sword = parse_item("diamond_sword[enchantments={levels:{sharpness:2}},!food]{Damage:3}")
     assert sword.id == "minecraft:diamond_sword" and sword.max_count == 1
-    assert sword.components == {"minecraft:enchantments": {"levels": {"sharpness": 2}}}
+    # the patch keeps the removal; the codec drops it on write (a sword has no food)
+    assert sword.components == {
+        "minecraft:enchantments": {"levels": {"sharpness": 2}},
+        "!minecraft:food": {},
+    }
     assert sword.tag == {"Damage": 3}
     assert parse_item("air") is None and parse_item("stone").max_count == 64
     assert parse_item("ender_pearl").max_count == 16
@@ -49,11 +54,13 @@ def test_parse_items_and_predicates():
         ["minecraft:custom_data"]
     ]
 
-    damaged = ItemStack("minecraft:iron_sword", 1, {"minecraft:damage": 3})
-    enchanted = ItemStack("minecraft:iron_sword", 1, {"minecraft:enchantments": {}})
-    plain = ItemStack("minecraft:iron_sword")
-    either = parse_item_predicate("*[minecraft:damage|minecraft:enchantments]")
-    assert either.matches(damaged) and either.matches(enchanted) and not either.matches(plain)
+    # presence tests see the item's default components: a sword always has damage
+    damaged = ItemStack("minecraft:stick", 1, {"minecraft:damage": 3})
+    eatable = ItemStack("minecraft:stick", 1, {"minecraft:food": {"nutrition": 1, "saturation": 1}})
+    plain = ItemStack("minecraft:stick")
+    either = parse_item_predicate("*[minecraft:damage|minecraft:food]")
+    assert either.matches(damaged) and either.matches(eatable) and not either.matches(plain)
+    assert either.matches(ItemStack("minecraft:iron_sword"))
     undamaged = parse_item_predicate("*[!damage]")
     assert undamaged.matches(plain) and not undamaged.matches(damaged)
     assert parse_item_predicate("*[damage=3]").matches(damaged)
@@ -361,3 +368,190 @@ def test_uniform_number_providers_include_the_maximum():
     draws = {integer({"type": "minecraft:uniform", "min": 1, "max": 3}, rng) for _ in range(300)}
     assert draws == {1, 2, 3}
     assert integer(2.7, rng) == 3 and integer({"type": "minecraft:constant", "value": 4}, rng) == 4
+
+
+# -- default components and the item codec (26.3) -------------------------------
+
+
+def empty_world(make_pack, version: str = "26.3"):
+    return Emulator(Datapack.load(make_pack({})), version=version)
+
+
+def passes(emulator, line: str) -> bool:
+    return bool(typed(emulator, line).success)
+
+
+def emulator_notes(emulator) -> list[str]:
+    from datapack_emulator.emulator.runtime.output import LogSource
+
+    return [r.message for r in emulator.output.records if r.source is LogSource.EMULATOR]
+
+
+def test_component_tests_see_the_item_defaults(make_pack):
+    emulator = empty_world(make_pack)
+    typed(
+        emulator,
+        'setblock 5 64 0 minecraft:chest{Items:[{Slot:0b,id:"minecraft:ender_pearl",count:15},'
+        '{Slot:1b,id:"minecraft:diamond_sword",count:1},{Slot:2b,id:"minecraft:bread",count:3},'
+        '{Slot:3b,id:"minecraft:bread",count:1,components:{"!minecraft:food":{}}}]}',
+    )
+    test = "execute if items block 5 64 0 container.{} {}"
+    # value tests: a pearl stacks to 16, a sword to 1, without saying so on the stack
+    assert passes(emulator, test.format(0, "*[minecraft:max_stack_size=16]"))
+    assert not passes(emulator, test.format(0, "*[max_stack_size=64]"))
+    assert passes(emulator, test.format(1, "*[max_stack_size=1]"))
+    assert passes(emulator, test.format(1, "*[max_damage=1561]"))
+    assert passes(emulator, test.format(2, "*[food={nutrition:5,saturation:6.0f}]"))
+    assert passes(emulator, test.format(0, '*[item_model="ender_pearl"]'))  # read namespaced
+    # presence
+    assert passes(emulator, test.format(2, "*[food]"))
+    assert passes(emulator, test.format(1, "*[tool]"))
+    assert passes(emulator, test.format(1, "*[weapon]"))
+    assert not passes(emulator, test.format(0, "*[food]"))
+    assert passes(emulator, test.format(0, "*[food|max_stack_size]"))
+    # negation, and a patch that removes a default
+    assert passes(emulator, test.format(0, "*[!food]"))
+    assert not passes(emulator, test.format(2, "*[!food]"))
+    assert passes(emulator, test.format(3, "*[!food]"))
+    assert not passes(emulator, test.format(3, "*[food]"))
+    # clear filters the same way
+    typed(emulator, "give Player1 minecraft:ender_pearl 3")
+    typed(emulator, "give Player1 minecraft:stone 5")
+    assert typed(emulator, "clear Player1 *[max_stack_size=16]").value == 3
+    # loot predicates (match_tool and friends) share it
+    from datapack_emulator.emulator.runtime.predicates import Context, item_matches
+
+    pearl = ItemStack("minecraft:ender_pearl", 4)
+    context = Context(version=emulator.version)
+    assert item_matches({"components": {"max_stack_size": 16}}, pearl, context)
+    assert not item_matches({"components": {"minecraft:food": {}}}, pearl, context)
+
+
+def test_component_values_are_typed_by_their_schema(make_pack):
+    emulator = empty_world(make_pack)
+    typed(emulator, "setblock 5 64 0 minecraft:chest")
+    typed(emulator, "item replace block 5 64 0 container.0 with stone[custom_data={a:1b}]")
+    typed(emulator, "item replace block 5 64 0 container.1 with stone[max_stack_size=16b]")
+    test = "execute if items block 5 64 0 container.{} {}"
+    # custom data is raw NBT: the game keeps its types, 1b is not 1
+    assert passes(emulator, test.format(0, "*[custom_data={a:1b}]"))
+    assert not passes(emulator, test.format(0, "*[custom_data={a:1}]"))
+    # a codec-typed component stores an int whatever the SNBT said
+    assert passes(emulator, test.format(1, "*[max_stack_size=16]"))
+    path = 'block 5 64 0 Items[{Slot:1b,components:{"minecraft:max_stack_size":16}}]'
+    assert passes(emulator, f"execute if data {path}")
+    # stacks whose custom data differ only in type do not merge
+    one = ItemStack("minecraft:stone", 1, {"minecraft:custom_data": parse_snbt("{a:1b}")})
+    other = ItemStack("minecraft:stone", 1, {"minecraft:custom_data": parse_snbt("{a:1}")})
+    assert not one.same_kind(other) and one.same_kind(one.copy())
+    # item entities keep the types of their stack through untyped() entity data
+    typed(
+        emulator,
+        'summon item 5 70 0 {Item:{id:"stone",count:1,components:{"minecraft:custom_data":{v:2s}}}}',
+    )
+    item = 'entity @e[type=item,limit=1] Item.components."minecraft:custom_data"'
+    assert passes(emulator, f"execute if data {item}{{v:2s}}")
+    assert not passes(emulator, f"execute if data {item}{{v:2}}")
+
+
+def test_defaults_follow_the_version(make_pack):
+    # components are only defaults from the version that introduced them
+    old = empty_world(make_pack, "1.21.1")
+    typed(old, 'setblock 0 64 0 chest{Items:[{Slot:0b,id:"minecraft:diamond_sword",count:1}]}')
+    assert passes(old, "execute if items block 0 64 0 container.0 *[max_stack_size=1]")
+    assert not passes(old, "execute if items block 0 64 0 container.0 *[weapon]")
+    assert not passes(old, "execute if items block 0 64 0 container.0 *[item_model]")
+
+
+def test_stacks_written_to_blocks_and_entities_are_normalised(make_pack):
+    emulator = empty_world(make_pack)
+    typed(
+        emulator,
+        'setblock 0 64 0 minecraft:chest{Items:[{Slot:0b,id:"minecraft:command_block",count:1,'
+        'components:{"minecraft:item_model":"dead_brain_coral_block","minecraft:rarity":"epic",'
+        '"minecraft:max_stack_size":64}}]}',
+    )
+    block = emulator.world.blocks.get("minecraft:overworld", (0, 64, 0))
+    items = block.data(emulator.version)["Items"]
+    # the id is namespaced; rarity and max_stack_size equal the defaults and are dropped
+    assert items == [
+        {
+            "Slot": 0,
+            "id": "minecraft:command_block",
+            "count": 1,
+            "components": {"minecraft:item_model": "minecraft:dead_brain_coral_block"},
+        }
+    ]
+    typed(
+        emulator,
+        'summon item_display 0 70 0 {Tags:["d"],item:{id:"minecraft:stone",count:1,'
+        'components:{item_model:"dirt","minecraft:enchantments":{},lore:[]}}}',
+    )
+    display = emulator.world.entities[-1]
+    assert display.data(emulator.version)["item"] == {
+        "id": "minecraft:stone",
+        "count": 1,
+        "components": {"minecraft:item_model": "minecraft:dirt"},
+    }
+    typed(
+        emulator,
+        "data modify entity @e[tag=d,limit=1] item "
+        'set value {id:"stone",count:1,components:{item_model:"stone"}}',
+    )
+    assert display.data(emulator.version)["item"] == {"id": "minecraft:stone", "count": 1}
+
+
+def test_a_hand_written_stack_equals_the_chest_stack(make_pack):
+    # the drill: a pack compares its own copy of an item with what a chest holds
+    emulator = empty_world(make_pack)
+    typed(
+        emulator,
+        'setblock 0 64 0 minecraft:chest{Items:[{Slot:0b,id:"minecraft:command_block",count:1,'
+        'components:{"minecraft:item_model":"dead_brain_coral_block"}}]}',
+    )
+    typed(
+        emulator,
+        'data modify storage t:t item set value {Slot:0b,id:"minecraft:command_block",count:1,'
+        'components:{"minecraft:item_model":"minecraft:dead_brain_coral_block"}}',
+    )
+    typed(emulator, "data modify storage t:t chest set from block 0 64 0 Items[0]")
+    # setting a value onto an equal one changes nothing: the command fails
+    assert not passes(emulator, "data modify storage t:t chest set from storage t:t item")
+    assert passes(
+        emulator,
+        "execute if data block 0 64 0 "
+        'Items[{components:{"minecraft:item_model":"minecraft:dead_brain_coral_block"}}]',
+    )
+    assert not passes(
+        emulator,
+        'execute if data block 0 64 0 Items[{components:{"minecraft:item_model":"dead_brain_coral_block"}}]',
+    )
+    # stacks that differ only by a component equal to the default merge
+    block = emulator.world.blocks.get("minecraft:overworld", (0, 64, 0))
+    block.set_item(1, ItemStack("minecraft:ender_pearl", 10))
+    assert block.insert(ItemStack("minecraft:ender_pearl", 6, {"max_stack_size": 16}))
+    assert block.get_item(1).count == 16 and block.get_item(2) is None
+
+
+def test_invalid_stacks_are_refused(make_pack):
+    emulator = empty_world(make_pack)
+    typed(
+        emulator,
+        'setblock 0 64 0 chest{Items:[{Slot:0b,id:"stone",count:100},'
+        '{Slot:1b,id:"stone",count:1,components:{"minecraft:item_model":"Bad Model"}},'
+        '{Slot:2b,id:"stone",count:2}]}',
+    )
+    block = emulator.world.blocks.get("minecraft:overworld", (0, 64, 0))
+    assert sorted(block.items) == [2]
+    notes = emulator_notes(emulator)
+    assert any("Value must be within range [1;99]: 100" in note for note in notes)
+    assert any("Bad Model" in note for note in notes)
+    typed(emulator, 'summon item 0 70 0 {Tags:["i"],Item:{id:"stone",count:1}}')
+    typed(emulator, 'data modify entity @e[tag=i,limit=1] Item set value {id:"stone",count:120}')
+    assert "Item" not in emulator.world.entities[-1].data(emulator.version)
+    # an item argument reports it as the game's parser does
+    assert not passes(emulator, 'item replace block 0 64 0 container.0 with stone[item_model="A"]')
+    assert game_errors(emulator.output.records)[-1] == (
+        "Malformed 'minecraft:item_model' component: "
+        "'Non [a-z0-9/._-] character in path of location: minecraft:A'"
+    )

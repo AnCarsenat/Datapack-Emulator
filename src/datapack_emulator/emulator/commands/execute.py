@@ -10,7 +10,11 @@ from datapack_emulator.emulator.commands.blocks import (
     loaded_condition,
     position_at,
 )
-from datapack_emulator.emulator.commands.helpers import find_holders, find_targets
+from datapack_emulator.emulator.commands.helpers import (
+    find_holders,
+    find_targets,
+    note_refused_items,
+)
 from datapack_emulator.emulator.commands.items import items_condition_count
 from datapack_emulator.emulator.commands.parser import (
     Command,
@@ -230,7 +234,9 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
         if block is not None:
             data = block.data(context.emulator.version, position)
             nbt_set(data, arguments[5], _stored_number(value, arguments[6:8]))
-            block.apply_data(data)
+            problems: list[str] = []
+            block.apply_data(data, problems)
+            note_refused_items(context, problems)
     elif target == "bossbar":
         from datapack_emulator.emulator.commands.bossbar import store_bossbar
 
@@ -241,7 +247,9 @@ def _apply_store(subcommand: Subcommand, context: ExecutionContext, result: Comm
                 continue
             data = entity.data(context.emulator.version)
             nbt_set(data, arguments[3], _stored_number(value, arguments[4:6]))
-            entity.apply_data(data)
+            refused: list[str] = []
+            entity.apply_data(data, refused)
+            note_refused_items(context, refused)
 
 
 def _store_target_ok(context: ExecutionContext, subcommand: Subcommand) -> bool:

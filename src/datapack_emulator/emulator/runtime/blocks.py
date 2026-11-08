@@ -231,20 +231,23 @@ class Block:
                 ]
         return data
 
-    def apply_data(self, data: dict[str, Any]) -> None:
-        """Load block entity NBT back; ``id`` and the position never change."""
+    def apply_data(self, data: dict[str, Any], problems: list[str] | None = None) -> None:
+        """Load block entity NBT back; ``id`` and the position never change.
+
+        Items go through the item codec (:meth:`ItemStack.from_nbt`): a stack it
+        refuses leaves its slot empty, with the reason added to ``problems``."""
         rest = {key: value for key, value in data.items() if key not in ("x", "y", "z", "id")}
         if self.is_container:
             items: dict[int, ItemStack] = {}
             size = container_size(self.id)
             single = _SINGLE_ITEM_KEYS.get(str(entity_type(self.id)).split(":", 1)[-1])
             if single is not None:
-                stack = ItemStack.from_nbt(rest.pop(single, None))
+                stack = ItemStack.from_nbt(rest.pop(single, None), problems)
                 self.items = {0: stack} if stack is not None else {}
                 self.nbt = untyped(rest)
                 return
             for entry in rest.pop("Items", None) or []:
-                stack = ItemStack.from_nbt(entry)
+                stack = ItemStack.from_nbt(entry, problems)
                 # like NBT's getByte, a missing Slot reads as 0
                 slot = entry.get("Slot", 0) if isinstance(entry, dict) else None
                 if stack is not None and isinstance(slot, int) and 0 <= slot < size:
@@ -328,8 +331,9 @@ def _split_state(text: str) -> tuple[str, str, str] | None:
     return (block_id, properties, rest)
 
 
-def parse_block(text: str) -> Block | None:
-    """A block state argument (``stone``, ``chest[facing=north]{Items:[…]}``)."""
+def parse_block(text: str, problems: list[str] | None = None) -> Block | None:
+    """A block state argument (``stone``, ``chest[facing=north]{Items:[…]}``);
+    item stacks the codec refuses are left out and described in ``problems``."""
     parts = _split_state(text)
     if parts is None or not parts[0] or parts[0].startswith("#"):
         return None
@@ -339,7 +343,7 @@ def parse_block(text: str) -> Block | None:
         return None
     block = Block(normalise_id(block_id), properties)
     if raw_nbt and block.has_entity:
-        block.apply_data(parse_snbt(raw_nbt))
+        block.apply_data(parse_snbt(raw_nbt), problems)
     return block
 
 
