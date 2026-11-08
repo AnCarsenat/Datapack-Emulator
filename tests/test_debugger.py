@@ -111,8 +111,8 @@ def test_watches(emulator):
     context = emulator.root_context()
     assert watch_value("score #t n", context) == "11"
     assert watch_value("score #t missing", context) == "unset"
-    assert watch_value("storage test:s x", context) == "5"
-    assert watch_value("storage test:s", context) == "{x: 5}"
+    assert watch_value("storage test:s x", context) == "5b"  # the type written is kept
+    assert watch_value("storage test:s", context) == "{x: 5b}"
     assert watch_value("entity @p Health", context) == "20.0d"
     assert watch_value("if score #t n matches 11", context) == "passes"
     assert watch_value("unless score #t n matches 11", context) == "fails"
