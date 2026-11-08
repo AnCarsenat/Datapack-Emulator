@@ -11,6 +11,7 @@ import json
 import logging
 import math
 import re
+import struct
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -871,6 +872,26 @@ def merge_compound(target: dict[str, Any], source: dict[str, Any]) -> bool:
 _BARE_KEY_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
 
 
+def _as_float32(value: float) -> float:
+    try:
+        return float(struct.unpack("f", struct.pack("f", value))[0])
+    except OverflowError:
+        return value
+
+
+def _float_digits(value: float) -> str:
+    """A float tag's digits: the shortest that read back as the same 32-bit
+    float (``0.3``, not the double ``0.30000001192092896``)."""
+    if not math.isfinite(value):
+        return repr(value)
+    target = _as_float32(value)
+    for precision in range(1, 10):
+        text = f"{value:.{precision}g}"
+        if _as_float32(float(text)) == target:
+            return repr(float(text))
+    return repr(value)  # pragma: no cover - 9 digits always identify a float
+
+
 def to_snbt(value: Any) -> str:
     """SNBT the way vanilla prints it in feedback: ``{Pos: [0.0d, 1.0d], Tags: ["a"]}``.
 
@@ -895,7 +916,9 @@ def to_snbt(value: Any) -> str:
         suffix = {"b": "b", "s": "s", "l": "L"}.get(kind or "", "")
         return f"{int(value)}{suffix}"
     if isinstance(value, float):
-        return f"{float(value)!r}{'f' if kind == 'f' else 'd'}"
+        if kind == "f":
+            return f"{_float_digits(float(value))}f"
+        return f"{float(value)!r}d"
     if value is None:
         return "{}"
     return json.dumps(str(value), ensure_ascii=False)

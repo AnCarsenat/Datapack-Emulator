@@ -520,21 +520,129 @@ def _type_id(value: Any) -> str | None:
     return normalise_id(value) if isinstance(value, str) and value else None
 
 
+def _typed(scan: _Scan) -> bool:
+    """26.3 loot format: ``type``, one ``condition``/``modifier``, ids for references."""
+    return versions.uses_typed_loot(scan.version)
+
+
+def _reference(
+    value: str, registry: str, resource: Any, where: str, scan: _Scan, code: str
+) -> Iterator[Problem]:
+    """A 26.3 reference: a predicate or item modifier id, or a ``#tag`` of them."""
+    what = registry.replace("_", " ")
+    if value.startswith("#"):
+        tag = normalise_tagged_id(value)
+        tags = scan.registries.get(f"tags/{registry}", {})
+        in_jar = scan.vanilla is not None and tag[1:] in scan.vanilla.tags.get(registry, {})
+        if not in_jar and not any(getattr(found, "tag_id", "") == tag for found in tags.values()):
+            yield _problem(
+                resource,
+                "warning",
+                code,
+                f"{where}: names {what} tag {tag}, which is in neither the pack nor the game",
+            )
+        return
+    target = normalise_id(value)
+    if target in scan.registries.get(registry, {}):
+        return
+    if target.startswith("minecraft:"):
+        vanilla = scan.vanilla
+        path = target.split(":", 1)[1]
+        if vanilla is None or vanilla.read_json(f"data/minecraft/{registry}/{path}.json"):
+            return
+    yield _problem(
+        resource,
+        "warning",
+        code,
+        f"{where}: names {what} {target}, which is not in the pack: the file may not load",
+    )
+
+
+def _legacy_fields(
+    holder: dict[str, Any], resource: Any, where: str, scan: _Scan, functions: bool = True
+) -> Iterator[Problem]:
+    """Holder fields the version does not read: ``conditions``/``functions``
+    from 26.3 (``condition``/``modifier``), and those two before it."""
+    renamed = {"conditions": "condition"}
+    if functions:
+        renamed["functions"] = "modifier"
+    if _typed(scan):
+        for old, new in renamed.items():
+            if old in holder and new not in holder:
+                yield _problem(
+                    resource,
+                    "warning",
+                    "loot-table",
+                    f"{where}: {scan.version.id} does not read {old} (it is {new} since 26.3): "
+                    "it is ignored",
+                )
+        return
+    for old, new in renamed.items():
+        if new in holder and old not in holder:
+            yield _problem(
+                resource,
+                "warning",
+                "loot-table",
+                f"{where}: {scan.version.id} does not read {new} (26.3 and later; before, it "
+                f"is {old}): it is ignored",
+            )
+
+
+def _holder_conditions(
+    holder: dict[str, Any], resource: Any, where: str, scan: _Scan, depth: int = 0
+) -> Iterator[Problem]:
+    """The conditions a pool, entry or item function carries: a ``conditions``
+    list, from 26.3 one ``condition`` (inline or an id; no list)."""
+    if _typed(scan):
+        value = holder.get("condition")
+        if isinstance(value, list):
+            yield _problem(
+                resource,
+                "error",
+                "condition",
+                f"{where}: condition takes one condition or predicate id since 26.3, not a "
+                "list (use minecraft:all_of): the file does not load",
+            )
+        if value is not None:
+            yield from _conditions(value, resource, where, scan, depth + 1)
+    else:
+        yield from _conditions(holder.get("conditions", []), resource, where, scan, depth + 1)
+
+
+def _holder_functions(
+    holder: dict[str, Any], resource: Any, where: str, scan: _Scan, depth: int = 0
+) -> Iterator[Problem]:
+    """``functions`` (a list), from 26.3 ``modifier`` (a function, a list or an id)."""
+    key = "modifier" if _typed(scan) else "functions"
+    if key in holder:
+        yield from _item_functions(holder[key], resource, where, scan, depth + 1)
+
+
 def _conditions(
     value: Any, resource: Any, where: str, scan: _Scan, depth: int = 0
 ) -> Iterator[Problem]:
     if depth > MAX_DEPTH:
         return
+    typed = _typed(scan)
     if isinstance(value, list):
         for item in value:
             yield from _conditions(item, resource, where, scan, depth + 1)
         return
+    if typed and isinstance(value, str):
+        yield from _reference(value, "predicate", resource, where, scan, "condition")
+        return
     if not isinstance(value, dict):
         yield _problem(resource, "error", "condition", f"{where}: a condition is an object")
         return
-    kind = _type_id(value.get("condition"))
+    kind = _type_id(value.get("type" if typed else "condition"))
     if kind is None:
-        yield _problem(resource, "error", "condition", f"{where}: condition needs a type id")
+        if typed and "condition" in value:
+            message = "a condition names its type in type since 26.3, not condition"
+        elif not typed and "type" in value:
+            message = f"condition needs a type id: {scan.version.id} reads condition (type is 26.3)"
+        else:
+            message = f"condition needs a type id ({'type' if typed else 'condition'})"
+        yield _problem(resource, "error", "condition", f"{where}: {message}")
     elif scan.knows("loot_condition_type", kind) is False:
         yield _problem(
             resource,
@@ -553,18 +661,28 @@ def _item_functions(
 ) -> Iterator[Problem]:
     if depth > MAX_DEPTH:
         return
+    typed = _typed(scan)
     if isinstance(value, list):
         for item in value:
             yield from _item_functions(item, resource, where, scan, depth + 1)
+        return
+    if typed and isinstance(value, str):
+        yield from _reference(value, "item_modifier", resource, where, scan, "item-function")
         return
     if not isinstance(value, dict):
         yield _problem(
             resource, "error", "item-function", f"{where}: an item function is an object"
         )
         return
-    name = _type_id(value.get("function"))
+    name = _type_id(value.get("type" if typed else "function"))
     if name is None:
-        yield _problem(resource, "error", "item-function", f"{where}: function needs a type id")
+        if typed and "function" in value:
+            message = "an item function names its type in type since 26.3, not function"
+        elif not typed and "type" in value and "function" not in value:
+            message = f"function needs a type id: {scan.version.id} reads function (type is 26.3)"
+        else:
+            message = f"function needs a type id ({'type' if typed else 'function'})"
+        yield _problem(resource, "error", "item-function", f"{where}: {message}")
     elif scan.knows("loot_function_type", name) is False:
         yield _problem(
             resource,
@@ -572,8 +690,8 @@ def _item_functions(
             "item-function",
             f"{where}: {scan.version.id} has no item function {name}: the file does not load",
         )
-    if "conditions" in value:
-        yield from _conditions(value["conditions"], resource, where, scan, depth + 1)
+    yield from _legacy_fields(value, resource, where, scan, functions=False)
+    yield from _holder_conditions(value, resource, where, scan, depth)
     for key in ("functions", "modifier", "on_pass", "on_fail"):
         if key in value:
             yield from _item_functions(value[key], resource, where, scan, depth + 1)
@@ -588,7 +706,13 @@ def _loot_table(resource: Any, scan: _Scan) -> Iterator[Problem]:
     if not isinstance(pools, list):
         yield _problem(resource, "error", "loot-table", "pools is not a list")
         return
-    yield from _item_functions(content.get("functions", []), resource, "loot table", scan)
+    yield from _legacy_fields(
+        {key: value for key, value in content.items() if key != "conditions"},
+        resource,
+        "loot table",
+        scan,
+    )
+    yield from _holder_functions(content, resource, "loot table", scan)
     for number, pool in enumerate(pools, start=1):
         where = f"pool {number}"
         if not isinstance(pool, dict):
@@ -596,8 +720,9 @@ def _loot_table(resource: Any, scan: _Scan) -> Iterator[Problem]:
             continue
         if "rolls" not in pool:
             yield _problem(resource, "error", "loot-table", f"{where} has no rolls")
-        yield from _conditions(pool.get("conditions", []), resource, where, scan)
-        yield from _item_functions(pool.get("functions", []), resource, where, scan)
+        yield from _legacy_fields(pool, resource, where, scan)
+        yield from _holder_conditions(pool, resource, where, scan)
+        yield from _holder_functions(pool, resource, where, scan)
         yield from _entries(pool.get("entries"), resource, where, scan)
 
 
@@ -623,8 +748,17 @@ def _entries(
                 "loot-entry",
                 f"{where}: {scan.version.id} has no loot entry type {kind}: the file does not load",
             )
-        yield from _conditions(entry.get("conditions", []), resource, where, scan, depth + 1)
-        yield from _item_functions(entry.get("functions", []), resource, where, scan, depth + 1)
+        elif kind == "minecraft:tag" and _typed(scan) and "items" not in entry:
+            yield _problem(
+                resource,
+                "warning",
+                "loot-entry",
+                f"{where}: a tag entry names its items in items since 26.3 (a #tag, an item "
+                "or a list of items), not name",
+            )
+        yield from _legacy_fields(entry, resource, where, scan)
+        yield from _holder_conditions(entry, resource, where, scan, depth)
+        yield from _holder_functions(entry, resource, where, scan, depth)
         if "children" in entry:
             yield from _entries(entry["children"], resource, where, scan, depth + 1)
 

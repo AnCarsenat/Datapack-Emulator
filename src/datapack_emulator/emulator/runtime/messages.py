@@ -44,6 +44,14 @@ VANILLA: dict[str, str] = {
     "argument.item.id.invalid": "Unknown item '%s'",
     "argument.entity.options.type.invalid": "Invalid or unknown entity type '%s'",
     "argument.resource_or_id.no_such_element": "Can't find element '%s' in registry '%s'",
+    "argument.resource_or_id.failed_to_parse": "Failed to parse structure: %s",
+    # compute (26.3)
+    "command.compute.result.named.exact": "%s returned value %s",
+    "command.compute.result.named.invalid": "%s returned invalid value (%s)",
+    "command.compute.result.named.rounded": "%s returned value %s (rounded to %s)",
+    "command.compute.result.unnamed.exact": "Number provider returned value %s",
+    "command.compute.result.unnamed.invalid": "Number provider returned invalid value (%s)",
+    "command.compute.result.unnamed.rounded": "Number provider returned value %s (rounded to %s)",
     # functions and macros
     "arguments.function.unknown": "Unknown function %s",
     "arguments.function.tag.unknown": "Unknown function tag '%s'",

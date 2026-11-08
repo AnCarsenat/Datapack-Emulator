@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from datapack_emulator.emulator.commands.blocks import position_at
+from datapack_emulator.emulator.commands.compute import compute_source
 from datapack_emulator.emulator.commands.helpers import require_targets
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
@@ -171,7 +172,7 @@ def _data_modify(
     operation: str,
     source: list[str],
 ) -> int | None:
-    """``data modify <target> <path> <operation> (value|from|string) ...``
+    """``data modify <target> <path> <operation> (value|from|string|compute) ...``
 
     Returns how many elements changed, or None once an error was reported.
     """
@@ -193,6 +194,10 @@ def _data_modify(
             width = 3 if len(source) > 1 and source[1] == "block" else 1
             bounds = source[3 + width : 5 + width] if len(source) > 2 + width else []
             value = _substring(value, bounds)
+    elif source and source[0] == "compute":  # 26.3
+        found, value = compute_source(context, source[1:])
+        if not found:
+            return None
     else:
         return None
 
