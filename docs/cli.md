@@ -96,6 +96,7 @@ datapack-emulator-cli run projects/hat.dpemu --level debug
 | `--ticks` | 20 (project's) | `-1` runs until Ctrl+C, then prints the report as *stop* does |
 | `--players` | 1 (project's) | fake players `Player1…` |
 | `--seed` | 0 (project's) | for `@r`, `sort=random` and loot |
+| `--unloaded-chunk X,Z[,DIM]` | none | a chunk (block coordinates `// 16`, overworld by default) held unloaded for the run: `execute if loaded` fails there, its entities are out of reach of selectors, block commands there fail with *That position is not loaded*; repeatable, a negative one as `--unloaded-chunk=-1,0`. `test`, `matrix`, `world` and `shell` take it too |
 | `--tests` / `--no-tests` | project's *run tests during runs* | run the project's enabled tests, each in its tick, and print their results; exit `1` when one fails |
 | `--show-records [failed\|all]` | off | with tests: print the records of failed (default) or all tests |
 | `--realtime` / `--no-realtime` | project's speed | 20 ticks per second instead of as fast as possible |
@@ -108,6 +109,7 @@ datapack-emulator-cli run projects/hat.dpemu --level debug
 | `--break FUNC:LINE[ if COND]`, `--watch EXPR` | none | print each [debugger](#the-debugger) stop with the watches and go on; the number of stops goes to standard error |
 | `--json` | off | print one JSON document (records, world, call graph, profile, tests; see [agents.md](agents.md#run)); the usual output goes to standard error |
 | `--max-records N` | 200 | with `--json`: at most N records, errors kept first |
+| `--max-result-chars N` | 40000 | with `--json`: halve the biggest lists until the document fits, each cut listed under `trimmed`; `0`: no limit |
 
 Prints every record as `[tick] source/level function:line: message`, then a
 per-function table (calls, commands, self and total ms for the run, and ms per

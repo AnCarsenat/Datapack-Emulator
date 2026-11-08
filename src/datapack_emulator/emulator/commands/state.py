@@ -517,7 +517,8 @@ def _spawn(context: ExecutionContext, arguments: list[str]):
     if len(arguments) >= 3:
         from datapack_emulator.emulator.commands.blocks import position_at
 
-        block = position_at(context, arguments[:3])
+        # a spawn point needs no loaded chunk
+        block = position_at(context, arguments[:3], loaded=False)
         if block is None:
             return None
     else:

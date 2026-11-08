@@ -59,6 +59,7 @@ check — raises `agent.AgentError` with a message to show to whoever asked.
 | `summary` | one line: read this first, and often it is enough |
 | `version` / `versions` | the version ids actually emulated, after resolving |
 | `truncated`, `*_total` | a list was capped; the full count is beside it |
+| `trimmed` | `run` only: what `max_result_chars` cut to keep the result small (`[]`: nothing) |
 
 ### `check(packs, version=None, versions=None, *, declared=False, boundaries=False, severity="info", vanilla="auto", download=False)`
 
@@ -113,7 +114,7 @@ an error when the version reads *no* resource of that kind (the mistake), a
 note when the pack also ships the other spelling (deliberate dual-version
 packs), a warning outside the versions `pack.mcmeta` declares.
 
-### `run(packs, version=None, *, ticks=20, players=1, seed=0, commands=(), level="info", max_records=200, world=True, entities=False, vanilla="auto", download=False)`
+### `run(packs, version=None, *, ticks=20, players=1, seed=0, commands=(), level="info", max_records=200, world=True, entities=False, vanilla="auto", download=False, max_output_per_command=20, max_result_chars=40000, unloaded_chunks=())`
 
 Ticks the pack, then runs each of `commands` as if typed in the server
 console — that is how you **ask the world a question** afterwards.
@@ -148,6 +149,50 @@ and `run` treats both as failures.
 }
 ```
 
+**Keeping the result small.** A console command that calls functions can
+print thousands of lines (every command of every function it runs answers
+at `debug` level). So:
+
+* `level` filters `records` **and each command's `output`** the same way:
+  `debug` lines are dropped at `info` and above. The command's own answer
+  (`"#g has 5 [t]"`, `"Storage … has the following contents: …"`, said
+  `at: "<server>"`) is always kept, whatever the level: it is why the
+  command was typed.
+* `max_output_per_command` (default 20) caps each `output`: errors first,
+  then the command's own answer, then the newest lines. Each command entry
+  has `output_total` (lines at the level) and `truncated`, like `records`.
+* `max_records` (default 200) caps `records` the same way; `chat` keeps the
+  last 50 lines, `chat_total` is how many there were.
+* `max_result_chars` (default 40000 characters of JSON, about 40 KB;
+  `None` or `0`: no limit) is a soft guard on the whole result: while it is
+  bigger, the biggest part is halved — a record list (keeping errors and the
+  newest, and setting its `truncated`), `chat` (oldest lines go,
+  `chat_truncated`), scores, a deep storage list, one very long message
+  (`… [N more characters]`), call-graph lists. Each cut is one line of
+  `trimmed`, e.g. `"world.storage.my:s.list: 400 -> 50 items"`, followed by
+  the size the result had. Ask for the part you need with a narrower
+  command (`data get storage my:s list[0]`) when something you need was cut.
+
+**Unloaded chunks.** Every chunk counts as loaded unless the run says
+otherwise: `unloaded_chunks=[[cx, cz], [cx, cz, "minecraft:the_nether"], …]`
+(chunk coordinates, i.e. block x and z `// 16`; overworld when no dimension
+is given; `"cx,cz"` strings work too) holds those chunks unloaded for the
+whole run, to test a pack's "is that chunk loaded" path:
+
+* `execute if loaded` fails there (`unless loaded` passes), as the game's
+  does when a chunk or its entities are not loaded;
+* their entities are out of reach of selectors (`@e`, `@n`, names and UUIDs)
+  and do not tick; players never are (a player keeps its chunk loaded);
+* commands that need a loaded block position fail with the game's
+  `That position is not loaded` (`argument.pos.unloaded`): `setblock`,
+  `fill` (its corners), `clone` (both whole regions), `execute if block`,
+  `execute if blocks` (both regions), `data … block`, `item … block`,
+  `loot … mine`, `execute store … block`, `function … with block`;
+* `forceload add` on such a chunk loads it again.
+
+The result lists them under `unloaded_chunks` as `[cx, cz, dimension]`.
+`test` takes the same `unloaded_chunks`.
+
 Records have a `source`, and the difference matters:
 
 | source | who says it | trust it as |
@@ -163,7 +208,7 @@ lower bound and a ranking — right about which function is dearest and how a
 change moves it — not as a real tick time. For real numbers, use
 `server_profile` below.
 
-### `test(packs, tests, version=None, versions=None, *, expect="", expect_value="", checks=(), ticks=None, ...)`
+### `test(packs, tests, version=None, versions=None, *, expect="", expect_value="", checks=(), ticks=None, unloaded_chunks=(), ...)`
 
 Runs tests in one fresh world per version; the world ticks until the last
 test ran. `ok` is true when every test passed (and there was at least one).
@@ -226,7 +271,8 @@ document too (`exit_code`).
 
 ```sh
 datapack-emulator-cli --quiet check  my_pack --version 1.21.4 --json
-datapack-emulator-cli --quiet run    my_pack --version 1.21.4 --ticks 40 --json --max-records 50
+datapack-emulator-cli --quiet run    my_pack --version 1.21.4 --ticks 40 --json --max-records 50 --max-result-chars 40000
+datapack-emulator-cli --quiet run    my_pack --version 1.21.4 --unloaded-chunk 2,0 --unloaded-chunk=-1,3 --json
 datapack-emulator-cli --quiet test   my_pack --version 1.21.4 --test "5:" --check "score #g t = 5" --json
 datapack-emulator-cli --quiet matrix my_pack --declared --boundaries --json
 ```
@@ -240,6 +286,12 @@ internal error (a bug — report it); `130` interrupted.
 API, or `shell`, to type commands into the world); its `summary` is shorter.
 Its `ok` can be false while `exit_code` is `0`: the exit code keeps its old
 meaning (tests and usage), `ok` adds the silent failures described above.
+`--max-records` and `--max-result-chars` (default 40000, `0`: no limit) keep
+it small the same way as the API (`trimmed` lists the cuts).
+
+`--unloaded-chunk X,Z[,DIMENSION]` (repeatable; write a negative one as
+`--unloaded-chunk=-1,0`) holds a chunk unloaded, as `unloaded_chunks` does;
+`run`, `test`, `matrix`, `world` and `shell` take it.
 
 `check --json` predates the agent API and keeps its own shape, so existing
 scripts do not break: one object `{version, client_jar, schema, counts,

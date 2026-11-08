@@ -61,14 +61,54 @@ def _shifted(position: Position, offset) -> Position:
 
 
 def position_at(
-    context: ExecutionContext, tokens: list[str], dimension: str | None = None
+    context: ExecutionContext,
+    tokens: list[str],
+    dimension: str | None = None,
+    loaded: bool = True,
 ) -> Position | None:
     """Three coordinate tokens -> a block position; None (error reported) when
-    they are malformed or outside the world."""
+    they are malformed, outside the world or (with ``loaded``, vanilla's
+    loaded block position argument) in an unloaded chunk."""
     position, error = parse_block_position(context, tokens, dimension)
+    if position is not None and loaded and not chunk_loaded(context, position, dimension):
+        position, error = None, "argument.pos.unloaded"
     if position is None:
         context.game_error(error)
     return position
+
+
+def chunk_loaded(
+    context: ExecutionContext, position: Position, dimension: str | None = None
+) -> bool:
+    """Whether the chunk holding ``position`` is loaded (every chunk is, except
+    those a run declares unloaded)."""
+    return context.world.is_loaded(dimension or context.dimension, position[0], position[2])
+
+
+def region_loaded(
+    context: ExecutionContext, low: Position, high: Position, dimension: str | None = None
+) -> bool:
+    """Whether every chunk of a box is loaded; reports ``argument.pos.unloaded`` if not."""
+    if context.world.region_loaded(dimension or context.dimension, low, high):
+        return True
+    context.game_error("argument.pos.unloaded")
+    return False
+
+
+def loaded_condition(arguments: list[str], context: ExecutionContext) -> bool:
+    """``loaded <pos>``: the chunk there is loaded, entities included."""
+    tokens = arguments[1:4]
+    if len(tokens) < 3 or not all(
+        _ABSOLUTE.fullmatch(token) or _RELATIVE.fullmatch(token) for token in tokens
+    ):
+        context.game_error("command.unknown.command")
+        return False
+    local = [token.startswith("^") for token in tokens]
+    if any(local) and not all(local):
+        context.game_error("argument.pos.mixed")
+        return False
+    position = block_position(resolve_position(tokens, context.position))
+    return chunk_loaded(context, position)
 
 
 def block_argument(context: ExecutionContext, token: str) -> Block | None:
@@ -357,6 +397,10 @@ def cmd_clone(command: Command, context: ExecutionContext) -> CommandResult:
     if not in_world(target_high, target_dimension, context.emulator.version):
         context.game_error("argument.pos.outofworld")
         return CommandResult.failure()
+    if not region_loaded(context, low, high, source_dimension) or not region_loaded(
+        context, target_low, target_high, target_dimension
+    ):
+        return CommandResult.failure()
 
     blocks = context.world.blocks
     copied = []
@@ -426,6 +470,11 @@ def blocks_condition_count(arguments: list[str], context: ExecutionContext) -> i
     limit = modification_limit(context)
     if size > limit:
         context.game_error("commands.execute.blocks.toobig", limit, size)
+        return None
+    shift = (destination[0] - low[0], destination[1] - low[1], destination[2] - low[2])
+    if not region_loaded(context, low, high) or not region_loaded(
+        context, destination, _shifted(high, shift)
+    ):
         return None
     blocks = context.world.blocks
     version = context.emulator.version

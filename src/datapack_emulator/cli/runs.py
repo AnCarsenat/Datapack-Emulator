@@ -46,6 +46,7 @@ from datapack_emulator.emulator.analysis.profiler import Profiler
 from datapack_emulator.emulator.engine import TestEngine, VersionRun
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, OutputBus
+from datapack_emulator.emulator.runtime.world import parse_chunks
 from datapack_emulator.emulator.testing import (
     CommandTest,
     TestResult,
@@ -80,6 +81,26 @@ def add_world_arguments(parser: argparse.ArgumentParser, endless: bool = False) 
     )
     parser.add_argument("--players", type=count, default=None, help="default: 1, or the project's")
     parser.add_argument("--seed", type=int, default=None, help="default: 0, or the project's")
+    parser.add_argument(
+        "--unloaded-chunk",
+        dest="unloaded_chunks",
+        action="append",
+        type=chunk_argument,
+        default=[],
+        metavar="X,Z[,DIM]",
+        help="a chunk (chunk coordinates: block // 16; overworld by default) that counts as "
+        "unloaded for the run: execute if loaded fails, its entities are out of reach of "
+        "selectors, block commands there fail; repeatable (negative: --unloaded-chunk=-1,0)",
+    )
+
+
+def chunk_argument(text: str) -> str:
+    """An argparse type: ``X,Z`` or ``X,Z,DIMENSION``."""
+    try:
+        parse_chunks([text])
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+    return text
 
 
 def ticks_setting(arguments: argparse.Namespace, inputs: Inputs) -> int:
@@ -167,6 +188,7 @@ def build_emulator(arguments: argparse.Namespace, inputs: Inputs, bus) -> Emulat
         output=bus,
         seed=inputs.setting(arguments, "seed", EMULATION.DEFAULT_SEED),
         vanilla=assets,
+        unloaded_chunks=arguments.unloaded_chunks,
     )
 
 
@@ -222,7 +244,8 @@ def command_run(arguments: argparse.Namespace) -> int:
 
 
 def run_json(arguments, inputs: Inputs, emulator: Emulator, bus, ticks, results, code) -> dict:
-    """``run --json``: the same shape as ``agent.run`` (without console commands)."""
+    """``run --json``: the same shape as ``agent.run`` (without console commands),
+    kept under ``--max-result-chars`` the same way."""
     errors = sum(1 for record in bus.records if record.level >= LogLevel.ERROR)
     failed = sum(1 for result in results if not result.passed and not result.skipped)
     graph = agent.graph_summary(emulator.call_graph())
@@ -252,6 +275,11 @@ def run_json(arguments, inputs: Inputs, emulator: Emulator, bus, ticks, results,
         or ignored
         or blockers
     )
+    chat = [
+        record.message
+        for record in bus.records
+        if record.source.value == "game" and record.level < LogLevel.ERROR and record.recipient
+    ]
     data = {
         "ok": code == OK and not broken,
         "exit_code": code,
@@ -269,19 +297,18 @@ def run_json(arguments, inputs: Inputs, emulator: Emulator, bus, ticks, results,
         "load_blockers": blockers,
         "failed_tags": failed_tags,
         "ignored_folders": ignored,
-        "chat": [
-            record.message
-            for record in bus.records
-            if record.source.value == "game" and record.level < LogLevel.ERROR and record.recipient
-        ][-50:],
+        "chat": chat[-50:],
+        "chat_total": len(chat),
         **agent.records_to_list(bus.records, arguments.level, arguments.max_records),
         "call_graph": graph,
         "profile": agent.profile_summary(emulator.profiler),
         "world": agent.world_summary(emulator.world, emulator.version),
     }
+    if emulator.unloaded_chunks:
+        data["unloaded_chunks"] = agent.chunks_to_list(emulator.unloaded_chunks)
     if results:
         data["tests"] = [agent.test_result_to_dict(emulator.version, r) for r in results]
-    return data
+    return agent.fit_result(data, arguments.max_result_chars)
 
 
 def report_run(arguments, inputs: Inputs, emulator: Emulator, ticks, results, baseline) -> int:
@@ -465,6 +492,14 @@ def register_run(subparsers) -> None:
         help=f"with --json: at most this many records (errors kept first; default "
         f"{agent.MAX_RECORDS})",
     )
+    run.add_argument(
+        "--max-result-chars",
+        type=count,
+        default=agent.MAX_RESULT_CHARS,
+        help="with --json: trim the biggest lists until the JSON has at most this many "
+        f"characters, each cut listed under 'trimmed' (0: no limit; default "
+        f"{agent.MAX_RESULT_CHARS})",
+    )
     add_debug_arguments(run)
     add_output_filter(run)
     add_vanilla_arguments(run)
@@ -492,6 +527,7 @@ def engine_for(
         allow_download=arguments.download,
         tests=tests,
         vanilla=vanilla,
+        unloaded_chunks=getattr(arguments, "unloaded_chunks", None) or [],
     )
 
 

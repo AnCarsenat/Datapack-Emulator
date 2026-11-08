@@ -7,6 +7,7 @@ import math
 from datapack_emulator.emulator.commands.blocks import (
     block_condition,
     blocks_condition_count,
+    loaded_condition,
     position_at,
 )
 from datapack_emulator.emulator.commands.helpers import (
@@ -385,7 +386,8 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
         return context.dimension == normalise_id(arguments[1])
 
     if kind == "loaded":
-        return True
+        # every chunk is loaded except those a run declares unloaded
+        return loaded_condition(arguments, context)
 
     if kind == "function" and len(arguments) >= 2:
         target = normalise_tagged_id(arguments[1])

@@ -26,8 +26,12 @@ Conventions, the same in every result:
     the Minecraft version ids actually emulated, after resolving ``"latest"``
     or a line like ``"1.21"``.
 ``truncated``
-    lists capped by ``max_records`` / ``max_problems`` say so, with the full
-    count beside them, so a partial list is never mistaken for a whole one.
+    lists capped by ``max_records`` / ``max_problems`` /
+    ``max_output_per_command`` say so, with the full count beside them, so a
+    partial list is never mistaken for a whole one.
+``trimmed``
+    ``run`` keeps its result under ``max_result_chars``: when it would be
+    larger, the biggest lists are cut further and each cut is listed here.
 
 Bad input (a missing folder, an unknown version, a malformed test) raises
 :class:`AgentError` with a message meant to be shown to whoever asked.
@@ -35,8 +39,9 @@ Bad input (a missing folder, an unknown version, a malformed test) raises
 
 from __future__ import annotations
 
+import json
 import zipfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +60,7 @@ from datapack_emulator.emulator.datapack import DatapackSet, preferred_version
 from datapack_emulator.emulator.engine import TestEngine, VersionRun
 from datapack_emulator.emulator.runtime.emulator import Emulator
 from datapack_emulator.emulator.runtime.output import LogLevel, LogRecord, OutputBus
+from datapack_emulator.emulator.runtime.world import parse_chunks
 from datapack_emulator.emulator.testing import (
     CommandTest,
     TestResult,
@@ -78,6 +84,12 @@ LEVELS = {
 #: default caps; a model's context is the scarce resource, not the emulator
 MAX_RECORDS = 200
 MAX_PROBLEMS = 200
+#: lines kept per console command of ``run`` (errors first, then the newest)
+MAX_OUTPUT_PER_COMMAND = 20
+#: the size ``run`` keeps its JSON under (characters of compact JSON, ~40 KB)
+MAX_RESULT_CHARS = 40_000
+#: the function id console commands run as (``ExecutionContext`` of the server)
+CONSOLE = "<server>"
 
 
 class AgentError(ValueError):
@@ -239,26 +251,247 @@ def record_to_dict(record: LogRecord) -> dict[str, Any]:
     return data
 
 
+def _keep(items: list, limit: int, *first: Callable[[Any], bool]) -> list:
+    """At most ``limit`` of ``items`` in their order: those matching each of
+    ``first`` in turn (oldest of them first), then the newest of the rest."""
+    limit = max(limit, 0)
+    if len(items) <= limit:
+        return list(items)
+    kept: set[int] = set()
+    for wanted in first:
+        for index, item in enumerate(items):
+            if len(kept) >= limit:
+                break
+            if index not in kept and wanted(item):
+                kept.add(index)
+    for index in range(len(items) - 1, -1, -1):
+        if len(kept) >= limit:
+            break
+        kept.add(index)
+    return [item for index, item in enumerate(items) if index in kept]
+
+
 def records_to_list(
     records: list[LogRecord], level: str = "info", limit: int = MAX_RECORDS
 ) -> dict[str, Any]:
     """Records at ``level`` or above, newest kept when capped (errors first)."""
     minimum = _level(level)
     wanted = [record for record in records if record.level >= minimum]
-    if len(wanted) > limit:
-        # keep every error, then the newest of the rest
-        errors = [r for r in wanted if r.level >= LogLevel.ERROR][:limit]
-        rest = [r for r in wanted if r.level < LogLevel.ERROR]
-        room = limit - len(errors)
-        keep = set(map(id, errors + (rest[-room:] if room > 0 else [])))
-        shown = [r for r in wanted if id(r) in keep]
-    else:
-        shown = wanted
+    shown = _keep(wanted, limit, lambda r: r.level >= LogLevel.ERROR)
     return {
         "records": [record_to_dict(record) for record in shown],
         "records_total": len(wanted),
         "truncated": len(shown) < len(wanted),
     }
+
+
+def command_output(
+    records: list[LogRecord], level: str = "info", limit: int = MAX_OUTPUT_PER_COMMAND
+) -> dict[str, Any]:
+    """What one console command printed, filtered like ``records``: lines at
+    ``level`` or above, plus the command's own answer whatever its level (the
+    reason it was typed). Capped at ``limit``: errors first, then the answer,
+    then the newest of the rest."""
+    minimum = _level(level)
+    wanted = [r for r in records if r.level >= minimum or _is_answer(r)]
+    shown = _keep(wanted, limit, lambda r: r.level >= LogLevel.ERROR, _is_answer)
+    return {
+        "output": [record_to_dict(record) for record in shown],
+        "output_total": len(wanted),
+        "truncated": len(shown) < len(wanted),
+    }
+
+
+def _is_answer(record: LogRecord) -> bool:
+    """Said by the console command itself, not by a function it ran."""
+    return record.function == CONSOLE and record.source.value == "game"
+
+
+# ---------------------------------------------------------------------------
+# keeping a result small
+# ---------------------------------------------------------------------------
+
+#: a part of a result smaller than this is not worth cutting
+_SMALLEST_CUT = 256
+
+
+def _chars(value: Any) -> int:
+    return len(json.dumps(value, default=str))
+
+
+def _record_lists(result: dict[str, Any]) -> list[tuple[str, dict[str, Any], str]]:
+    """``(label, owner, key)`` of every list of records in a ``run`` result:
+    cut keeping errors and the newest, and flagged ``truncated`` on the owner."""
+    places = [("records", result, "records")]
+    for index, answer in enumerate(result.get("commands") or []):
+        if isinstance(answer, dict) and isinstance(answer.get("output"), list):
+            places.append((f"commands[{index}].output", answer, "output"))
+    return places
+
+
+def _other_parts(result: dict[str, Any]) -> list[tuple[str, Any, Any]]:
+    """``(label, owner, key)`` of the other parts that can grow without bound."""
+    places: list[tuple[str, Any, Any]] = [
+        ("chat", result, "chat"),
+        ("failed_functions", result, "failed_functions"),
+        ("failed_tags", result, "failed_tags"),
+        ("load_blockers", result, "load_blockers"),
+        ("ignored_folders", result, "ignored_folders"),
+        ("load_errors", result, "load_errors"),
+    ]
+    for owner_key in ("world", "call_graph", "profile"):
+        owner = result.get(owner_key)
+        if isinstance(owner, dict):
+            places += [
+                (f"{owner_key}.{key}", owner, key)
+                for key, value in owner.items()
+                if isinstance(value, (list, dict, str))
+            ]
+    tests = result.get("tests")
+    if isinstance(tests, list):
+        places.append(("tests", result, "tests"))
+    return [place for place in places if isinstance(place[1].get(place[2]), (list, dict, str))]
+
+
+def _cut(container: Any, key: Any, label: str, newest: bool) -> tuple[str, int, int, str] | None:
+    """Halve the biggest piece under ``container[key]``: go down while one
+    child holds most of the size, then keep half of that list, dict or
+    string (the newest half of a list with ``newest``). Returns ``(label,
+    count before, count after, unit)``; None when nothing is worth cutting."""
+    node = container[key]
+    while isinstance(node, (list, dict)) and node:
+        children = list(node.items()) if isinstance(node, dict) else list(enumerate(node))
+        sizes = [(_chars(child), name) for name, child in children]
+        biggest, name = max(sizes, key=lambda pair: pair[0])
+        child = node[name]
+        if len(children) > 1 and biggest * 2 <= sum(size for size, _ in sizes):
+            break  # no single child dominates: cut this one
+        if not isinstance(child, (list, dict, str)) or biggest < _SMALLEST_CUT:
+            break
+        container, key, node = node, name, child
+        label += f"[{name}]" if isinstance(name, int) else f".{name}"
+        newest = False
+    if isinstance(node, str):
+        if len(node) < _SMALLEST_CUT:
+            return None
+        keep = len(node) // 2
+        container[key] = node[:keep] + f"… [{len(node) - keep} more characters]"
+        return (label, len(node), keep, "characters")
+    if isinstance(node, list) and node:
+        keep = len(node) // 2
+        container[key] = node[len(node) - keep :] if newest else node[:keep]
+        return (label, len(node), keep, "items")
+    if isinstance(node, dict) and node:
+        keep = len(node) // 2
+        container[key] = dict(list(node.items())[:keep])
+        return (label, len(node), keep, "keys")
+    return None
+
+
+def _halve_records(owner: dict[str, Any], key: str, label: str) -> tuple[str, int, int, str]:
+    items = owner[key]
+    kept = _keep(items, len(items) // 2, lambda record: record.get("level") == "error")
+    owner[key] = kept
+    owner["truncated"] = True
+    return (label, len(items), len(kept), "items")
+
+
+def _cut_commands(result: dict[str, Any], sizes: list[int]) -> tuple[str, int, int, str] | None:
+    """One cut across every console command at once, so that many commands
+    cost a few cuts (and a few ``trimmed`` notes), not one each: halve every
+    output of more than one line; failing that, halve each long message of
+    the outputs; failing that, drop the newer half of the commands. When one
+    output alone is most of their size, None: that one is cut on its own."""
+    answers = result["commands"]
+    outputs = [
+        answer
+        for answer in answers
+        if isinstance(answer, dict) and isinstance(answer.get("output"), list)
+    ]
+    if sizes and max(sizes) * 2 > sum(sizes) and len(outputs) > 1:
+        return None
+    if any(len(answer["output"]) > 1 for answer in outputs):
+        before = sum(len(answer["output"]) for answer in outputs)
+        for answer in outputs:
+            if len(answer["output"]) > 1:
+                _halve_records(answer, "output", "")
+        return ("commands[].output", before, sum(len(a["output"]) for a in outputs), "items")
+    long = [answer for answer in outputs if _chars(answer["output"]) >= 2 * _SMALLEST_CUT]
+    before = sum(_chars(answer["output"]) for answer in long)
+    cut = [answer for answer in long if _cut(answer, "output", "", newest=False) is not None]
+    if cut:
+        for answer in cut:
+            answer["truncated"] = True
+        after = sum(_chars(answer["output"]) for answer in long)
+        return ("commands[].output messages", before, after, "characters")
+    if len(answers) > 1:
+        keep = len(answers) // 2
+        result["commands"] = answers[:keep]
+        result["commands_truncated"] = True
+        return ("commands", len(answers), keep, "items")
+    return None
+
+
+def _cut_biggest(result: dict[str, Any]) -> tuple[str, int, int, str] | None:
+    """One cut in the biggest part of ``result`` that can lose something."""
+    places: list[tuple[int, str, dict[str, Any], Any, bool]] = []
+    output_sizes: list[int] = []
+    for label, owner, key in _record_lists(result):
+        size = _chars(owner[key])
+        if owner is not result:
+            output_sizes.append(size)
+        places.append((size, label, owner, key, len(owner[key]) > 1))
+    answers = result.get("commands")
+    if isinstance(answers, list) and answers:
+        places.append((_chars(answers), "commands", result, "commands", False))
+    for label, owner, key in _other_parts(result):
+        places.append((_chars(owner[key]), label, owner, key, False))
+    places.sort(key=lambda place: place[0], reverse=True)
+    for size, label, owner, key, records in places:
+        if size < _SMALLEST_CUT:
+            break
+        if records:
+            return _halve_records(owner, key, label)
+        if label == "commands":
+            done = _cut_commands(result, output_sizes)
+        else:
+            done = _cut(owner, key, label, newest=label == "chat")
+        if done is not None:
+            if label == "chat":
+                result["chat_truncated"] = True
+            return done
+    return None
+
+
+def fit_result(result: dict[str, Any], max_chars: int | None = MAX_RESULT_CHARS) -> dict[str, Any]:
+    """Keep a ``run`` result under ``max_chars`` characters of JSON (a soft
+    limit; ``None`` or 0: no limit), in place. The biggest part is halved
+    until the whole fits: lists of records keep their errors and newest lines
+    and say ``truncated``; anything else (chat, scores, deep storage, a long
+    message) is cut from its end. Every cut is listed under ``trimmed`` (and
+    the result says ``trimmed: []`` when nothing was), so a partial result is
+    never mistaken for a whole one."""
+    if not max_chars or max_chars <= 0:
+        return result
+    original = _chars(result)
+    cuts: dict[str, list[Any]] = {}
+    while True:
+        # the notes count too: they are part of what has to fit
+        result["trimmed"] = [
+            f"{label}: {before} -> {after} {unit}" for label, (before, after, unit) in cuts.items()
+        ]
+        if cuts:
+            result["trimmed"].append(
+                f"the result had {original} characters of JSON; max_result_chars is {max_chars}"
+            )
+        if _chars(result) <= max_chars:
+            break
+        done = _cut_biggest(result)
+        if done is None:
+            break
+        label, before, after, unit = done
+        cuts.setdefault(label, [before, after, unit])[1] = after
+    return result
 
 
 def test_result_to_dict(version: Version, result: TestResult) -> dict[str, Any]:
@@ -558,6 +791,9 @@ def run(
     entities: bool = False,
     vanilla: str | bool | None = "auto",
     download: bool = False,
+    max_output_per_command: int = MAX_OUTPUT_PER_COMMAND,
+    max_result_chars: int | None = MAX_RESULT_CHARS,
+    unloaded_chunks: Sequence[Sequence[Any] | str] = (),
 ) -> dict[str, Any]:
     """Load the pack, run ``#minecraft:load`` and ``ticks`` ticks of
     ``#minecraft:tick``, then each of ``commands`` as if typed in the server
@@ -574,11 +810,28 @@ def run(
     a called function does not exist, or a whole kind of resource sits in
     folders this version does not read (``functions/`` on 1.21+,
     ``function/`` before) — the game says nothing about that at all.
+
+    Size: ``level`` filters ``records`` and each command's ``output`` alike
+    (a command's own answer is always kept); ``max_records`` and
+    ``max_output_per_command`` cap them (errors first, then the newest), and
+    ``max_result_chars`` (``None``/0: off) trims the biggest parts further
+    when the whole result would still be larger, listing each cut under
+    ``trimmed``.
+
+    ``unloaded_chunks``: chunks (``[cx, cz]`` or ``[cx, cz, dimension]``,
+    chunk coordinates = block coordinates // 16, overworld by default) that
+    count as unloaded for the whole run: ``execute if loaded`` fails there,
+    their entities (not players) are out of reach of selectors and do not
+    tick, and block commands there fail with "That position is not loaded".
+    Every other chunk is loaded.
     """
     if ticks < 0:
         raise AgentError("ticks must be 0 or more")
+    if max_output_per_command < 0:
+        raise AgentError("max_output_per_command must be 0 or more")
     datapack = load_packs(packs)
     target = resolve_version(version, datapack)
+    _level(level)  # a bad level is refused before the run, not after it
     bus = OutputBus()
     emulator = Emulator(
         datapack,
@@ -587,6 +840,7 @@ def run(
         output=bus,
         seed=seed,
         vanilla=vanilla_assets(vanilla, target, download),
+        unloaded_chunks=_chunks(unloaded_chunks),
     )
     emulator.run(ticks=ticks)
     ran_ticks = emulator.world.tick
@@ -605,7 +859,7 @@ def run(
                 "command": line,
                 "success": bool(result.success) if result is not None else None,
                 "value": result.value if result is not None else None,
-                "output": [record_to_dict(r) for r in bus.records[before:]],
+                **command_output(bus.records[before:], level, max_output_per_command),
             }
         )
     errors = [r for r in tick_records if r.level >= LogLevel.ERROR]
@@ -657,14 +911,36 @@ def run(
         "ignored_folders": ignored,
         "load_blockers": blockers,
         "chat": chat[-50:],
+        "chat_total": len(chat),
         **records_to_list(tick_records, level, max_records),
         "commands": answers,
         "call_graph": graph,
         "profile": profile_summary(emulator.profiler),
     }
+    if emulator.unloaded_chunks:
+        out["unloaded_chunks"] = chunks_to_list(emulator.unloaded_chunks)
     if world:
         out["world"] = world_summary(emulator.world, target, entities=entities)
-    return out
+    return fit_result(out, max_result_chars)
+
+
+def _chunks(chunks: Iterable[Sequence[Any] | str]) -> list[Sequence[Any] | str]:
+    """``unloaded_chunks`` checked before the run."""
+    if isinstance(chunks, str):
+        raise AgentError("unloaded_chunks is a list of [x, z] or [x, z, dimension] chunks")
+    chunks = list(chunks)
+    try:
+        parse_chunks(chunks)
+    except (TypeError, ValueError) as exc:
+        raise AgentError(f"unloaded_chunks: {exc}") from None
+    return chunks
+
+
+def chunks_to_list(chunks: dict[str, set[tuple[int, int]]]) -> list[list[Any]]:
+    """Chunks by dimension -> ``[[cx, cz, dimension], …]``, sorted."""
+    return [
+        [x, z, dimension] for dimension, found in sorted(chunks.items()) for x, z in sorted(found)
+    ]
 
 
 def test(
@@ -683,6 +959,7 @@ def test(
     seed: int = 0,
     vanilla: str | bool | None = "auto",
     download: bool = False,
+    unloaded_chunks: Sequence[Sequence[Any] | str] = (),
 ) -> dict[str, Any]:
     """Run command tests in a fresh world per version; ``ok`` = all passed.
 
@@ -692,6 +969,7 @@ def test(
     test passed. Check lines: ``score #g t = 3``, ``score @p t >= 1``,
     ``storage ns:s path = 1b``, ``@e[type=pig] = 2``,
     ``block 0 64 0 = stone``, ``if entity @a[tag=won]``.
+    ``unloaded_chunks`` is the same as :func:`run`'s.
     """
     if not tests:
         raise AgentError("no tests given")
@@ -732,6 +1010,7 @@ def test(
         allow_download=download,
         tests=parsed,
         vanilla=single,
+        unloaded_chunks=_chunks(unloaded_chunks),
     )
     runs = engine.run(chosen)
     results = [test_result_to_dict(run.version, result) for run in runs for result in run.tests]
