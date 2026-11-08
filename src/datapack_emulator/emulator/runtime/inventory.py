@@ -34,6 +34,14 @@ from datapack_emulator.emulator.common import (
     parse_value,
     split_arguments,
 )
+from datapack_emulator.emulator.runtime.components import (
+    default_stack_size,
+    effective,
+    namespace_ids,
+    normalise,
+    same_value,
+    stack_problem,
+)
 from datapack_emulator.emulator.versions import Version
 
 ITEM_COMPONENTS_SINCE = "1.20.5"
@@ -47,44 +55,14 @@ ARMOR = ("head", "chest", "legs", "feet")
 ARMOR_SLOT_NUMBERS = {"feet": 100, "legs": 101, "chest": 102, "head": 103}
 OFFHAND_SLOT_NUMBER = -106
 
-#: items that do not stack; the rest stack to 64 unless listed in SMALL_STACKS
-_UNSTACKABLE_SUFFIXES = (
-    "_sword", "_pickaxe", "_axe", "_shovel", "_hoe", "_helmet", "_chestplate", "_leggings",
-    "_boots", "_horse_armor", "_boat", "_raft", "_minecart", "_bucket", "shulker_box",
-    "_bed", "potion", "_banner_pattern", "music_disc_",
-)  # fmt: skip
-_UNSTACKABLE = frozenset(
-    {
-        "minecraft:bow", "minecraft:crossbow", "minecraft:trident", "minecraft:shield",
-        "minecraft:elytra", "minecraft:fishing_rod", "minecraft:flint_and_steel",
-        "minecraft:shears", "minecraft:saddle", "minecraft:cake", "minecraft:totem_of_undying",
-        "minecraft:enchanted_book", "minecraft:written_book", "minecraft:writable_book",
-        "minecraft:mace", "minecraft:brush", "minecraft:spyglass", "minecraft:carrot_on_a_stick",
-        "minecraft:warped_fungus_on_a_stick", "minecraft:turtle_helmet", "minecraft:minecart",
-        "minecraft:beef_stew", "minecraft:mushroom_stew", "minecraft:rabbit_stew",
-        "minecraft:beetroot_soup", "minecraft:suspicious_stew", "minecraft:milk_bucket",
-        "minecraft:bundle", "minecraft:debug_stick", "minecraft:knowledge_book",
-    }
-)  # fmt: skip
-_SIXTEEN = frozenset(
-    {
-        "minecraft:ender_pearl", "minecraft:snowball", "minecraft:egg", "minecraft:bucket",
-        "minecraft:honey_bottle", "minecraft:armor_stand", "minecraft:written_book",
-        "minecraft:blue_egg", "minecraft:brown_egg", "minecraft:wind_charge",
-    }
-)  # fmt: skip
-
 
 def max_stack_size(item_id: str, components: dict[str, Any] | None = None) -> int:
+    """The stack's own ``max_stack_size``, else the item's default (``runtime.components``)."""
     if components:
         size = components.get("minecraft:max_stack_size")
-        if isinstance(size, int) and size > 0:
+        if isinstance(size, int) and not isinstance(size, bool) and size > 0:
             return size
-    if item_id in _UNSTACKABLE or any(part in item_id for part in _UNSTACKABLE_SUFFIXES):
-        return 1
-    if item_id in _SIXTEEN or item_id.endswith(("_sign", "_hanging_sign", "_banner")):
-        return 16
-    return 64
+    return default_stack_size(item_id)
 
 
 def uses_components(version: Version | None) -> bool:
@@ -114,8 +92,21 @@ class ItemStack:
         return max_stack_size(self.id, self.components)
 
     def same_kind(self, other: ItemStack) -> bool:
-        """Whether the two stacks can merge: same id and the same data."""
-        return self.id == other.id and self.components == other.components and self.tag == other.tag
+        """Whether the two stacks can merge: same id and the same data (components
+        compared in canonical form, so a value equal to the default is no difference)."""
+        return (
+            self.id == other.id
+            and self.tag == other.tag
+            and (
+                self.components == other.components
+                or normalise(self.id, self.components, None)
+                == normalise(other.id, other.components, None)
+            )
+        )
+
+    def effective_components(self, version: Version | None) -> dict[str, Any]:
+        """The item's default components with this stack's patch applied."""
+        return effective(self.id, self.components, version)
 
     def copy(self, count: int | None = None) -> ItemStack:
         return ItemStack(
@@ -128,8 +119,10 @@ class ItemStack:
     def to_nbt(self, version: Version | None) -> dict[str, Any]:
         if uses_components(version):
             data: dict[str, Any] = {"id": self.id, "count": self.count}
-            if self.components:
-                data["components"] = copy.deepcopy(self.components)
+            # what the ItemStack codec writes: ids namespaced, defaults dropped
+            patch = normalise(self.id, self.components, version) if self.components else {}
+            if patch:
+                data["components"] = copy.deepcopy(patch)
             return data
         data = {"id": self.id, "Count": self.count}
         if self.tag:
@@ -137,11 +130,21 @@ class ItemStack:
         return data
 
     @classmethod
-    def from_nbt(cls, data: Any) -> ItemStack | None:
-        """Either format; ``None`` for an empty slot (``{}``, air or count 0)."""
+    def from_nbt(cls, data: Any, problems: list[str] | None = None) -> ItemStack | None:
+        """Either format; ``None`` for an empty slot (``{}``, air or count 0) and
+        for a stack the 1.20.5+ codec refuses (the reason goes to ``problems``)."""
         if not isinstance(data, dict) or not isinstance(data.get("id"), str):
             return None
         item_id = normalise_id(data["id"])
+        problem = (
+            stack_problem(data)
+            if item_id != "minecraft:air" and ("components" in data or "count" in data)
+            else None
+        )
+        if problem is not None:
+            if problems is not None:
+                problems.append(f"{item_id}: {problem}")
+            return None
         count = data.get("count", data.get("Count", 1))
         count = int(count) if isinstance(count, (int, float)) and not isinstance(count, bool) else 1
         if item_id == "minecraft:air" or count <= 0:
@@ -179,8 +182,9 @@ def parse_item(text: str) -> ItemStack | None:
     if rest.startswith("["):
         end = _matching(rest, 0)
         for key, value in split_arguments(rest[1:end]):
-            if key.startswith("!"):
-                continue  # removing a default component: nothing to store
+            if key.startswith("!"):  # removing a default component
+                components["!" + _qualify_component(key[1:])] = {}
+                continue
             components[_qualify_component(key)] = parse_value(value) if value else {}
         rest = rest[end + 1 :]
     if rest.startswith("{"):
@@ -221,11 +225,15 @@ class ComponentCheck:
     has_value: bool = False
     negated: bool = False
 
-    def passes(self, stack: ItemStack) -> bool:
+    def passes(self, stack: ItemStack, version: Version | None = None) -> bool:
+        """Tested against the stack's effective components (defaults + patch)."""
+        components = stack.effective_components(version)
         if self.has_value:
-            result = stack.components.get(self.key) == self.value
+            result = self.key in components and same_value(
+                components[self.key], namespace_ids(self.key, self.value)
+            )
         else:
-            result = self.key in stack.components
+            result = self.key in components
         return result != self.negated
 
 
@@ -242,6 +250,8 @@ class ItemPredicate:
     tag_members: set[str] | None = None
     #: parts of the predicate the emulator does not check (they pass)
     unchecked: list[str] = field(default_factory=list)
+    #: the version whose default components the checks see (None: the newest)
+    version: Version | None = None
 
     def matches(self, stack: ItemStack) -> bool:
         if self.id.startswith("#"):
@@ -250,7 +260,7 @@ class ItemPredicate:
         elif self.id != "*" and stack.id != self.id:
             return False
         for group in self.groups:
-            if group and not any(check.passes(stack) for check in group):
+            if group and not any(check.passes(stack, self.version) for check in group):
                 return False
         return nbt_matches(stack.tag, self.tag) if self.tag else True
 
@@ -621,7 +631,7 @@ class Inventory:
             data["SaddleItem"] = item("saddle")
         return data
 
-    def load_nbt(self, data: dict[str, Any]) -> None:
+    def load_nbt(self, data: dict[str, Any], problems: list[str] | None = None) -> None:
         """Read slots back from entity NBT in any version's format.
 
         ``data`` is the entity's whole NBT: slots it does not mention are empty
@@ -630,7 +640,7 @@ class Inventory:
             return
         slots: dict[str, ItemStack] = {}
         for entry in data.get("Inventory") or []:
-            stack = ItemStack.from_nbt(entry)
+            stack = ItemStack.from_nbt(entry, problems)
             slot = entry.get("Slot") if isinstance(entry, dict) else None
             if stack is None or not isinstance(slot, int):
                 continue
@@ -643,36 +653,67 @@ class Inventory:
                     if slot == number:
                         slots[key] = stack
         for entry in data.get("EnderItems") or []:
-            stack = ItemStack.from_nbt(entry)
+            stack = ItemStack.from_nbt(entry, problems)
             slot = entry.get("Slot") if isinstance(entry, dict) else None
             if stack is not None and isinstance(slot, int) and 0 <= slot < ENDER_CHEST:
                 slots[f"enderchest.{slot}"] = stack
         hands = data.get("HandItems")
         if isinstance(hands, list):
             for key, entry in zip(("mainhand", "offhand"), hands, strict=False):
-                stack = ItemStack.from_nbt(entry)
+                stack = ItemStack.from_nbt(entry, problems)
                 if stack is not None:
                     slots[key] = stack
         armor = data.get("ArmorItems")
         if isinstance(armor, list):
             for key, entry in zip(("feet", "legs", "chest", "head"), armor, strict=False):
-                stack = ItemStack.from_nbt(entry)
+                stack = ItemStack.from_nbt(entry, problems)
                 if stack is not None:
                     slots[key] = stack
         for nbt_key, key in (("body_armor_item", "body"), ("SaddleItem", "saddle")):
-            stack = ItemStack.from_nbt(data.get(nbt_key))
+            stack = ItemStack.from_nbt(data.get(nbt_key), problems)
             if stack is not None:
                 slots[key] = stack
         equipment = data.get("equipment")
         if isinstance(equipment, dict):
             for key, entry in equipment.items():
-                stack = ItemStack.from_nbt(entry)
+                stack = ItemStack.from_nbt(entry, problems)
                 if stack is not None and key in MOB_SLOTS:
                     slots[key] = stack
         selected = data.get("SelectedItemSlot")
         if isinstance(selected, int) and 0 <= selected < HOTBAR:
             self.selected = selected
         self.slots = slots
+
+
+#: entity NBT keys holding a single item stack outside the inventory: item
+#: entities and frames (``Item``), displays, item spawners and arrows (``item``),
+#: firework rockets (``FireworksItem``)
+ENTITY_ITEM_KEYS = ("Item", "item", "FireworksItem")
+
+
+def load_entity_items(data: dict[str, Any], problems: list[str] | None = None) -> dict[str, Any]:
+    """``data`` without the single-item stacks the codec refuses (an entity
+    loads those as empty, and an empty stack is not saved)."""
+    refused = [
+        key
+        for key in ENTITY_ITEM_KEYS
+        if isinstance(data.get(key), dict)
+        and data[key]
+        and ItemStack.from_nbt(data[key], problems) is None
+    ]
+    return {key: value for key, value in data.items() if key not in refused}
+
+
+def save_entity_items(data: dict[str, Any], version: Version | None) -> None:
+    """Write the single-item stacks of entity NBT the way the codec does."""
+    for key in ENTITY_ITEM_KEYS:
+        raw = data.get(key)
+        if isinstance(raw, dict) and raw:
+            stack = ItemStack.from_nbt(raw)
+            if stack is None:
+                del data[key]
+            else:
+                data[key] = stack.to_nbt(version)
 
 
 #: entity NBT keys that belong to the inventory

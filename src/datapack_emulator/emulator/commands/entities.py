@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from datapack_emulator.emulator.commands.helpers import require_id, require_targets
+from datapack_emulator.emulator.commands.helpers import (
+    note_refused_items,
+    require_id,
+    require_targets,
+)
 from datapack_emulator.emulator.commands.items import drop_inventory_on_death
 from datapack_emulator.emulator.commands.parser import Command, resolve_position
 from datapack_emulator.emulator.commands.result import CommandResult
@@ -83,7 +87,9 @@ def build_entity(context: ExecutionContext, entity_type: str, data: dict) -> Ent
         nbt = dict(nbt)
         nbt.setdefault("Pos", position)
         riders = nbt.pop("Passengers", None)
-        entity.apply_data(nbt)
+        problems: list[str] = []
+        entity.apply_data(nbt, problems)
+        note_refused_items(context, problems)
         created.append(entity)
         for rider in riders if isinstance(riders, list) else []:
             if not isinstance(rider, dict) or not isinstance(rider.get("id"), str):

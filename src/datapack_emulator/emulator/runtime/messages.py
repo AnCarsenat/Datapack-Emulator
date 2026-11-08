@@ -134,6 +134,7 @@ VANILLA: dict[str, str] = {
     "commands.enchant.failed.itemless": "%s is not holding any item",
     "commands.enchant.failed.incompatible": "%s cannot support that enchantment",
     "arguments.item.overstacked": "%s can only stack up to %s",
+    "arguments.item.component.malformed": "Malformed '%s' component: '%s'",
     "argument.integer.big": "Integer must not be more than %s, found %s",
     "commands.drop.success.single": "Dropped %s %s",
     "commands.drop.success.multiple": "Dropped %s items",

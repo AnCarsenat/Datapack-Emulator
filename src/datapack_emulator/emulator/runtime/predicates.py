@@ -25,6 +25,7 @@ from datapack_emulator.emulator.common import (
     normalise_tagged_id,
     parse_snbt,
 )
+from datapack_emulator.emulator.runtime.components import namespace_ids, same_value
 from datapack_emulator.emulator.runtime.inventory import ItemStack
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -660,9 +661,13 @@ def item_matches(predicate: Any, stack: ItemStack, context: Context) -> bool:
         return False
     components = predicate.get("components")
     if isinstance(components, dict):
+        # exact matches against the effective components (the item's defaults + patch)
+        actual = stack.effective_components(context.version)
         for key, value in components.items():
             qualified = key if ":" in key else f"minecraft:{key}"
-            if stack.components.get(qualified) != value:
+            if qualified not in actual or not same_value(
+                actual[qualified], namespace_ids(qualified, value)
+            ):
                 return False
     if "nbt" in predicate and not _nbt_matches(predicate["nbt"], stack.tag):
         return False
