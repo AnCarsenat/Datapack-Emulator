@@ -43,9 +43,9 @@ from datapack_emulator.emulator.common import (
     load_text_component,
     normalise_id,
     normalise_tagged_id,
-    parse_snbt,
 )
 from datapack_emulator.emulator.runtime.library import FunctionLibrary, line_problems
+from datapack_emulator.emulator.snbt import is_valid_snbt
 from datapack_emulator.emulator.versions import Version
 
 SEVERITIES = ("fatal", "error", "warning", "info")
@@ -337,28 +337,85 @@ def _function_lines(scan: _Scan) -> Iterator[Problem]:
             where = (function_id, function.path, command.line)
             if command.is_macro:
                 continue  # the command is parsed when the function is called
-            yield from _payloads(command, where)
+            yield from _payloads(command, where, scan.version)
             yield from _references(command, scan, where)
             if scan.vanilla is not None:
                 yield from _ids(command, scan.vanilla, where)
 
 
-def _snbt_problem(text: str) -> bool:
-    body = text.strip()
-    return body.replace(" ", "") != "{}" and not parse_snbt(body)
+def _snbt_problem(text: str, version: Version) -> bool:
+    return not is_valid_snbt(text.strip(), versions.uses_modern_snbt(version))
 
 
-def _payloads(command: Command, where: tuple) -> Iterator[Problem]:
+def _top_level(text: str, separators: str) -> list[tuple[int, int]]:
+    """``(start, end)`` of the parts of ``text`` between ``separators`` outside
+    brackets and quoted strings (with their escapes)."""
+    parts: list[tuple[int, int]] = []
+    depth = 0
+    quote = ""
+    start = index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                index += 1
+            elif char == quote:
+                quote = ""
+        elif char in "\"'":
+            quote = char
+        elif char in "[{(":
+            depth += 1
+        elif char in "]})":
+            depth -= 1
+            if depth < 0:
+                break
+        elif char in separators and depth == 0:
+            parts.append((start, index))
+            start = index + 1
+        index += 1
+    parts.append((start, index))
+    return parts
+
+
+def _item_payloads(text: str, predicate: bool, components: bool = True) -> list[str]:
+    """The SNBT values in an item argument: each component value of
+    ``id[a=…,b=…]`` (for a predicate, also ``a~…`` and ``a=…|b=…``), then the
+    old ``{…}`` tag (``id{…}``, before 1.20.5); for a block (not
+    ``components``) its ``{…}`` after the ``[…]`` states."""
+    cut = min((text.index(mark) for mark in "[{" if mark in text), default=len(text))
+    rest = text[cut:]
+    found: list[str] = []
+    if rest.startswith("["):
+        (_, end), *_ = _top_level(rest[1:], "")
+        for start, stop in _top_level(rest[1 : end + 1], ",|" if predicate else ","):
+            entry = rest[1 + start : 1 + stop].strip()
+            name_end = min(
+                (entry.index(mark) for mark in "=~" if mark in entry), default=len(entry)
+            )
+            name = entry[:name_end].strip().lstrip("!").strip()
+            if components and name_end < len(entry) and name.removeprefix("minecraft:") != "count":
+                found.append(entry[name_end + 1 :])
+        rest = rest[end + 2 :]
+    if rest.startswith("{"):
+        found.append(rest)
+    return found
+
+
+def _payloads(command: Command, where: tuple, version: Version) -> Iterator[Problem]:
     for part in command.walk():
         arguments = part.arguments
         candidates: list[str] = []
         if part.name in ("summon", "data"):
-            candidates = [argument for argument in arguments if argument.startswith("{")]
+            candidates = [argument for argument in arguments if argument.startswith("{")][:1]
         for index in NBT_ARGUMENTS.get(part.name, ()):
-            if len(arguments) > index and "{" in arguments[index]:
-                candidates.append(arguments[index][arguments[index].index("{") :])
-        for text in candidates[:1]:
-            if _snbt_problem(text):
+            if len(arguments) > index:
+                candidates += _item_payloads(
+                    arguments[index],
+                    predicate=part.name == "clear",
+                    components=part.name in ("give", "clear"),
+                )
+        for text in candidates:
+            if _snbt_problem(text, version):
                 yield Problem(
                     "warning",
                     "snbt",
@@ -366,6 +423,7 @@ def _payloads(command: Command, where: tuple) -> Iterator[Problem]:
                     "either, the function does not load",
                     *where,
                 )
+                break
         if part.name in ("tellraw", "title") and len(arguments) > 1:
             if part.name == "title" and arguments[1] in ("clear", "reset", "times"):
                 continue
