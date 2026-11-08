@@ -298,26 +298,9 @@ def _inputs(provider: dict[str, Any], context: NumberContext) -> list[Any]:
 
 
 def _condition(condition: Any, context: NumberContext) -> bool:
-    """A predicate: an id (from the pack), or inline (26.3 ``type`` or older
-    ``condition`` key)."""
-    loot = context.loot
-    if isinstance(condition, str):
-        found = loot.lookup(condition) if loot.lookup is not None else None
-        if found is None:
-            loot.unchecked.add(f"predicate {condition}")
-            return False
-        condition = found
-    return predicates.check(_legacy_condition(condition), loot)
-
-
-def _legacy_condition(condition: Any) -> Any:
-    """26.3 names a condition's type ``type``; the shared evaluator reads
-    ``condition``. Only the top level is translated."""
-    if isinstance(condition, list):
-        return [_legacy_condition(entry) for entry in condition]
-    if isinstance(condition, dict) and "condition" not in condition and "type" in condition:
-        return {**condition, "condition": condition["type"]}
-    return condition
+    """A predicate: an id or inline. The shared evaluator reads it in the
+    format of the context's version (26.3: ``type`` keys at every level)."""
+    return predicates.check(condition, context.loot)
 
 
 def _dispatch(provider: dict[str, Any], context: NumberContext) -> Any:

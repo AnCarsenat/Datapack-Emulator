@@ -469,6 +469,30 @@ def test_conditional_with_a_pack_predicate(world):
     assert value(emulator, f"compute default integer {provider}") == 5
 
 
+def test_nested_26_3_conditions(world):
+    """26.3 spells every condition's type ``type``, nested ones too: an
+    ``all_of`` inside ``conditional`` and ``number_dispatcher`` is read with
+    the version-aware predicate code, not just its top level."""
+    emulator = world()
+    emulator.typed("scoreboard players set @p t 3")
+    nested = (
+        "{type:all_of,terms:[{type:random_chance,chance:1.0},"
+        "{type:inverted,term:{type:random_chance,chance:0.0}},"
+        "{type:entity_scores,entity:this,scores:{t:{min:2}}}]}"
+    )
+    provider = f"{{type:conditional,condition:{nested},on_true:5,on_false:6}}"
+    assert value(emulator, f"execute as @p run compute default integer {provider}") == 5
+    emulator.typed("scoreboard players set @p t 1")
+    assert value(emulator, f"execute as @p run compute default integer {provider}") == 6
+    dispatcher = f"{{type:number_dispatcher,cases:[{{condition:{nested},value:1.5}}],default:2}}"
+    assert value(emulator, f"execute as @p run compute default float {dispatcher} 2") == 4
+    emulator.typed("scoreboard players set @p t 2")
+    assert value(emulator, f"execute as @p run compute default float {dispatcher} 2") == 3
+    # the pre-26.3 key is not read in 26.3
+    old = "{type:conditional,condition:{condition:random_chance,chance:1.0},on_true:5,on_false:6}"
+    assert value(emulator, f"compute default integer {old}") == 6
+
+
 def test_safe_getters_return_zero():
     context = _context()
     assert get_int({"type": "div", "left": 1, "right": 0}, context) == 0
