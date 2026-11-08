@@ -316,6 +316,29 @@ def nbt_type(value: Any) -> str | None:
     return _SUFFIXES.get(type(value))
 
 
+def untyped(value: Any) -> Any:
+    """``value`` with every typed number made plain again, recursively.
+
+    Entity and block-entity data goes through this when it is written: the
+    game decodes it with codecs that give each field its own type (``Health``
+    is a float whatever the SNBT said), and the emulator does not know those
+    types, so it compares those numbers by value. Command storage keeps the
+    exact SNBT types. Arrays keep their kind (``[I;…]``)."""
+    if isinstance(value, dict):
+        return {key: untyped(item) for key, item in value.items()}
+    if isinstance(value, NbtArray):
+        return NbtArray((untyped(item) for item in value), value.kind)
+    if isinstance(value, list):
+        return [untyped(item) for item in value]
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and type(value) is not int:
+        return int(value)
+    if isinstance(value, float) and type(value) is not float:
+        return float(value)
+    return value
+
+
 def _typed_hook(obj: dict[str, Any]) -> Any:
     if len(obj) == 2 and _TYPED_KEY in obj and "v" in obj:
         kind, value = obj[_TYPED_KEY], obj["v"]

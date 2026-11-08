@@ -199,3 +199,58 @@ def test_execute_store_keeps_the_type(emulator):
         "execute store result storage test:s w int 1 run scoreboard players get #a n"
     )
     assert passes(emulator, "execute if data storage test:s {w:3}")
+
+
+# --- typed numbers: exact in storage, by value in entity and block data -------
+
+
+def test_entity_data_numbers_match_by_value(emulator):
+    emulator.run_typed("summon minecraft:pig 0 64 0 {Health:5, Tags:[t]}")
+    assert passes(emulator, "execute if entity @e[tag=t,nbt={Health:5.0f}]")
+    assert passes(emulator, "execute if entity @e[tag=t,nbt={Health:5}]")
+    assert passes(emulator, "execute if data entity @e[tag=t,limit=1] {Health:5.0f}")
+    assert not passes(emulator, "execute if entity @e[tag=t,nbt={Health:6.0f}]")
+    # data merge / modify entity, and a typed value copied from storage
+    emulator.run_typed("data merge entity @e[tag=t,limit=1] {Air:7}")
+    assert passes(emulator, "execute if entity @e[tag=t,nbt={Air:7s}]")
+    emulator.run_typed("data modify storage test:s v set value 3b")
+    emulator.run_typed("data modify entity @e[tag=t,limit=1] Fire set from storage test:s v")
+    assert passes(emulator, "execute if entity @e[tag=t,nbt={Fire:3s}]")
+    # the storage itself keeps the byte
+    assert not passes(emulator, "execute if data storage test:s {v:3s}")
+
+
+def test_execute_store_into_entity_health_round_trips(emulator):
+    emulator.run_typed("summon minecraft:pig 0 64 0 {Tags:[t]}")
+    emulator.run_typed("scoreboard objectives add o dummy")
+    emulator.run_typed("scoreboard players set #x o 7")
+    emulator.run_typed(
+        "execute store result entity @e[tag=t,limit=1] Health float 1 run "
+        "scoreboard players get #x o"
+    )
+    assert passes(emulator, "execute if entity @e[tag=t,nbt={Health:7.0f}]")
+    assert passes(emulator, "execute if data entity @e[tag=t,limit=1] {Health:7.0f}")
+    emulator.run_typed(
+        "execute store result score #y o run data get entity @e[tag=t,limit=1] Health"
+    )
+    assert emulator.world.scoreboard.get("#y", "o") == 7
+
+
+def test_storage_keeps_exact_number_types(emulator):
+    emulator.run_typed("data modify storage test:s n set value 5")
+    assert passes(emulator, "execute if data storage test:s {n:5}")
+    assert not passes(emulator, "execute if data storage test:s {n:5b}")
+    emulator.run_typed("data modify storage test:s n set value 5b")
+    assert passes(emulator, "execute if data storage test:s {n:5b}")
+    assert not passes(emulator, "execute if data storage test:s {n:5}")
+
+
+def test_block_data_numbers_match_by_value(emulator):
+    emulator.run_typed("setblock 0 64 0 minecraft:furnace{BurnTime:5}")
+    assert passes(emulator, "execute if data block 0 64 0 {BurnTime:5s}")
+    assert passes(emulator, "execute if data block 0 64 0 {BurnTime:5}")
+    assert passes(emulator, "execute if block 0 64 0 minecraft:furnace{BurnTime:5s}")
+    emulator.run_typed("data merge block 0 64 0 {CookTime:2b}")
+    assert passes(emulator, "execute if data block 0 64 0 {CookTime:2s}")
+    emulator.run_typed("execute store result block 0 64 0 CookTimeTotal short 1 run say x")
+    assert passes(emulator, "execute if data block 0 64 0 {CookTimeTotal:1}")

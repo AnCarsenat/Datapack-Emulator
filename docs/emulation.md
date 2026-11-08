@@ -150,9 +150,14 @@ counts only tags that changed.
 Filters match partially, like the game: extra keys in the target are fine,
 nested compounds match partially, each element of a filter list must match some
 element of the target list (in any order) and an empty filter list matches only
-an empty list; arrays (`[I;…]`) must be equal. Numbers read from SNBT keep their
-type, so `{n:5}` does not match `5b`; numbers the emulator computes itself
-(entity fields it models, for instance) have no type and match by value.
+an empty list; arrays (`[I;…]`) must be equal. In command storage, numbers keep
+the SNBT type they were written with, so `{n:5}` does not match `5b`. Entity
+and block-entity data drops those types when it is written (`summon`,
+`setblock`, `data merge|modify`, `execute store`): the game gives each field
+its own type through the entity's codec, which the emulator does not model, so
+those numbers match by value (`summon … {Health:5}` matches `{Health:5.0f}`).
+Items keep their types. Numbers the emulator computes itself have no type and
+also match by value.
 
 ## Commands
 
