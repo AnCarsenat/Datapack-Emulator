@@ -25,10 +25,12 @@ from datapack_emulator.emulator.common import (
     normalise_id,
     parse_snbt,
     split_arguments,
+    untyped,
 )
 from datapack_emulator.emulator.runtime.advancements import Progress
 from datapack_emulator.emulator.runtime.blocks import Blocks
 from datapack_emulator.emulator.runtime.inventory import (
+    ENTITY_ITEM_KEYS,
     INVENTORY_KEYS,
     Inventory,
     has_equipment,
@@ -236,8 +238,15 @@ class Entity:
     def apply_data(self, data: dict[str, Any], problems: list[str] | None = None) -> None:
         """Load NBT back onto the entity, like ``Entity.load``: position,
         rotation and tags follow; the UUID never changes. Item stacks the item
-        codec refuses are left out, with the reason added to ``problems``."""
+        codec refuses are left out, with the reason added to ``problems``.
+
+        Items keep their exact SNBT types (custom data does in the game too);
+        the other numbers become plain and match by value (see :func:`untyped`).
+        """
         data = load_entity_items(data, problems)
+        self.inventory.load_nbt(data, problems)
+        stacks = {key: data[key] for key in ENTITY_ITEM_KEYS if key in data}
+        data = {**untyped(data), **stacks}
         position = data.get("Pos")
         if isinstance(position, list) and _numbers(position, 3):
             self.position = [float(value) for value in position]
@@ -247,7 +256,6 @@ class Entity:
         tags = data.get("Tags")
         if isinstance(tags, list):  # without the key, Entity.load keeps the tags
             self.tags = {str(tag) for tag in tags}
-        self.inventory.load_nbt(data, problems)
         if self.living is not None:
             self.living.load_nbt(data)
         defaults = self.defaults()

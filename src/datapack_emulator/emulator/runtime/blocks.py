@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from datapack_emulator.emulator import versions
-from datapack_emulator.emulator.common import nbt_matches, normalise_id, parse_snbt
+from datapack_emulator.emulator.common import nbt_matches, normalise_id, parse_snbt, untyped
 from datapack_emulator.emulator.runtime.inventory import ItemStack
 from datapack_emulator.emulator.versions import Version
 
@@ -244,7 +244,7 @@ class Block:
             if single is not None:
                 stack = ItemStack.from_nbt(rest.pop(single, None), problems)
                 self.items = {0: stack} if stack is not None else {}
-                self.nbt = copy.deepcopy(rest)
+                self.nbt = untyped(rest)
                 return
             for entry in rest.pop("Items", None) or []:
                 stack = ItemStack.from_nbt(entry, problems)
@@ -253,7 +253,8 @@ class Block:
                 if stack is not None and isinstance(slot, int) and 0 <= slot < size:
                     items[slot] = stack
             self.items = items
-        self.nbt = copy.deepcopy(rest)
+        # items keep their SNBT types; other numbers match by value (see untyped)
+        self.nbt = untyped(rest)
 
     # -- container slots --------------------------------------------------
 

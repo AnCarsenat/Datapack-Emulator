@@ -663,7 +663,9 @@ def test_data_modify_reaches_into_lists(make_pack):
     assert marker.position == [5.0, 9.0, 3.0]
     assert emulator.world.storage["t:m"]["list"] == [2, 9]
     errors = [r.message for r in emulator.output.records if r.failure]
-    assert "Found no elements matching list[7]" in errors
+    # IndexedElementNode.setTag sets nothing past the end, so DataCommands
+    # reports ERROR_MERGE_UNCHANGED rather than a missing path
+    assert "Nothing changed. The specified properties already have these values" in errors
 
 
 def test_tags_survive_removing_the_tags_key_and_rotation_is_normalised(make_pack):

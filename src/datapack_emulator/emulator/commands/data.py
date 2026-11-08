@@ -16,6 +16,7 @@ from datapack_emulator.emulator.common import (
     nbt_get,
     nbt_remove,
     nbt_set,
+    nbt_set_count,
     normalise_id,
     parse_snbt,
     parse_value,
@@ -201,12 +202,12 @@ def _data_modify(
     for store in stores:
         current = nbt_get(store, path)
         if operation == "set":
-            if current == value:
-                continue  # vanilla counts only elements that actually change
-            if not nbt_set(store, path, copy.deepcopy(value)):
+            # vanilla counts only elements that actually change
+            count = nbt_set_count(store, path, copy.deepcopy(value))
+            if count is None:
                 context.game_error("arguments.nbtpath.nothing_found", path)
                 return None
-            changed += 1
+            changed += count
         elif operation == "merge":
             if not isinstance(value, dict):
                 context.game_error("commands.data.modify.expected_object", value)

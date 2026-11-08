@@ -22,7 +22,13 @@ from datapack_emulator.emulator.commands.parser import (
     resolve_position,
 )
 from datapack_emulator.emulator.commands.result import CommandResult
-from datapack_emulator.emulator.common import nbt_get, nbt_set, normalise_id, normalise_tagged_id
+from datapack_emulator.emulator.common import (
+    nbt_get_all,
+    nbt_set,
+    normalise_id,
+    normalise_tagged_id,
+    typed_number,
+)
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.world import Entity, ints_to_uuid
 
@@ -279,9 +285,10 @@ def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
     except ValueError:
         scale = 1.0
     scaled = value * scale
-    if numeric_type in ("float", "double"):
-        return scaled
-    return int(scaled)  # byte, short, int, long
+    if numeric_type not in ("byte", "short", "int", "long", "float", "double"):
+        numeric_type = "int"
+    # integer types truncate; the number keeps its NBT type for later matches
+    return typed_number(scaled, numeric_type)
 
 
 def condition_count(arguments: list[str], context: ExecutionContext) -> int:
@@ -293,7 +300,32 @@ def condition_count(arguments: list[str], context: ExecutionContext) -> int:
         return items_condition_count(arguments, context) or 0
     if arguments and arguments[0] == "blocks":
         return blocks_condition_count(arguments, context) or 0
+    if arguments and arguments[0] == "data" and len(arguments) >= 4:
+        return data_condition_count(arguments, context)
     return int(evaluate_condition(arguments, context))
+
+
+def data_condition_count(arguments: list[str], context: ExecutionContext) -> int:
+    """``if data …``: how many tags the path selects (``NbtPath.countMatching``)
+    in the block, the storage or the first entity it matches in."""
+    if arguments[1] == "block" and len(arguments) >= 6:
+        position = position_at(context, arguments[2:5])
+        if position is None:
+            return 0
+        block = context.world.blocks.stored(context.dimension, position)
+        if block is None or not block.has_entity:
+            context.game_error("commands.data.block.invalid")
+            return 0
+        return len(nbt_get_all(block.data(context.emulator.version, position), arguments[5]))
+    if arguments[1] == "storage":
+        store = context.world.storage.get(normalise_id(arguments[2]), {})
+        return len(nbt_get_all(store, arguments[3]))
+    if arguments[1] == "entity":
+        for entity in find_targets(context, arguments[2]):
+            found = len(nbt_get_all(entity.data(context.emulator.version), arguments[3]))
+            if found:
+                return found
+    return 0
 
 
 def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
@@ -344,25 +376,7 @@ def evaluate_condition(arguments: list[str], context: ExecutionContext) -> bool:
         return bool(blocks_condition_count(arguments, context))
 
     if kind == "data" and len(arguments) >= 4:
-        if arguments[1] == "block" and len(arguments) >= 6:
-            position = position_at(context, arguments[2:5])
-            if position is None:
-                return False
-            block = context.world.blocks.stored(context.dimension, position)
-            if block is None or not block.has_entity:
-                context.game_error("commands.data.block.invalid")
-                return False
-            data = block.data(context.emulator.version, position)
-            return nbt_get(data, arguments[5]) is not None
-        if arguments[1] == "storage":
-            store = context.world.storage.get(normalise_id(arguments[2]), {})
-            return nbt_get(store, arguments[3]) is not None
-        if arguments[1] == "entity":
-            return any(
-                nbt_get(entity.data(context.emulator.version), arguments[3]) is not None
-                for entity in find_targets(context, arguments[2])
-            )
-        return False
+        return data_condition_count(arguments, context) > 0
 
     if kind == "items":
         return bool(items_condition_count(arguments, context))
