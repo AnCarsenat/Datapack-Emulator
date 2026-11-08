@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any
 
@@ -36,7 +36,7 @@ from datapack_emulator.emulator.runtime.library import FunctionLibrary
 from datapack_emulator.emulator.runtime.living import tick_entities
 from datapack_emulator.emulator.runtime.messages import MessageCatalogue, unknown_command
 from datapack_emulator.emulator.runtime.output import LogLevel, LogSource, OutputBus
-from datapack_emulator.emulator.runtime.world import World
+from datapack_emulator.emulator.runtime.world import World, parse_chunks
 from datapack_emulator.emulator.vanilla import VanillaAssets
 from datapack_emulator.emulator.versions import Version
 
@@ -70,6 +70,7 @@ class Emulator:
         output: OutputBus | None = None,
         seed: int = 0,
         vanilla: VanillaAssets | None = None,
+        unloaded_chunks: Iterable[Sequence[Any] | str] = (),
     ):
         self.datapack = datapack
         self.version: Version = versions.parse(version)
@@ -86,7 +87,9 @@ class Emulator:
         self.output = output or OutputBus()
         self.players = players
         self.seed = seed
-        self.world = World(players=players, seed=seed)
+        #: chunks that count as unloaded in every world of this emulator
+        self.unloaded_chunks = parse_chunks(unloaded_chunks)
+        self.world = World(players=players, seed=seed, unloaded_chunks=self.unloaded_chunks)
         self._advancement_tree = self._build_advancements()
         self._attach(self.world)
         self.profiler = Profiler()
@@ -203,7 +206,9 @@ class Emulator:
 
     def reset(self, players: int | None = None) -> None:
         self.players = players if players is not None else self.players
-        self.world = World(players=self.players, seed=self.seed)
+        self.world = World(
+            players=self.players, seed=self.seed, unloaded_chunks=self.unloaded_chunks
+        )
         self._attach(self.world)
         self.profiler.reset()
         self.commands_run = 0

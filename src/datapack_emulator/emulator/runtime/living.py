@@ -606,8 +606,8 @@ def tick_entities(
     """Effects count down (instant ones take effect through ``on_instant``);
     hurt timers run down; items age, merge, despawn and get picked up."""
     for entity in list(world.entities):
-        if entity not in world.entities:
-            continue
+        if entity not in world.entities or not world.entity_loaded(entity):
+            continue  # removed meanwhile, or in an unloaded chunk (it does not tick)
         living = entity.living
         if living is not None:
             if living.invulnerable_time > 0:

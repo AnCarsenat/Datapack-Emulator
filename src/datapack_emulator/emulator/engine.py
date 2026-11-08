@@ -16,7 +16,7 @@ Two kinds of finding come out of a run:
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
@@ -156,8 +156,11 @@ class TestEngine:
         allow_download: bool = False,
         tests: list[CommandTest] | None = None,
         vanilla: VanillaAssets | None = None,
+        unloaded_chunks: Iterable[Sequence[Any] | str] = (),
     ):
         self.datapack = datapack
+        #: chunks that count as unloaded in every run (``[cx, cz(, dimension)]``)
+        self.unloaded_chunks = list(unloaded_chunks)
         #: one client jar for every version (the window's loaded jar); wins over ``library``
         self.vanilla = vanilla
         #: command tests to run in every version, each in its tick
@@ -238,6 +241,7 @@ class TestEngine:
             output=bus,
             seed=self.seed,
             vanilla=assets,
+            unloaded_chunks=self.unloaded_chunks,
         )
         schedule = TestSchedule(self.tests) if self.tests else None
         emulator.start()

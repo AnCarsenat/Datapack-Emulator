@@ -95,6 +95,8 @@ class Session:
         self.players: int = inputs.setting(arguments, "players", EMULATION.DEFAULT_PLAYERS)
         self.seed: int = inputs.setting(arguments, "seed", EMULATION.DEFAULT_SEED)
         self.ticks: int = ticks_setting(arguments, inputs)
+        #: --unloaded-chunk: chunks every world of this session holds unloaded
+        self.unloaded_chunks: list[str] = list(getattr(arguments, "unloaded_chunks", None) or [])
         self.tests: list[CommandTest] = list(inputs.tests)
         self.tests_during_runs = bool(project and project.tests_during_runs)
         self.step_on_command = bool(
@@ -144,6 +146,7 @@ class Session:
             output=self.bus,
             seed=self.seed,
             vanilla=self.vanilla,
+            unloaded_chunks=self.unloaded_chunks,
         )
         self.debugger.reset()
         self.emulator.debugger = self.debugger

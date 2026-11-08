@@ -8,10 +8,11 @@ and blocks behave, which is what datapack logic is built out of.
 from __future__ import annotations
 
 import copy
+import math
 import random
 import uuid as _uuid
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -342,11 +343,43 @@ class Scoreboard:
         changes.append((self._clock(), value))
 
 
+def parse_chunks(chunks: Iterable[Sequence[Any] | str]) -> dict[str, set[tuple[int, int]]]:
+    """Chunks given as ``[cx, cz]``, ``[cx, cz, dimension]`` or ``"cx,cz[,dimension]"``
+    (chunk coordinates: block coordinate // 16; overworld by default) ->
+    dimension -> chunk positions. Raises ValueError on anything else."""
+    parsed: dict[str, set[tuple[int, int]]] = {}
+    for item in chunks:
+        parts: Sequence[Any] = item.split(",") if isinstance(item, str) else item
+        if isinstance(parts, (str, bytes)) or len(parts) not in (2, 3):
+            raise ValueError(f"a chunk is [x, z] or [x, z, dimension], not {item!r}")
+        try:
+            if any(isinstance(part, (bool, float)) for part in parts[:2]):
+                raise ValueError
+            chunk = (int(str(parts[0]).strip()), int(str(parts[1]).strip()))
+        except ValueError:
+            raise ValueError(f"chunk coordinates are whole numbers, not {item!r}") from None
+        dimension = (
+            normalise_id(str(parts[2]).strip()) if len(parts) == 3 else "minecraft:overworld"
+        )
+        parsed.setdefault(dimension, set()).add(chunk)
+    return parsed
+
+
 class World:
     """Entities, blocks, scoreboard, command storage and gamerules."""
 
-    def __init__(self, players: int = 1, seed: int = 0) -> None:
+    def __init__(
+        self,
+        players: int = 1,
+        seed: int = 0,
+        unloaded_chunks: dict[str, set[tuple[int, int]]] | None = None,
+    ) -> None:
         self.entities: list[Entity] = []
+        #: dimension -> chunks declared unloaded for this run (every other
+        #: chunk counts as loaded; a force-loaded chunk is loaded)
+        self.unloaded_chunks: dict[str, set[tuple[int, int]]] = {
+            dimension: set(chunks) for dimension, chunks in (unloaded_chunks or {}).items()
+        }
         self.blocks = Blocks()
         self.scoreboard = Scoreboard(clock=lambda: self.tick)
         self.storage: dict[str, dict[str, Any]] = {}
@@ -380,6 +413,39 @@ class World:
             if name in self.gamerules:
                 return str(self.gamerules[name]).lower() == "true"
         return default
+
+    # -- chunks -----------------------------------------------------------
+
+    def chunk_loaded(self, dimension: str, chunk_x: int, chunk_z: int) -> bool:
+        """Every chunk is loaded except those declared unloaded for the run;
+        ``forceload add`` loads one of those again."""
+        unloaded = self.unloaded_chunks.get(dimension)
+        if not unloaded or (chunk_x, chunk_z) not in unloaded:
+            return True
+        return (chunk_x, chunk_z) in self.state.forced_chunks.get(dimension, ())
+
+    def is_loaded(self, dimension: str, x: float, z: float) -> bool:
+        """Whether the chunk holding block column ``x``/``z`` is loaded."""
+        return self.chunk_loaded(dimension, math.floor(x) >> 4, math.floor(z) >> 4)
+
+    def region_loaded(
+        self, dimension: str, low: tuple[int, int, int], high: tuple[int, int, int]
+    ) -> bool:
+        """Whether every chunk a box touches is loaded."""
+        if not self.unloaded_chunks.get(dimension):
+            return True
+        return all(
+            self.chunk_loaded(dimension, chunk_x, chunk_z)
+            for chunk_x in range(low[0] >> 4, (high[0] >> 4) + 1)
+            for chunk_z in range(low[2] >> 4, (high[2] >> 4) + 1)
+        )
+
+    def entity_loaded(self, entity: Entity) -> bool:
+        """Entities in an unloaded chunk are out of reach of selectors; a player
+        is never in one (a player keeps the chunks around it loaded)."""
+        if entity.is_player or not self.unloaded_chunks:
+            return True
+        return self.is_loaded(entity.dimension, entity.position[0], entity.position[2])
 
     # -- entities ---------------------------------------------------------
 
@@ -431,7 +497,9 @@ class World:
         if selector.kind == "literal":
             name = selector.raw
             return [
-                entity for entity in self.entities if entity.name == name or entity.uuid == name
+                entity
+                for entity in self.entities
+                if (entity.name == name or entity.uuid == name) and self.entity_loaded(entity)
             ]
         if selector.kind == "@s":
             executor = context.executor
@@ -440,7 +508,11 @@ class World:
             return [executor]
 
         pool = self.players if selector.is_player_only else list(self.entities)
-        pool = [entity for entity in pool if self._matches(entity, selector, context)]
+        pool = [
+            entity
+            for entity in pool
+            if self.entity_loaded(entity) and self._matches(entity, selector, context)
+        ]
 
         origin = _selector_origin(selector, context)
         sort = selector.first("sort") or {
