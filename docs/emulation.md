@@ -94,9 +94,10 @@ Deliberately small: no chunks, physics or block updates.
   Values compare as decoded components (floats at float precision, ids
   namespaced, numbers by value whatever their SNBT type, except in raw NBT:
   `custom_data`, `entity_data`, `block_entity_data` and `bucket_entity_data`
-  keep their types, so `{a:1b}` is not `{a:1}`). Written back, the other
-  components drop their SNBT number types (`max_stack_size=16b` is stored as
-  `16`), like the entity data below. Stacks are written back the way the item codec writes them
+  keep their types, so `{a:1b}` is not `{a:1}`). Written back, integers in
+  the other components become plain (`max_stack_size=16b` is stored as `16`
+  and matches `16` in NBT paths), except `0b`/`1b`, kept as booleans; floats
+  keep the type they were written with. Stacks are written back the way the item codec writes them
   (in containers, `Items`, mob and player slots, and the `Item`, `item` and
   `FireworksItem` of item entities, frames, displays and projectiles):
   identifiers namespaced (`item_model`, `tooltip_style`, sounds, variants,

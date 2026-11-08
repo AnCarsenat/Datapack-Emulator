@@ -35,10 +35,11 @@ from typing import Any
 
 from datapack_emulator.emulator import item_defaults, versions
 from datapack_emulator.emulator.common import (
+    NbtArray,
+    NbtByte,
     nbt_equal,
     normalise_id,
     normalise_tagged_id,
-    untyped,
 )
 from datapack_emulator.emulator.versions import Version
 
@@ -327,10 +328,34 @@ def same_patch(a: dict[str, Any], b: dict[str, Any]) -> bool:
     return a.keys() == b.keys() and all(same_value(a[key], b[key], key) for key in a)
 
 
-def _untyped_stack(stack: Any) -> Any:
+#: components whose value is an int (``max_stack_size=1b`` is stored as ``1``)
+_INT_VALUED = frozenset(
+    f"minecraft:{name}" for name in ("max_stack_size", "max_damage", "damage", "repair_cost")
+)
+
+
+def _codec_numbers(value: Any) -> Any:
+    """Integers made plain (an int field reads ``16b`` as 16 and writes ``16``),
+    except ``0b`` and ``1b``: codecs write booleans as bytes, and a byte 0 or 1
+    is most likely one (``italic:0b``). Floats keep their SNBT type: most
+    float fields are written with ``f`` and print the same as in the game."""
+    if isinstance(value, dict):
+        return {key: _codec_numbers(item) for key, item in value.items()}
+    if isinstance(value, list) and not isinstance(value, NbtArray):
+        return [_codec_numbers(item) for item in value]
+    if isinstance(value, NbtByte) and value in (0, 1):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return int(value)
+    return value
+
+
+def _codec_stack(stack: Any) -> Any:
     if not isinstance(stack, dict):
-        return untyped(stack)
-    return {key: item if key == "components" else untyped(item) for key, item in stack.items()}
+        return _codec_numbers(stack)
+    return {
+        key: item if key == "components" else _codec_numbers(item) for key, item in stack.items()
+    }
 
 
 def schema_typed(key: str, value: Any) -> Any:
@@ -338,21 +363,24 @@ def schema_typed(key: str, value: Any) -> Any:
     with dropped, as the component's codec does (``max_stack_size:16b`` is
     stored as an int); raw NBT keeps them, nested stacks keep their own
     components' (already normalised). The emulator does not know each field's
-    type, so the numbers become plain and compare by value."""
+    type, so integers become plain and compare by value (see
+    :func:`_codec_numbers`)."""
     if key in RAW_NBT:
         return value
+    if key in _INT_VALUED and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return int(value) if value == int(value) else value
     if key in _STACK_LISTS and isinstance(value, list):
-        return [_untyped_stack(item) for item in value]
+        return [_codec_stack(item) for item in value]
     if key == "minecraft:use_remainder":
-        return _untyped_stack(value)
+        return _codec_stack(value)
     if key == "minecraft:container" and isinstance(value, list):
         return [
-            {k: _untyped_stack(v) if k == "item" else untyped(v) for k, v in entry.items()}
+            {k: _codec_stack(v) if k == "item" else _codec_numbers(v) for k, v in entry.items()}
             if isinstance(entry, dict)
-            else untyped(entry)
+            else _codec_numbers(entry)
             for entry in value
         ]
-    return untyped(value)
+    return _codec_numbers(value)
 
 
 def normalise_stack_nbt(data: Any, version: Version | None) -> Any:
