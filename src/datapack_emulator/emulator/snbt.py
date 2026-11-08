@@ -235,6 +235,8 @@ class _Reader:
         if char in "+-.0123456789":
             return self.modern_number()
         name = self.unquoted()
+        if not name:
+            raise self.fail("expected a value")
         if self.peek() == "(":
             return self.operation(name, start)
         if name == "true":
