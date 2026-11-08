@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from itertools import pairwise
@@ -19,7 +20,41 @@ if TYPE_CHECKING:  # pragma: no cover
 class CallEdge:
     source: str
     target: str
-    kind: str = "call"  # call | schedule | tag | condition | macro
+    kind: str = "call"  # call | schedule | tag | condition | macro | dynamic
+
+
+_PLACEHOLDER = re.compile(r"\$\([A-Za-z0-9_]*\)")
+#: a quoted string that could be a function id (``"ns:path"``)
+_QUOTED_ID = re.compile(r"""["']([a-z0-9_.-]+:[a-z0-9_./-]+)["']""")
+
+
+def is_template(node_id: str) -> bool:
+    """A call target still holding macro placeholders (``ns:a/$(b)``): its id
+    is only known when the macro line runs, so it is never "missing"."""
+    return "$(" in node_id
+
+
+def template_pattern(node_id: str) -> re.Pattern[str]:
+    """The function ids a templated call target can become.
+
+    Each ``$(key)`` stands for any text (a value may hold ``/`` or even the
+    namespace).  A target written without a namespace (``$(f)``, normalised to
+    ``minecraft:$(f)``) may get its namespace from the value as well.
+    """
+
+    def regex(template: str) -> str:
+        return ".+".join(re.escape(part) for part in _PLACEHOLDER.split(template))
+
+    body = regex(node_id)
+    bare = node_id.removeprefix("minecraft:")
+    if bare != node_id and bare.startswith("$("):
+        body = f"(?:{body}|{regex(bare)})"
+    return re.compile(body)
+
+
+def fully_dynamic(node_id: str) -> bool:
+    """Every character of the id comes from the macro (``$(f)``)."""
+    return not _PLACEHOLDER.sub("", node_id.removeprefix("minecraft:"))
 
 
 class CallGraph:
@@ -66,13 +101,54 @@ class CallGraph:
         for function_id, function in functions.items():
             for target, kind in function.calls:
                 if target not in graph.nodes:
-                    graph.add_node(
-                        target,
-                        kind="tag" if target.startswith("#") else "function",
-                        missing=not target.startswith("#") and target not in functions,
-                    )
+                    if is_template(target):
+                        graph.add_node(target, kind="dynamic", missing=False, template=True)
+                    else:
+                        graph.add_node(
+                            target,
+                            kind="tag" if target.startswith("#") else "function",
+                            missing=not target.startswith("#") and target not in functions,
+                        )
                 graph.add_edge(function_id, target, kind)
+        graph._link_templates(functions)
         return graph
+
+    def _link_templates(self, functions: Mapping[str, Any]) -> None:
+        """Edges (kind ``dynamic``) from each templated call target to the
+        functions it may become: those whose id fits its pattern.  A target
+        that is nothing but a placeholder (``$function $(f)``) would fit every
+        function; it is linked only to the functions whose id the pack writes
+        as a quoted string in some function (``{f:"ns:x"}``), the values a
+        macro is usually given."""
+        templates = [node for node, data in self.nodes.items() if data.get("template")]
+        if not templates:
+            return
+        quoted: set[str] | None = None
+        # templates with the same pattern ($(f) and $(g), or ns:a/$(x) and
+        # ns:a/$(y)) can become the same functions: the first is linked to
+        # them and the others to it, so the edges grow with the number of
+        # templates plus functions, not their product
+        first: dict[str, str] = {}
+        for template in templates:
+            key = "" if fully_dynamic(template) else template_pattern(template).pattern
+            if key in first:
+                self.add_edge(template, first[key], "dynamic")
+                continue
+            first[key] = template
+            if not key:
+                if quoted is None:
+                    quoted = set()
+                    for function in functions.values():
+                        for line in getattr(function, "lines", ()):
+                            quoted.update(_QUOTED_ID.findall(line))
+                targets = [function_id for function_id in functions if function_id in quoted]
+            else:
+                pattern = template_pattern(template)
+                targets = [
+                    function_id for function_id in functions if pattern.fullmatch(function_id)
+                ]
+            for target in targets:
+                self.add_edge(template, target, "dynamic")
 
     @classmethod
     def from_datapack(cls, datapack: Datapack) -> CallGraph:
@@ -123,18 +199,24 @@ class CallGraph:
         ]
         return entries
 
-    def unreachable(self) -> list[str]:
-        """Functions no entry point can reach (dead code in the pack)."""
+    def reachable(self, *extra: str) -> set[str]:
+        """Every node ``#minecraft:load``/``tick`` (and ``extra``) can reach."""
         seen: set[str] = set()
         stack: list[str] = [
             node for node in ("#minecraft:load", "#minecraft:tick") if node in self.nodes
         ]
+        stack += extra
         while stack:
             node = stack.pop()
             if node in seen:
                 continue
             seen.add(node)
             stack.extend(self.successors(node))
+        return seen
+
+    def unreachable(self) -> list[str]:
+        """Functions no entry point can reach (dead code in the pack)."""
+        seen = self.reachable()
         return sorted(
             node
             for node, attributes in self.nodes.items()
@@ -143,6 +225,10 @@ class CallGraph:
 
     def missing(self) -> list[str]:
         return sorted(node for node, data in self.nodes.items() if data.get("missing"))
+
+    def dynamic(self) -> list[str]:
+        """Call targets built by macros (``ns:a/$(b)``), known only at run time."""
+        return sorted(node for node, data in self.nodes.items() if data.get("template"))
 
     def main_namespace(self) -> str | None:
         """The namespace at least half the pack's functions share, if any."""
@@ -159,8 +245,16 @@ class CallGraph:
         return namespace if 2 * count >= functions else None
 
     def cycles(self) -> list[list[str]]:
-        """Every back-edge cycle; a non-empty result means it is not a DAG."""
+        """Every back-edge cycle; a non-empty result means it is not a DAG.
+
+        The ``dynamic`` edges out of a macro call target (``ns:a/$(b)``) are
+        left out: they say what the call may become, not what it calls."""
         found: list[list[str]] = []
+        out = {
+            node: targets
+            for node, targets in self._out.items()
+            if not self.nodes.get(node, {}).get("template")
+        }
         state: dict[str, int] = {}  # 0 = visiting, 1 = done
         # iterative depth-first search: packs chain thousands of functions deep
         for root in self.nodes:
@@ -169,7 +263,7 @@ class CallGraph:
             path: list[str] = [root]
             on_path: dict[str, int] = {root: 0}
             state[root] = 0
-            stack = [iter(self._out.get(root, []))]
+            stack = [iter(out.get(root, []))]
             while stack:
                 successor = next(stack[-1], None)
                 if successor is None:
@@ -184,7 +278,7 @@ class CallGraph:
                     state[successor] = 0
                     on_path[successor] = len(path)
                     path.append(successor)
-                    stack.append(iter(self._out.get(successor, [])))
+                    stack.append(iter(out.get(successor, [])))
         return found
 
     @property
@@ -265,6 +359,7 @@ class CallGraph:
             "tag": ' [style=bold,color="#8e44ad"]',
             "condition": " [style=dotted]",
             "macro": ' [color="#e67e22"]',
+            "dynamic": ' [style=dotted,color="#e67e22"]',
         }
         lines = ["digraph functions {", "  rankdir=TB;", "  node [shape=box,fontname=monospace];"]
         for node, attributes in self.nodes.items():

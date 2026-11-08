@@ -253,6 +253,15 @@ STRICT_PLACEMENT_SINCE = "1.21.5"
 MODIFICATION_LIMIT_RULE_SINCE = "1.19.4"
 
 
+#: the SNBT grammar of net.minecraft.nbt.SnbtGrammar (25w02a): mixed lists, 0x/0b
+#: numbers, _ separators, signedness suffixes, string escapes, bool()/uuid()
+MODERN_SNBT_SINCE = "1.21.5"
+
+
+def uses_modern_snbt(version: Version) -> bool:
+    return version >= parse(MODERN_SNBT_SINCE)
+
+
 def supports_strict_placement(version: Version) -> bool:
     return version >= parse(STRICT_PLACEMENT_SINCE)
 

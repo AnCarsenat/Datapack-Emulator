@@ -552,6 +552,7 @@ def graph_summary(graph) -> dict[str, Any]:
     return {
         "functions": len(graph.nodes) if hasattr(graph, "nodes") else None,
         "missing_functions": list(graph.missing()),
+        "dynamic_calls": list(graph.dynamic()) if hasattr(graph, "dynamic") else [],
         "never_called": list(graph.unreachable()),
         "recursion": [list(cycle) for cycle in graph.cycles()],
     }

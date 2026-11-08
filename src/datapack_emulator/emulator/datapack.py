@@ -779,11 +779,13 @@ class Compatibility:
     * before 1.20.2 only ``pack_format`` is read and compared as one number
     * 1.20.2–1.21.8 also read ``supported_formats``; a range that does not
       contain ``pack_format`` is warned about and collapses to it
-    * 1.21.9+ require ``min_format``/``max_format``; when the minimum is a
-      pre-minor format (<= 81) ``pack_format`` and ``supported_formats`` must be
-      present and agree with them, and ``pack_format`` must be at least 15.
-      A violation makes the server log that it could not load the metadata and
-      treat compatibility as unknown.
+    * 1.21.9+ require ``min_format``/``max_format`` for a range past format 81;
+      when the minimum is a pre-minor format (<= 81) ``pack_format`` and
+      ``supported_formats`` must be present and agree with them; above it
+      ``supported_formats`` is refused and ``pack_format`` is optional (in the
+      range when given). See :func:`_modern_metadata_problems`. A violation
+      makes the server log that it could not load the metadata and treat
+      compatibility as unknown.
 
     In every case the pack is still loaded: incompatibility is a warning in the
     pack list, never a refusal.
@@ -845,9 +847,14 @@ class Compatibility:
                 ],
                 reason="its metadata does not validate, so compatibility is unknown",
             )
-        low = _as_format(pack.get("min_format"))
-        high = _as_format(pack.get("max_format"), upper=True)
-        return cls._compare(version, low, high, "min_format/max_format")
+        low, high = _modern_bounds(pack)
+        if "min_format" in pack:
+            source = "min_format/max_format"
+        elif "supported_formats" in pack:
+            source = "supported_formats"
+        else:
+            source = "pack_format"
+        return cls._compare(version, low, high, source)
 
     @classmethod
     def _compare(
@@ -861,38 +868,114 @@ class Compatibility:
         return cls(version, "compatible", reason=f"{source} covers {version.format_string}")
 
 
+def _whole(value: Any) -> int | None:
+    """An integer field (``pack_format``), None when absent or not a number."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return int(value)
+    return None
+
+
+def _pack_format_in_range(declared: int, low: int, high: int) -> list[str]:
+    """``IntermediaryFormat.validatePackFormatForRange``."""
+    if not low <= declared <= high:
+        return [
+            f"Pack declared support for versions {low} to {high} but declared main format "
+            f"is {declared}"
+        ]
+    if declared < MULTI_VERSION_MIN_PACK_FORMAT:
+        return [
+            "Multi-version packs cannot support minimum version of less than "
+            f"{MULTI_VERSION_MIN_PACK_FORMAT}"
+        ]
+    return []
+
+
 def _modern_metadata_problems(pack: dict[str, Any]) -> list[str]:
-    """The validation 1.21.9+ applies to min_format/max_format metadata."""
+    """The validation 1.21.9+ applies to a pack's metadata
+    (``PackFormat.IntermediaryFormat.validate`` as the pack codec calls it:
+    ``pack_format`` wanted, not an overlay; read in the 26.3 jar).
+
+    * ``min_format`` and ``max_format`` come together, min not above max;
+    * a minimum above format 81: ``supported_formats`` is refused (deprecated),
+      ``pack_format`` is optional and, when present, must lie in the range
+      (and be at least 15);
+    * a minimum of 81 or below (the range reaches versions that only read the
+      older fields): ``supported_formats`` must be there, start at the minimum
+      and end at the maximum (or at 81), and ``pack_format`` must be there and
+      in the range;
+    * without min/max: ``supported_formats`` ending at 81 at the latest, with a
+      ``pack_format`` in it, or just a ``pack_format`` of 81 or below.
+    """
     minimum = _as_format(pack.get("min_format"))
     maximum = _as_format(pack.get("max_format"), upper=True)
-    if minimum is None or maximum is None:
-        return ["min_format and max_format are required"]
-    if minimum[0] > LAST_WHOLE_FORMAT:
-        legacy = [key for key in ("pack_format", "supported_formats") if key in pack]
-        return (
-            [f"{', '.join(legacy)} must be absent when min_format is above {LAST_WHOLE_FORMAT}"]
-            if legacy
-            else []
-        )
-    problems: list[str] = []
-    declared = pack.get("pack_format")
+    declared = _whole(pack.get("pack_format"))
     supported = pack.get("supported_formats")
-    if not isinstance(declared, (int, float)) or isinstance(declared, bool):
-        problems.append("pack_format is required when min_format is a pre-minor format")
-    if supported is None:
-        problems.append("supported_formats is required when min_format is a pre-minor format")
-    else:
-        low, high = _format_bounds(supported, None, None)
-        if low is not None and low[0] != minimum[0]:
-            problems.append("supported_formats must start at min_format")
-        if high is not None and high[0] not in (maximum[0], LAST_WHOLE_FORMAT):
-            problems.append("supported_formats must end at max_format")
-    if isinstance(declared, (int, float)) and not isinstance(declared, bool):
-        if not _within((int(declared), 0), minimum, maximum):
-            problems.append("pack_format must lie between min_format and max_format")
-        if int(declared) < MULTI_VERSION_MIN_PACK_FORMAT:
-            problems.append(
-                "Multi-version packs cannot support minimum version of less than "
-                f"{MULTI_VERSION_MIN_PACK_FORMAT}"
-            )
-    return problems
+    if (minimum is None) != (maximum is None):
+        return ["missing field, must declare both min_format and max_format"]
+    if minimum is not None and maximum is not None:
+        if minimum > maximum:
+            return [f"min_format ({minimum[0]}) is greater than max_format ({maximum[0]})"]
+        low, high = minimum[0], maximum[0]
+        if low > LAST_WHOLE_FORMAT:
+            if supported is not None:
+                return [
+                    "key supported_formats is deprecated starting from pack format "
+                    f"{LAST_WHOLE_FORMAT + 1}. Remove supported_formats from your pack.mcmeta."
+                ]
+            return [] if declared is None else _pack_format_in_range(declared, low, high)
+        if supported is None:
+            return [
+                f"declares support for format {low}, but game versions supporting formats 15 "
+                f"to {LAST_WHOLE_FORMAT} require a supported_formats field"
+            ]
+        first, last = _format_bounds(supported, None, None)
+        if first is not None and first[0] != low:
+            return ["version declaration mismatch between supported_formats and min_format"]
+        if last is not None and last[0] not in (high, LAST_WHOLE_FORMAT):
+            return ["version declaration mismatch between supported_formats and max_format"]
+        if declared is None:
+            return [
+                f"game versions supporting formats 15 to {LAST_WHOLE_FORMAT} require a "
+                "pack_format field"
+            ]
+        return _pack_format_in_range(declared, low, high)
+    if supported is not None:
+        first, last = _format_bounds(supported, None, None)
+        if first is None or last is None:
+            return ["could not be parsed, missing format version information"]
+        if last[0] > LAST_WHOLE_FORMAT:
+            return [
+                f"declares support for version newer than {LAST_WHOLE_FORMAT}, but is missing "
+                "mandatory fields min_format and max_format"
+            ]
+        if declared is None:
+            return [
+                f"declares support for formats up to {last[0]}, but game versions supporting "
+                f"formats 15 to {LAST_WHOLE_FORMAT} require a pack_format field"
+            ]
+        return _pack_format_in_range(declared, first[0], last[0])
+    if declared is not None:
+        if declared > LAST_WHOLE_FORMAT:
+            return [
+                f"declares support for version newer than {LAST_WHOLE_FORMAT}, but is missing "
+                "mandatory fields min_format and max_format"
+            ]
+        return []
+    return ["could not be parsed, missing format version information"]
+
+
+def _modern_bounds(pack: dict[str, Any]) -> tuple[Format | None, Format | None]:
+    """The range valid 1.21.9+ metadata declares (see :func:`_modern_metadata_problems`)."""
+    minimum = _as_format(pack.get("min_format"))
+    if minimum is not None:
+        return minimum, _as_format(pack.get("max_format"), upper=True)
+    if pack.get("supported_formats") is not None:
+        first, last = _format_bounds(pack["supported_formats"], None, None)
+        return (
+            (first[0], 0) if first else None,
+            (last[0], ANY_MINOR) if last else None,
+        )
+    declared = _whole(pack.get("pack_format"))
+    if declared is None:
+        return None, None
+    return (declared, 0), (declared, ANY_MINOR)

@@ -228,7 +228,7 @@ also match by value. `execute if data` counts every tag the path selects.
 | `summon` | keeps the NBT (a `UUID` is used, duplicates refused); the position argument wins over `Pos` |
 | `kill`, `tp`/`teleport` | `tp <entity>`, `tp <x y z>`, `tp <targets> <entity|x y z> [<yaw> <pitch>]` |
 | `give` | players only; stacks onto matching stacks (selected slot, offhand, container order), then empty slots; what does not fit drops as item entities; at most 100 stacks |
-| `clear` | `[targets] [item predicate] [maxCount]`: removes matching items (not the ender chest); `maxCount 0` only counts. Predicates: an id, `*`, `#tag` (from the client jar or the pack), `[component=value]`, `[component]`, `!` negation, `|` alternatives, and the old `{nbt}` subset; `~` sub-predicates and `count` are noted and not checked. Items are taken in slot order; a negative count is rejected |
+| `clear` | `[targets] [item predicate] [maxCount]`: removes matching items (not the ender chest); `maxCount 0` only counts. Predicates: an id, `*`, `#tag` (from the client jar or the pack), `[component=value]`, `[component]`, `!` negation, `|` alternatives, and the old `{nbt}` subset; `count=<range>` and the `~` sub-predicates `custom_data` (a partial NBT match), `damage`, `enchantments`, `stored_enchantments`, `potion_contents` and `count` are checked; the other sub-predicates (`trim`, `container`, …) and enchantment or potion `#tags` in them are noted and pass. Items are taken in slot order; a negative count is rejected |
 | `item` | counts must be 1–99 (1–64 before 1.20.5) and fit the item's stack; `replace entity\|block <…> <slot> with <item> [count]` (`air` empties the slot), `replace … from entity\|block <source> <slot> [modifier]`, `modify entity\|block <…> <slot> <modifier>` (pack item modifiers, with their conditions and the functions listed under *Predicates*); a block must be a container with that slot ("Target position 1, 2, 3 is not a container", "The target does not have slot container.30") |
 | `replaceitem` | `entity\|block <…> <slot> <item> [count]` (before 1.17) |
 | `enchant` | adds the enchantment to the held item in the version's format (`Enchantments`, `enchantments.levels`, `enchantments`); which items accept it is not checked |
@@ -334,7 +334,8 @@ id is looked up in the pack, then (for `minecraft:`) in the client jar.
   note. The 26.x `clock` of `time_check` is
   not read: the day time is used;
 * **item predicates** — `items` (ids and tags), `count`, exact `components`,
-  `nbt`.
+  `nbt`, and in the `predicates` map `custom_data`, `damage`, `enchantments`,
+  `stored_enchantments` and `potion_contents` (the others fail with a note).
 
 What needs gameplay — killers, attackers, damage sources, enchantment
 checks, biomes, structures, light, recipes, statistics — fails, and a note

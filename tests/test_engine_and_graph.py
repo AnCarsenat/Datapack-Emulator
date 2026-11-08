@@ -274,3 +274,56 @@ def test_labels_can_drop_the_main_namespace():
     for node in ("a:1", "b:1", "c:1"):
         mixed.add_node(node, kind="function")
     assert mixed.main_namespace() is None
+
+
+def test_macro_call_targets_are_dynamic_not_missing(make_pack):
+    pack = Datapack.load(
+        make_pack(
+            {
+                "data/test/function/tick.mcfunction": (
+                    'function test:pick {dust:"red"}\nfunction test:any {f:"test:chosen"}\n'
+                ),
+                "data/test/function/pick.mcfunction": "$function test:dust/$(dust)\n",
+                "data/test/function/any.mcfunction": "$function $(f)\n",
+                "data/test/function/dust/red.mcfunction": "say red\n",
+                "data/test/function/dust/blue.mcfunction": "say blue\n",
+                "data/test/function/chosen.mcfunction": "say chosen\n",
+                "data/test/function/other/x.mcfunction": "say never\n",
+            }
+        )
+    )
+    graph = CallGraph.from_datapack(pack)
+    assert graph.missing() == []
+    assert graph.dynamic() == ["minecraft:$(f)", "test:dust/$(dust)"]
+    # the template reaches every function its pattern fits
+    assert set(graph.successors("test:dust/$(dust)")) == {"test:dust/red", "test:dust/blue"}
+    # an id that is all macro reaches the ids the pack writes as strings
+    assert graph.successors("minecraft:$(f)") == ["test:chosen"]
+    assert graph.unreachable() == ["test:other/x"]
+
+
+def test_templates_sharing_a_pattern_share_edges_and_make_no_cycles(make_pack):
+    files = {
+        "data/test/function/tick.mcfunction": 'function test:a {f:"test:a",x:"b"}\n',
+        "data/test/function/a.mcfunction": "$function $(f)\n$function test:$(x)\n",
+        "data/test/function/b.mcfunction": "$function $(g)\n$function test:$(y)\n",
+    }
+    graph = CallGraph.from_datapack(Datapack.load(make_pack(files)))
+    # the second template of each pattern goes through the first
+    assert graph.successors("minecraft:$(g)") == ["minecraft:$(f)"]
+    assert graph.successors("test:$(y)") == ["test:$(x)"]
+    assert set(graph.successors("test:$(x)")) == {"test:a", "test:b", "test:tick"}
+    assert graph.unreachable() == []
+    # what a macro call may become is not recursion
+    assert graph.cycles() == []
+
+
+def test_template_pattern():
+    from datapack_emulator.emulator.analysis.graph import fully_dynamic, template_pattern
+
+    pattern = template_pattern("ra:a/$(x)/b")
+    assert pattern.fullmatch("ra:a/one/b") and pattern.fullmatch("ra:a/one/two/b")
+    assert not pattern.fullmatch("ra:a/b") and not pattern.fullmatch("rb:a/one/b")
+    assert template_pattern("minecraft:$(f)").fullmatch("other:thing")
+    assert fully_dynamic("minecraft:$(f)") and fully_dynamic("$(ns):$(path)") is False
+    assert not fully_dynamic("ra:$(x)")

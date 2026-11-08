@@ -34,6 +34,7 @@ from datapack_emulator.emulator.common import (
     parse_value,
     split_arguments,
 )
+from datapack_emulator.emulator.runtime import item_sub_predicates
 from datapack_emulator.emulator.runtime.components import (
     default_stack_size,
     effective,
@@ -218,17 +219,23 @@ def _matching(text: str, start: int) -> int:
 
 @dataclass
 class ComponentCheck:
-    """One test on a stack's components: ``key`` present, ``key=value``, or negated."""
+    """One test on a stack's components: ``key`` present, ``key=value``, a
+    sub-predicate ``key~value`` (``sub``), or negated."""
 
     key: str
     value: Any = None
     has_value: bool = False
     negated: bool = False
+    sub: bool = False
 
     def passes(self, stack: ItemStack, version: Version | None = None) -> bool:
         """Tested against the stack's effective components (defaults + patch)."""
         components = stack.effective_components(version)
-        if self.has_value:
+        if self.sub:
+            result = item_sub_predicates.matches(self.key, self.value, stack.count, components)
+        elif self.key == "minecraft:count":  # the pseudo-component: count=<range>
+            result = not self.has_value or item_sub_predicates.in_range(stack.count, self.value)
+        elif self.has_value:
             result = self.key in components and same_value(
                 components[self.key], namespace_ids(self.key, self.value), self.key
             )
@@ -279,7 +286,17 @@ def parse_item_predicate(text: str) -> ItemPredicate:
                 negated = part.startswith("!")
                 body = part[1:].strip() if negated else part
                 name = body.split("=", 1)[0]
-                if "~" in name or any(mark in name for mark in "<>") or name.strip() == "count":
+                if "~" in name:
+                    key, raw = body.split("~", 1)
+                    value = parse_value(raw)
+                    if item_sub_predicates.checkable(key, value):
+                        group.append(
+                            ComponentCheck(
+                                item_sub_predicates.qualify(key), value, True, negated, sub=True
+                            )
+                        )
+                        continue
+                if "~" in name or any(mark in name for mark in "<>"):
                     predicate.unchecked.append(part)
                     group = []  # an unchecked alternative lets the whole group pass
                     break

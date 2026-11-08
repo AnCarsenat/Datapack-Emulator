@@ -244,3 +244,31 @@ def test_line_problems_for_the_editor():
     assert old[3] == "unknown command `frobnicate`"  # not a feature key
     assert "execute subcommand `on` needs 1.19.4" in old[7]
     assert "emulated as 1.19" in old[7]
+
+
+def test_unused_function_counts_macro_calls(make_pack):
+    pack = make_pack(
+        {
+            "data/test/function/tick.mcfunction": 'function test:side {d:"red"}\n',
+            "data/test/function/side.mcfunction": "$function test:dust/$(d)\n",
+            "data/test/function/dust/red.mcfunction": "say red\n",
+            "data/test/function/lonely.mcfunction": "say lonely\n",
+        }
+    )
+    unused = [
+        p for p in find_problems(Datapack.load(pack), "1.21.4") if p.code == "unused-function"
+    ]
+    assert [p.resource for p in unused] == ["test:lonely"]
+    assert "may still be reached" not in unused[0].message
+    dynamic = make_pack(
+        {
+            "data/test/function/tick.mcfunction": "function test:call with storage test:s\n",
+            "data/test/function/call.mcfunction": "$function $(f)\n",
+            "data/test/function/lonely.mcfunction": "say lonely\n",
+        }
+    )
+    (note,) = [
+        p for p in find_problems(Datapack.load(dynamic), "1.21.4") if p.code == "unused-function"
+    ]
+    assert note.resource == "test:lonely"
+    assert "may still be reached through a macro call" in note.message and "$(f)" in note.message

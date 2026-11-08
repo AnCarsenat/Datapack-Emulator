@@ -360,8 +360,24 @@ def parse_snbt(text: str) -> dict[str, Any]:
     try:
         return json.loads(snbt_to_json(text, typed=True), object_hook=_typed_hook)
     except json.JSONDecodeError:
-        log.debug("cannot parse SNBT %s", text[:80])
-        return {}
+        pass
+    value = _read_strict(text)
+    if isinstance(value, dict):
+        return value
+    log.debug("cannot parse SNBT %s", text[:80])
+    return {}
+
+
+def _read_strict(text: str) -> Any:
+    """``text`` read by the full (1.21.5+) SNBT grammar, None when it is not
+    SNBT: what the quick JSON translation cannot handle (``0x1F``, ``1_000``,
+    ``5ub``, ``bool(1)``, ``uuid("…")``, ``"\\n"`` escapes)."""
+    from datapack_emulator.emulator.snbt import SnbtError, read_snbt
+
+    try:
+        return read_snbt(text)
+    except SnbtError:
+        return None
 
 
 def _typed(kind: str, value: str) -> str:
@@ -838,7 +854,9 @@ def parse_value(text: str) -> Any:
     try:
         return json.loads(snbt_to_json(text, typed=True), object_hook=_typed_hook)
     except json.JSONDecodeError:
-        return text.strip('"')
+        pass
+    value = _read_strict(text)
+    return text.strip('"') if value is None else value
 
 
 def as_int(value: Any, scale: float | None = None) -> int:

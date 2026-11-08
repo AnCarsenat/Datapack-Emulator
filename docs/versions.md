@@ -120,7 +120,7 @@ the game only warns in the pack list.
 | --- | --- | --- |
 | 1.13 – 1.20.1 | `pack_format` only | compared as one number |
 | 1.20.2 – 1.21.8 | `pack_format` + `supported_formats` | a range that excludes `pack_format` is warned about and ignored |
-| 1.21.9 + | `min_format` / `max_format` (required) | with a minimum of 81 or below, `pack_format` and `supported_formats` must be present, agree with min/max, and `pack_format` must be ≥ 15; otherwise the server logs "Couldn't load <pack> pack metadata" and compatibility is unknown |
+| 1.21.9 + | `min_format` / `max_format` (required for a range past 81) | min/max come together and min ≤ max; with a minimum above 81, `supported_formats` is refused and `pack_format` is optional but must lie in the range when present; with a minimum of 81 or below, `pack_format` and `supported_formats` must be present and agree with min/max, and `pack_format` must be ≥ 15; without min/max, `pack_format` (and `supported_formats`) up to 81 still validate. Otherwise the server logs "Couldn't load <pack> pack metadata" and compatibility is unknown (`PackFormat.IntermediaryFormat.validate`) |
 
 So no single `pack.mcmeta` is clean both on 1.16.1 (which wants
 `pack_format` 5) and on 1.21.9+ (which wants at least 15). `pack_format: 15`
