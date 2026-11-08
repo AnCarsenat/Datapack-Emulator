@@ -18,7 +18,13 @@ from datapack_emulator.emulator.commands.parser import (
     resolve_position,
 )
 from datapack_emulator.emulator.commands.result import CommandResult
-from datapack_emulator.emulator.common import nbt_get, nbt_set, normalise_id, normalise_tagged_id
+from datapack_emulator.emulator.common import (
+    nbt_get,
+    nbt_set,
+    normalise_id,
+    normalise_tagged_id,
+    typed_number,
+)
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.world import Entity, ints_to_uuid
 
@@ -271,9 +277,10 @@ def _stored_number(value: int, type_and_scale: list[str]) -> int | float:
     except ValueError:
         scale = 1.0
     scaled = value * scale
-    if numeric_type in ("float", "double"):
-        return scaled
-    return int(scaled)  # byte, short, int, long
+    if numeric_type not in ("byte", "short", "int", "long", "float", "double"):
+        numeric_type = "int"
+    # integer types truncate; the number keeps its NBT type for later matches
+    return typed_number(scaled, numeric_type)
 
 
 def condition_count(arguments: list[str], context: ExecutionContext) -> int:

@@ -136,10 +136,23 @@ Selectors: `@s @p @a @r @e @n` with `type` (including `!` and, with a jar,
 not store (effects, attributes, …) fail the check. Both produce one emulator
 note per run.
 
-NBT paths support compound keys, quoted keys (`"minecraft:custom_data"`),
-list indexes (`Pos[0]`, `list[-1]`) and list filters (`Inventory[{Slot:103b}]`:
-reading takes the first match, setting and `data remove` reach every match, and
-setting through a filter with no match adds the element).
+NBT paths follow vanilla's syntax in `if data`, `data get|modify|remove`,
+`execute store`, macros and `nbt` text: a root filter `{…}` (first node only),
+keys bare or quoted (`"minecraft:custom_data"`, `'a.b'`), a key with a filter
+`name{…}` (the child only if it is a compound matching the filter, at any depth,
+after quoted keys, chained as in `a{b:1b}.c`), indexes (`Pos[0]`, `list[-1]`),
+all elements `[]` and matching elements `[{Slot:103b}]`. A path can select
+several tags: `data get` reads the first, `data modify … set` and `data remove`
+reach all of them. Setting creates missing parents like the game (a missing
+`name{…}` or a list with no `[{…}]` match gets the filter as its new value) and
+counts only tags that changed.
+
+Filters match partially, like the game: extra keys in the target are fine,
+nested compounds match partially, each element of a filter list must match some
+element of the target list (in any order) and an empty filter list matches only
+an empty list; arrays (`[I;…]`) must be equal. Numbers read from SNBT keep their
+type, so `{n:5}` does not match `5b`; numbers the emulator computes itself
+(entity fields it models, for instance) have no type and match by value.
 
 ## Commands
 
