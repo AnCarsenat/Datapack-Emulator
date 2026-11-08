@@ -583,7 +583,8 @@ def _entity_fields(predicate: dict[str, Any], context: Context) -> dict[str, Any
         return predicate
     out: dict[str, Any] = {}
     for key, value in predicate.items():
-        name = normalise_id(key).split(":", 1)[1] if ":" in key else key
+        # only vanilla sub-predicates exist; another namespace is noted by its full id
+        name = normalise_id(key).removeprefix("minecraft:") if ":" in key else key
         if name in ("entity_type", "type"):
             out["type"] = value
         elif name == "type_specific/player" and isinstance(value, dict):

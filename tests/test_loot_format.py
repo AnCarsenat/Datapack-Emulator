@@ -441,6 +441,17 @@ def test_entity_predicates_as_a_map_from_26_2(make_pack):
         assert not matches('{"minecraft:flags":{is_on_fire:true}}')
         assert matches('{"minecraft:nbt":"{Tags:[\\"p\\"]}"}')
         assert not matches('{"minecraft:type_specific/sheep":{sheared:false}}')
+        # a sub-predicate the world model cannot answer fails, and the note names it
+        for sub, note in (
+            ("minecraft:entity_tags", "entity entity_tags"),
+            ("test:flags", "entity test:flags"),
+        ):
+            inline = f'{{{key}:"entity_properties",entity:"this",predicate:{{"{sub}":{{}}}}}}'
+            before = len(emulator.output.records)
+            result, _ = emulator.run_typed(f"execute as @e[type=pig] if predicate {inline}")
+            records = emulator.output.records[before:]
+            assert result is not None and not result.success
+            assert any(f"cannot check {note}" in r.message for r in records)
     # before 26.2 such keys are not read (the game ignores them too)
     old = Emulator(pack, version="1.21.4")
     old.run_typed("summon pig 0 0 0")
@@ -597,3 +608,31 @@ def test_older_files_in_26_3(make_pack):
     # the same files keep their older meaning in 1.21.4: only the 26.3 types are wrong there
     legacy = {m for _, r, m in _loot_problems(pack, "1.21.4") if r == "test:old"}
     assert legacy == set()
+
+
+def test_reference_tags_are_found_in_the_pack_then_the_jar(make_pack):
+    from types import SimpleNamespace
+
+    files = {
+        "data/test/function/tick.mcfunction": "\n",
+        "data/test/predicate/tagged.json": {
+            "type": "minecraft:all_of",
+            "terms": ["#test:here", "#minecraft:jarred", "#minecraft:nowhere"],
+        },
+        "data/test/tags/predicate/here.json": {"values": []},
+    }
+    pack = Datapack.load(
+        make_pack(files, mcmeta={"pack": {"description": "t", "pack_format": 121}})
+    )
+    jar = SimpleNamespace(
+        tags={"predicate": {"minecraft:jarred": []}},
+        read_json=lambda name: None,
+        knows=lambda registry, value: None,
+        version_id="26.3",
+    )
+    codes = ("condition", "item-function", "loot-table", "loot-entry")
+    messages = [p.message for p in find_problems(pack, "26.3", vanilla=jar) if p.code in codes]
+    assert messages == [
+        "predicate: names predicate tag #minecraft:nowhere, which is in neither the pack nor "
+        "the game"
+    ]

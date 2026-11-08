@@ -533,12 +533,13 @@ def _reference(
     if value.startswith("#"):
         tag = normalise_tagged_id(value)
         tags = scan.registries.get(f"tags/{registry}", {})
-        if not any(getattr(found, "tag_id", "") == tag for found in tags.values()):
+        in_jar = scan.vanilla is not None and tag[1:] in scan.vanilla.tags.get(registry, {})
+        if not in_jar and not any(getattr(found, "tag_id", "") == tag for found in tags.values()):
             yield _problem(
                 resource,
                 "warning",
                 code,
-                f"{where}: names {what} tag {tag}, which is not in the pack",
+                f"{where}: names {what} tag {tag}, which is in neither the pack nor the game",
             )
         return
     target = normalise_id(value)
