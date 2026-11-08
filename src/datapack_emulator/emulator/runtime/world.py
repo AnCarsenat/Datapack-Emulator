@@ -26,6 +26,7 @@ from datapack_emulator.emulator.common import (
     normalise_id,
     parse_snbt,
     split_arguments,
+    untyped,
 )
 from datapack_emulator.emulator.runtime.advancements import Progress
 from datapack_emulator.emulator.runtime.blocks import Blocks
@@ -229,7 +230,13 @@ class Entity:
 
     def apply_data(self, data: dict[str, Any]) -> None:
         """Load NBT back onto the entity, like ``Entity.load``: position,
-        rotation and tags follow; the UUID never changes."""
+        rotation and tags follow; the UUID never changes.
+
+        Items keep their exact SNBT types (custom data does in the game too);
+        the other numbers become plain and match by value (see :func:`untyped`).
+        """
+        self.inventory.load_nbt(data)
+        data = untyped(data)
         position = data.get("Pos")
         if isinstance(position, list) and _numbers(position, 3):
             self.position = [float(value) for value in position]
@@ -239,7 +246,6 @@ class Entity:
         tags = data.get("Tags")
         if isinstance(tags, list):  # without the key, Entity.load keeps the tags
             self.tags = {str(tag) for tag in tags}
-        self.inventory.load_nbt(data)
         if self.living is not None:
             self.living.load_nbt(data)
         defaults = self.defaults()
