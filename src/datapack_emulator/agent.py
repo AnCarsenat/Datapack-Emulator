@@ -417,10 +417,10 @@ def _cut_commands(result: dict[str, Any], sizes: list[int]) -> tuple[str, int, i
                 _halve_records(answer, "output", "")
         return ("commands[].output", before, sum(len(a["output"]) for a in outputs), "items")
     long = [answer for answer in outputs if _chars(answer["output"]) >= 2 * _SMALLEST_CUT]
-    if long:
-        before = sum(_chars(answer["output"]) for answer in long)
-        for answer in long:
-            _cut(answer, "output", "", newest=False)
+    before = sum(_chars(answer["output"]) for answer in long)
+    cut = [answer for answer in long if _cut(answer, "output", "", newest=False) is not None]
+    if cut:
+        for answer in cut:
             answer["truncated"] = True
         after = sum(_chars(answer["output"]) for answer in long)
         return ("commands[].output messages", before, after, "characters")
@@ -440,7 +440,7 @@ def _cut_biggest(result: dict[str, Any]) -> tuple[str, int, int, str] | None:
         size = _chars(owner[key])
         if owner is not result:
             output_sizes.append(size)
-        places.append((size, label, owner, key, owner is result and len(owner[key]) > 1))
+        places.append((size, label, owner, key, len(owner[key]) > 1))
     answers = result.get("commands")
     if isinstance(answers, list) and answers:
         places.append((_chars(answers), "commands", result, "commands", False))
