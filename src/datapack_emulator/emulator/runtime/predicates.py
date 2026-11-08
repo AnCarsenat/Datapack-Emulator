@@ -65,8 +65,10 @@ class Context:
     block_position: tuple[int, int, int] | None = None
     tool: ItemStack | None = None
     version: Version | None = None
-    #: predicate id -> JSON, for ``reference`` conditions
+    #: predicate id -> JSON, for ``reference`` conditions and (26.3) predicate ids
     lookup: Callable[[str], Any] | None = None
+    #: item modifier id -> JSON, for ``reference`` functions and (26.3) modifier ids
+    modifiers: Callable[[str], Any] | None = None
     #: tag id -> member ids for a registry (``entity_type``, ``item``, ``block``)
     tags: Callable[[str, str], set[str] | None] | None = None
     #: condition and predicate parts the world model cannot answer
@@ -213,16 +215,97 @@ def _bound(bound: Any, context: Context) -> float | None:
 # ---------------------------------------------------------------------------
 
 
+def typed_loot(context: Context) -> bool | None:
+    """Whether the context's version reads the 26.3 loot format (``type``,
+    ``condition``, ``modifier``, ids for references); None when no version is
+    known (then either spelling is read, the older one first)."""
+    version = context.version
+    return None if version is None else versions.uses_typed_loot(version)
+
+
+def kind_of(value: dict[str, Any], legacy_key: str, context: Context) -> str:
+    """The type id of a condition (``legacy_key`` ``condition``) or item
+    function (``function``): ``type`` from 26.3."""
+    typed = typed_loot(context)
+    if typed:
+        raw = value.get("type")
+    elif typed is False:
+        raw = value.get(legacy_key)
+    else:
+        raw = value.get(legacy_key) or value.get("type")
+    return normalise_id(str(raw)) if isinstance(raw, str) and raw else ""
+
+
+def holder_field(holder: dict[str, Any], key: str, legacy_key: str, context: Context) -> Any:
+    """A pool's, entry's or function's conditions (``condition``, before 26.3
+    ``conditions``) or item functions (``modifier``, before 26.3 ``functions``)."""
+    typed = typed_loot(context)
+    if typed:
+        return holder.get(key)
+    if typed is False:
+        return holder.get(legacy_key)
+    return holder.get(legacy_key, holder.get(key))
+
+
+def holder_passes(holder: dict[str, Any], context: Context) -> bool:
+    """Do the conditions a pool, entry or item function carries pass?"""
+    conditions = holder_field(holder, "condition", "conditions", context)
+    return conditions is None or conditions == [] or check(conditions, context)
+
+
+def expand_references(values: list[Any], registry: str, context: Context) -> list[Any]:
+    """A 26.3 list: inline values, ids, and ``#tags`` of ids (each member in
+    its place)."""
+    out: list[Any] = []
+    for value in values:
+        if isinstance(value, str) and value.startswith("#") and typed_loot(context) is not False:
+            members = context.tags(registry, value) if context.tags else None
+            if members is None:
+                context.unchecked.add(f"{registry} tag {normalise_tagged_id(value)}")
+                out.append(False)
+            else:
+                out.extend(sorted(members))
+        else:
+            out.append(value)
+    return out
+
+
+def resolve(name: str, lookup: Callable[[str], Any] | None, what: str, context: Context) -> Any:
+    """A predicate or item modifier named by id (26.3), or None (noted)."""
+    target = lookup(normalise_id(name)) if lookup else None
+    if target is None:
+        context.unchecked.add(f"missing {what} {normalise_id(name)}")
+    return target
+
+
 def check(condition: Any, context: Context) -> bool:
-    """One condition, or a list of them (all must pass)."""
+    """One condition, or a list of them (all must pass). From 26.3 a condition
+    can also be a predicate id, and a list can hold ``#tags`` of them."""
     if isinstance(condition, list):
-        return all(check(entry, context) for entry in condition)
+        terms = expand_references(condition, "predicate", context)
+        return all(check(entry, context) for entry in terms)
+    if isinstance(condition, str) and typed_loot(context) is not False:
+        if condition.startswith("#"):
+            return check([condition], context)
+        target = resolve(condition, context.lookup, "predicate", context)
+        if target is None or context.depth >= MAX_DEPTH:
+            return False
+        context.depth += 1
+        try:
+            return check(target, context)
+        finally:
+            context.depth -= 1
     if not isinstance(condition, dict):
         return False
-    kind = normalise_id(str(condition.get("condition", "")))
+    kind = kind_of(condition, "condition", context)
     handler = CONDITIONS.get(kind)
-    if handler is None:
-        context.unchecked.add(kind)
+    typed = typed_loot(context)
+    if (
+        handler is None
+        or (typed and kind in LEGACY_ONLY)
+        or (typed is False and kind in TYPED_ONLY)
+    ):
+        context.unchecked.add(kind or "condition without a type")
         return False
     return handler(condition, context)
 
@@ -231,17 +314,17 @@ def _inverted(condition: dict[str, Any], context: Context) -> bool:
     return not check(condition.get("term"), context)
 
 
-def _terms(condition: dict[str, Any]) -> list[Any]:
+def _terms(condition: dict[str, Any], context: Context) -> list[Any]:
     terms = condition.get("terms")
-    return terms if isinstance(terms, list) else []
+    return expand_references(terms, "predicate", context) if isinstance(terms, list) else []
 
 
 def _all_of(condition: dict[str, Any], context: Context) -> bool:
-    return all(check(term, context) for term in _terms(condition))
+    return all(check(term, context) for term in _terms(condition, context))
 
 
 def _any_of(condition: dict[str, Any], context: Context) -> bool:
-    return any(check(term, context) for term in _terms(condition))
+    return any(check(term, context) for term in _terms(condition, context))
 
 
 def _random_chance(condition: dict[str, Any], context: Context) -> bool:
@@ -276,6 +359,16 @@ def _entity_scores(condition: dict[str, Any], context: Context) -> bool:
 
 def _value_check(condition: dict[str, Any], context: Context) -> bool:
     return in_bounds(number(condition.get("value"), context), condition.get("range"), context)
+
+
+def _int_value_check(condition: dict[str, Any], context: Context) -> bool:
+    """26.3: ``value`` read with getInt, in the ``test`` range."""
+    return in_bounds(integer(condition.get("value"), context), condition.get("test"), context)
+
+
+def _float_value_check(condition: dict[str, Any], context: Context) -> bool:
+    """26.3: ``value`` read as a float, in the ``test`` range."""
+    return in_bounds(number(condition.get("value"), context), condition.get("test"), context)
 
 
 def _time_check(condition: dict[str, Any], context: Context) -> bool:
@@ -317,7 +410,16 @@ def _block_state(condition: dict[str, Any], context: Context) -> bool:
         return False
     if normalise_id(str(condition.get("block", ""))) != block.id:
         return False
-    return _properties_match(condition.get("properties"), block.properties)
+    return _properties_match(condition.get("properties"), block.properties, context, block.id)
+
+
+def _match_block(condition: dict[str, Any], context: Context) -> bool:
+    """26.3: the loot context's block, against a block predicate (``blocks``,
+    ``state``, ``nbt``) -- what ``block_state_property`` was."""
+    block = context.block
+    if block is None:
+        return False
+    return block_matches(condition, block, context.block_position, context)
 
 
 def _match_tool(condition: dict[str, Any], context: Context) -> bool:
@@ -372,10 +474,13 @@ CONDITIONS: dict[str, Callable[[dict[str, Any], Context], bool]] = {
     "minecraft:entity_properties": _entity_properties,
     "minecraft:entity_scores": _entity_scores,
     "minecraft:value_check": _value_check,
+    "minecraft:int_value_check": _int_value_check,
+    "minecraft:float_value_check": _float_value_check,
     "minecraft:time_check": _time_check,
     "minecraft:weather_check": _weather_check,
     "minecraft:location_check": _location_check,
     "minecraft:block_state_property": _block_state,
+    "minecraft:match_block": _match_block,
     "minecraft:match_tool": _match_tool,
     "minecraft:killed_by_player": _killed_by_player,
     "minecraft:survives_explosion": _survives_explosion,
@@ -384,6 +489,14 @@ CONDITIONS: dict[str, Callable[[dict[str, Any], Context], bool]] = {
     "minecraft:damage_source_properties": _unknowable("damage_source_properties"),
     "minecraft:enchantment_active_check": _unknowable("enchantment_active_check"),
 }
+#: condition types 26.3 removed (``reference``: a predicate id instead) ...
+LEGACY_ONLY = frozenset(
+    {"minecraft:reference", "minecraft:block_state_property", "minecraft:value_check"}
+)
+#: ... and the ones it added in their place
+TYPED_ONLY = frozenset(
+    {"minecraft:match_block", "minecraft:int_value_check", "minecraft:float_value_check"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -416,11 +529,18 @@ def _id_matches(wanted: Any, actual: str, registry: str, context: Context, part:
     return False
 
 
-def _properties_match(wanted: Any, actual: dict[str, str]) -> bool:
+def _properties_match(
+    wanted: Any, actual: dict[str, str], context: Context | None = None, block_id: str = ""
+) -> bool:
+    """Block-state values: a string (or number/boolean, compared as text) or a
+    ``{min, max}`` range. A property the block was not placed with does not
+    match (default states are not modelled), and is noted as such."""
     if not isinstance(wanted, dict):
         return True
     for key, value in wanted.items():
         have = actual.get(key)
+        if have is None and context is not None:
+            context.unchecked.add(f"default state {key} of {block_id or 'a block'}")
         if isinstance(value, dict):
             if have is None:
                 return False
@@ -443,14 +563,52 @@ def _nbt_matches(pattern: Any, data: dict[str, Any]) -> bool:
     return isinstance(parsed, dict) and nbt_matches(data, parsed)
 
 
+#: sub-predicates of the 26.2 map form that have a field of the older form
+ENTITY_FIELDS = frozenset(
+    {"nbt", "location", "distance", "flags", "equipment", "slots", "effects", "team",
+     "vehicle", "passenger", "stepping_on", "movement_affected_by", "periodic_tick",
+     "targeted_entity", "movement", "components", "predicates"}
+)  # fmt: skip
+
+
+def _entity_fields(predicate: dict[str, Any], context: Context) -> dict[str, Any] | None:
+    """The 26.2 map form (``minecraft:entity_type``, ``minecraft:flags``,
+    ``minecraft:type_specific/player``, …) in the older field form; None (noted)
+    when it holds a sub-predicate the world model cannot answer. Before 26.2
+    the game ignores such keys, and so does this."""
+    version = context.version
+    if version is not None and not versions.uses_entity_predicate_map(version):
+        return predicate
+    if not any(":" in key for key in predicate):
+        return predicate
+    out: dict[str, Any] = {}
+    for key, value in predicate.items():
+        name = normalise_id(key).split(":", 1)[1] if ":" in key else key
+        if name in ("entity_type", "type"):
+            out["type"] = value
+        elif name == "type_specific/player" and isinstance(value, dict):
+            out["type_specific"] = {"type": "minecraft:player", **value}
+        elif name in ENTITY_FIELDS:
+            out[name] = value
+        else:
+            context.unchecked.add(f"entity {name}")
+            return None
+    return out
+
+
 def entity_matches(predicate: Any, entity: Entity, context: Context) -> bool:
     """An entity predicate (``type``, ``nbt``, ``location``, ``distance``,
     ``flags``, ``equipment``, ``slots``, ``effects``, ``team``,
-    ``type_specific``/``player``, ``vehicle``, ``passenger``)."""
+    ``type_specific``/``player``, ``vehicle``, ``passenger``; from 26.2 the
+    same as namespaced sub-predicates, ``minecraft:entity_type`` …)."""
     if predicate is None:
         return True
     if not isinstance(predicate, dict):
         return False
+    fields = _entity_fields(predicate, context)
+    if fields is None:
+        return False
+    predicate = fields
     version = context.version
     if not _id_matches(predicate.get("type"), entity.type, "entity_type", context, "type"):
         return False
@@ -634,7 +792,7 @@ def block_matches(predicate: Any, block: Any, position: Any, context: Context) -
         "#" + str(predicate["tag"]).lstrip("#"), block.id, "block", context, "block"
     ):
         return False
-    if not _properties_match(predicate.get("state"), block.properties):
+    if not _properties_match(predicate.get("state"), block.properties, context, block.id):
         return False
     return "nbt" not in predicate or _nbt_matches(
         predicate["nbt"], block.data(context.version, position)
