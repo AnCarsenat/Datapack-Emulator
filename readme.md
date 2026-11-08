@@ -21,8 +21,9 @@ advancements, and loot tables with their conditions and functions.
 Minecraft's own error messages are printed as the game would, kept apart from
 the app's logs. See [what is emulated](docs/emulation.md).
 
-**Knows every version.** Which commands exist in each version from 1.13 to
-26.3, how each one spells its folders, and which `pack.mcmeta` overlays apply.
+**Knows every version.** Which commands exist in each version from 1.14 to
+26.3 (1.13 is answered as 1.14: it has no command tree to read), how each one
+spells its folders, and which `pack.mcmeta` overlays apply.
 The version engine runs the pack across a whole range at once and compares
 the results.
 
@@ -77,7 +78,7 @@ describes every panel.
 python -m venv .venv
 .venv/bin/pip install -e ".[gui]"
 
-.venv/bin/datapack-emulator          # the window; press F5 (it reopens the last project)
+.venv/bin/datapack-emulator          # the window (reopens the last project); F5 runs it
 .venv/bin/datapack-emulator samples/hat   # or open this pack; --no-last-project for the sample
 ```
 
