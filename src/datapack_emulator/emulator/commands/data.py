@@ -8,7 +8,7 @@ from typing import Any
 
 from datapack_emulator.emulator.commands.blocks import position_at
 from datapack_emulator.emulator.commands.compute import compute_source
-from datapack_emulator.emulator.commands.helpers import require_targets
+from datapack_emulator.emulator.commands.helpers import note_refused_items, require_targets
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
 from datapack_emulator.emulator.common import (
@@ -48,12 +48,14 @@ class _DataTarget:
         return (self.storage,)
 
     def commit(self, context: ExecutionContext) -> None:
+        problems: list[str] = []
         if self.entity is not None:
-            self.entity.apply_data(self.data)
+            self.entity.apply_data(self.data, problems)
         elif self.block is not None:
-            self.block.apply_data(self.data)
+            self.block.apply_data(self.data, problems)
         else:
             context.world.storage[self.storage] = self.data
+        note_refused_items(context, problems)
 
     @property
     def feedback_kind(self) -> str:

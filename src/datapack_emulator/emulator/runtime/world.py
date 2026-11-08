@@ -29,7 +29,14 @@ from datapack_emulator.emulator.common import (
 )
 from datapack_emulator.emulator.runtime.advancements import Progress
 from datapack_emulator.emulator.runtime.blocks import Blocks
-from datapack_emulator.emulator.runtime.inventory import INVENTORY_KEYS, Inventory, has_equipment
+from datapack_emulator.emulator.runtime.inventory import (
+    ENTITY_ITEM_KEYS,
+    INVENTORY_KEYS,
+    Inventory,
+    has_equipment,
+    load_entity_items,
+    save_entity_items,
+)
 from datapack_emulator.emulator.runtime.living import LIVING_KEYS, Living, is_living
 from datapack_emulator.emulator.runtime.state import GAME_MODES, ServerState
 
@@ -218,6 +225,7 @@ class Entity:
         else:
             data["id"] = self.type
         data.update(copy.deepcopy(self.nbt))
+        save_entity_items(data, version)
         data.update(self.inventory.to_nbt(version))
         if self.living is not None:
             data.update(self.living.to_nbt(version))
@@ -227,15 +235,18 @@ class Entity:
             data["Tags"] = sorted(self.tags)
         return data
 
-    def apply_data(self, data: dict[str, Any]) -> None:
+    def apply_data(self, data: dict[str, Any], problems: list[str] | None = None) -> None:
         """Load NBT back onto the entity, like ``Entity.load``: position,
-        rotation and tags follow; the UUID never changes.
+        rotation and tags follow; the UUID never changes. Item stacks the item
+        codec refuses are left out, with the reason added to ``problems``.
 
         Items keep their exact SNBT types (custom data does in the game too);
         the other numbers become plain and match by value (see :func:`untyped`).
         """
-        self.inventory.load_nbt(data)
-        data = untyped(data)
+        data = load_entity_items(data, problems)
+        self.inventory.load_nbt(data, problems)
+        stacks = {key: data[key] for key in ENTITY_ITEM_KEYS if key in data}
+        data = {**untyped(data), **stacks}
         position = data.get("Pos")
         if isinstance(position, list) and _numbers(position, 3):
             self.position = [float(value) for value in position]
