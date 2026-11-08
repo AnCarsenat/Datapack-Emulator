@@ -6,20 +6,23 @@ The client jar has no per-item component data; the server writes it with
 version as ``<version>-summary/item_components/data.json``. This reads it and
 keeps only the components the emulator models (see ``COMPONENTS``).
 
-    python tools/generate_item_defaults.py [--version 26.3] [--work-dir .mcmeta-cache]
+    python tools/generate_item_defaults.py [--version 26.3] [--commit SHA] [--work-dir DIR]
 
-Needs network access (raw.githubusercontent.com).
+The ``<version>-summary`` branch is resolved to a commit (or ``--commit`` is
+used), the report is read at that commit and the commit is recorded in the
+header, so the output only depends on the commit. Needs network access
+(api.github.com, raw.githubusercontent.com).
 """
 
 import argparse
-import datetime
 import json
 import pathlib
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "datapack_emulator" / "emulator" / "item_defaults.py"
-URL = "https://raw.githubusercontent.com/misode/mcmeta/{version}-summary/item_components/data.json"
+URL = "https://raw.githubusercontent.com/misode/mcmeta/{ref}/item_components/data.json"
+COMMIT_API = "https://api.github.com/repos/misode/mcmeta/commits/{version}-summary"
 
 #: components kept per item, with the value of the items not listed (None: absent)
 COMPONENTS: dict[str, object] = {
@@ -41,12 +44,21 @@ COMMON = ("minecraft:enchantments", "minecraft:lore", "minecraft:repair_cost",
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--version", default="26.3")
+parser.add_argument("--commit", help="mcmeta commit (default: head of <version>-summary)")
 parser.add_argument("--work-dir", type=pathlib.Path, default=ROOT / ".mcmeta-cache")
 arguments = parser.parse_args()
-target = arguments.work_dir / f"item_components-{arguments.version}.json"
+commit = arguments.commit
+if commit is None:
+    request = urllib.request.Request(
+        COMMIT_API.format(version=arguments.version),
+        headers={"Accept": "application/vnd.github.sha"},
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        commit = response.read().decode("ascii").strip()
+target = arguments.work_dir / f"item_components-{arguments.version}-{commit}.json"
 if not target.exists():
     target.parent.mkdir(parents=True, exist_ok=True)
-    url = URL.format(version=arguments.version)
+    url = URL.format(ref=commit)
     with urllib.request.urlopen(url, timeout=60) as response:
         target.write_bytes(response.read())
 report: dict[str, dict] = json.loads(target.read_text(encoding="utf-8"))
@@ -116,9 +128,10 @@ lines = [
     '"""Default (prototype) components of every item, for the components the emulator models.',
     "",
     "GENERATED FILE — do not edit by hand.  Rebuilt by tools/generate_item_defaults.py from",
-    f"  {URL.format(version=arguments.version)}",
-    "(misode/mcmeta's copy of the server's ``--reports`` item components report).",
-    f"Snapshot taken {datetime.date.today().isoformat()}; values are those of {arguments.version}.",
+    f"  {URL.format(ref=commit)}",
+    "(misode/mcmeta's copy of the server's ``--reports`` item components report),",
+    f"branch {arguments.version}-summary at commit {commit}; values are those of",
+    f"{arguments.version}.",
     "",
     "Item ids are written without their ``minecraft:`` namespace.",
     '"""',
@@ -128,6 +141,7 @@ lines = [
     "from typing import Any",
     "",
     f"VERSION = {literal(arguments.version)}",
+    f"MCMETA_COMMIT = {literal(commit)}",
     "",
     "#: every item in the report",
     *words("ITEMS", sorted(report)),

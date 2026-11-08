@@ -1,9 +1,10 @@
 """Default (prototype) components of every item, for the components the emulator models.
 
 GENERATED FILE — do not edit by hand.  Rebuilt by tools/generate_item_defaults.py from
-  https://raw.githubusercontent.com/misode/mcmeta/26.3-summary/item_components/data.json
-(misode/mcmeta's copy of the server's ``--reports`` item components report).
-Snapshot taken 2026-11-08; values are those of 26.3.
+  https://raw.githubusercontent.com/misode/mcmeta/d96c75fec200c4580dd75e033a76341521165461/item_components/data.json
+(misode/mcmeta's copy of the server's ``--reports`` item components report),
+branch 26.3-summary at commit d96c75fec200c4580dd75e033a76341521165461; values are those of
+26.3.
 
 Item ids are written without their ``minecraft:`` namespace.
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 VERSION = "26.3"
+MCMETA_COMMIT = "d96c75fec200c4580dd75e033a76341521165461"
 
 #: every item in the report
 ITEMS: frozenset[str] = frozenset(
