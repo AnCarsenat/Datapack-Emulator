@@ -22,6 +22,7 @@ The handlers live in one module per command group:
 * :mod:`.living` — effect, attribute, damage, ride
 * :mod:`.bossbar` — bossbar
 * :mod:`.conditions` — advancement, predicates in execute and selectors
+* :mod:`.compute` — compute (26.3) and ``data modify … compute``
 * :mod:`.misc` — commands that only check their ids
 """
 
@@ -36,6 +37,7 @@ from datapack_emulator.emulator.commands.chat import (
     cmd_tellraw,
     cmd_title,
 )
+from datapack_emulator.emulator.commands.compute import COMPUTE_HANDLERS
 from datapack_emulator.emulator.commands.conditions import CONDITION_HANDLERS
 from datapack_emulator.emulator.commands.control import cmd_function, cmd_return, cmd_schedule
 from datapack_emulator.emulator.commands.data import cmd_data, cmd_gamerule
@@ -118,6 +120,7 @@ HANDLERS.update(PLAYER_HANDLERS)
 HANDLERS.update(LIVING_HANDLERS)
 HANDLERS.update(BOSSBAR_HANDLERS)
 HANDLERS.update(CONDITION_HANDLERS)
+HANDLERS.update(COMPUTE_HANDLERS)
 
 __all__ = [
     "COSMETIC",
