@@ -63,6 +63,19 @@ def pack_json(context: ExecutionContext, registry: str, resource_id: str) -> Any
     return getattr(resource, "content", None)
 
 
+def reference_json(context: ExecutionContext, registry: str, resource_id: str) -> Any:
+    """What a reference inside a predicate, loot table or item modifier names:
+    the pack's file, else vanilla's own (26.3 loot tables name
+    ``minecraft:tool/can_silk_touch``)."""
+    found = pack_json(context, registry, resource_id)
+    assets = context.emulator.vanilla
+    if found is None and assets is not None:
+        namespace, _, path = normalise_id(resource_id).partition(":")
+        if namespace == "minecraft":
+            found = assets.read_json(f"data/minecraft/{registry}/{path}.json")
+    return found
+
+
 def predicate_context(
     context: ExecutionContext,
     entity=None,
@@ -83,7 +96,8 @@ def predicate_context(
         block_position=block_position,
         tool=tool,
         version=context.emulator.version,
-        lookup=lambda name: pack_json(context, "predicate", name),
+        lookup=lambda name: reference_json(context, "predicate", name),
+        modifiers=lambda name: reference_json(context, "item_modifier", name),
         tags=lambda registry, tag: tag_members(context, registry, tag),
     )
 

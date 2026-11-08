@@ -188,7 +188,11 @@ class Emulator:
                         dimension=player.dimension,
                     )
                     wanted = conditions.get("player")
-                    if isinstance(wanted, list):
+                    # a list of conditions or an entity predicate; from 26.3 one
+                    # condition (or a predicate id)
+                    if isinstance(wanted, list) or (
+                        wanted is not None and versions.uses_typed_loot(self.version)
+                    ):
                         passed = check(wanted, context)
                     else:
                         passed = entity_matches(wanted, player, context)
