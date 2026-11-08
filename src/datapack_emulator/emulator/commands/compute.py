@@ -26,7 +26,7 @@ from datapack_emulator.emulator.commands.conditions import (
 from datapack_emulator.emulator.commands.helpers import require_targets
 from datapack_emulator.emulator.commands.parser import Command
 from datapack_emulator.emulator.commands.result import CommandResult
-from datapack_emulator.emulator.common import normalise_id, parse_snbt
+from datapack_emulator.emulator.common import NbtFloat, NbtInt, normalise_id, parse_snbt
 from datapack_emulator.emulator.runtime.context import ExecutionContext
 from datapack_emulator.emulator.runtime.numbers import (
     FLOAT_REGISTRY,
@@ -172,7 +172,7 @@ def cmd_compute(command: Command, context: ExecutionContext) -> CommandResult:
     if not math.isfinite(value):
         return _invalid(context, computation, java_float_text(value))
     result = java_floor(f32(value * scale))
-    if float(result) == value:
+    if f32(float(result)) == value:  # vanilla compares (float) result
         _exact(context, computation, result)
     elif computation.name is not None:
         context.feedback(
@@ -194,8 +194,8 @@ def _exact(context: ExecutionContext, computation: Computation, result: int) -> 
 
 
 def compute_source(context: ExecutionContext, tokens: list[str]) -> tuple[bool, Any]:
-    """``data modify … compute …``: ``(found, value)``, an int or a float;
-    errors in the provider give 0 like ``getInt``/``getFloat``."""
+    """``data modify … compute …``: ``(found, value)``, an ``IntTag`` or a
+    ``FloatTag``; errors in the provider give 0 like ``getInt``/``getFloat``."""
     computation = parse_computation(context, tokens)
     if computation is None:
         return (False, None)
@@ -205,8 +205,8 @@ def compute_source(context: ExecutionContext, tokens: list[str]) -> tuple[bool, 
     numbers = computation.numbers
     try:
         if computation.integer:
-            return (True, get_int(computation.provider, numbers))
-        return (True, get_float(computation.provider, numbers))
+            return (True, NbtInt(get_int(computation.provider, numbers)))
+        return (True, NbtFloat(get_float(computation.provider, numbers)))
     except ProviderFormatError as error:
         context.game_error("argument.resource_or_id.failed_to_parse", str(error))
         return (False, None)

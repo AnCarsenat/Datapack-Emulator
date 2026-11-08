@@ -276,6 +276,26 @@ def test_data_modify_compute(world):
     ].success
 
 
+def test_data_modify_compute_stores_typed_tags(world):
+    """``FloatTag.valueOf`` / ``IntTag.valueOf``: the SNBT says ``f``, and the
+    tag matches a float filter."""
+    emulator = world()
+    emulator.typed("data modify storage s:x v set compute default float {type:add,inputs:[1,0.5]}")
+    emulator.typed("data modify storage s:x i set compute default integer 2147483647")
+    emulator.typed("data modify storage s:x i set compute default integer {type:add,inputs:[3,4]}")
+    _, records = emulator.typed("data get storage s:x")
+    assert chat(records) == ["Storage s:x has the following contents: {v: 1.5f, i: 7}"]
+    assert emulator.typed("execute if data storage s:x {v:1.5f}")[0].success
+    assert not emulator.typed("execute if data storage s:x {v:1.5d}")[0].success
+    assert emulator.typed("execute if data storage s:x {i:7}")[0].success
+    # 32-bit rounding: 0.1 + 0.2 is the float 0.3, printed as such
+    emulator.typed(
+        "data modify storage s:x v set compute default float {type:add,inputs:[0.1,0.2]}"
+    )
+    _, records = emulator.typed("data get storage s:x v")
+    assert chat(records) == ["Storage s:x has the following contents: 0.3f"]
+
+
 # ---------------------------------------------------------------------------
 # score and storage, with fallbacks
 # ---------------------------------------------------------------------------
@@ -478,3 +498,31 @@ def test_float_text_matches_java():
     assert java_float_text(25.0) == "25.0"
     assert java_float_text(math.nan) == "NaN"
     assert java_float_text(-math.inf) == "-Infinity"
+
+
+def test_jar_providers_are_read_once(tmp_path):
+    import zipfile
+
+    jar = tmp_path / "client.jar"
+    with zipfile.ZipFile(jar, "w") as archive:
+        archive.writestr("data/minecraft/context_float_provider/a/b.json", "0.5")
+        archive.writestr(
+            "data/minecraft/context_int_provider/c.json", '{"type":"constant","value":3}'
+        )
+        archive.writestr("data/minecraft/loot_table/d.json", "{}")
+    assert numbers.jar_provider(jar, numbers.FLOAT_REGISTRY, "a/b") == 0.5
+    found = numbers.jar_provider(jar, numbers.INT_REGISTRY, "minecraft:c")
+    assert found == {"type": "constant", "value": 3}
+    found["value"] = 9  # callers get their own copy
+    assert numbers.jar_provider(jar, numbers.INT_REGISTRY, "c")["value"] == 3
+    assert numbers.jar_provider(jar, numbers.INT_REGISTRY, "a/b") is None
+    assert numbers._jar_providers.cache_info().currsize >= 1
+
+
+def test_float_result_compared_as_a_float(world):
+    """``(float) result == value``: 2^31 saturates to 2^31 - 1, whose float
+    is 2^31 again, so vanilla calls it exact."""
+    emulator = world()
+    result, records = emulator.typed("compute default float {type:constant,value:2147483648}")
+    assert result.value == 2147483647
+    assert chat(records) == ["Number provider returned value 2147483647"]
